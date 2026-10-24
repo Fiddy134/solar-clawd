@@ -1,0 +1,4 @@
+no shader                    CPU   2.6%   GPU   9%
+passthrough, animated        CPU  20.7%   GPU  40%
+sky, animated                CPU  18.0%   GPU  75%
+sky, not animated            CPU  17.2%   GPU  73%

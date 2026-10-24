@@ -1,0 +1,2 @@
+second instance, animation=false CPU  17.4%   GPU  73%
+second instance, animation=true  CPU  16.0%   GPU  71%
