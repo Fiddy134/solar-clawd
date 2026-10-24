@@ -1,0 +1,6 @@
+{
+  "name": "solar-clawd",
+  "version": "0.1.0",
+  "description": "A solar-gradient sky above the prompt that follows the real sun over Stockholm, with a pixel Clawd who sleeps, drinks coffee, codes or plays GTA VI by the hour",
+  "types": "./types/index.d.ts"
+}

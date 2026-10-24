@@ -1,0 +1,92 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- The full moon as solar-clawd draws it: rendered once with headless
+     Chrome (tools/bake-moon.sh) to assets/moon.rgba; the mod shades the phase. -->
+<style>html,body{margin:0;background:transparent}canvas{display:block}</style>
+<canvas id="c" width="512" height="512"></canvas>
+<script>
+const c = document.getElementById('c').getContext('2d')
+const S = 512, R = 250, CX = 256, CY = 256
+// Deterministic: the same moon every bake.
+let seed = 7
+const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296)
+const disc = () => { c.beginPath(); c.arc(CX, CY, R, 0, Math.PI * 2) }
+
+// Highland: warm pale grey, the whole disc.
+disc(); c.fillStyle = '#e8e3d6'; c.fill()
+c.save(); disc(); c.clip()
+
+// Fine regolith grain.
+for (let i = 0; i < 9000; i++) {
+  const x = rnd() * S, y = rnd() * S, g = 200 + rnd() * 40
+  c.fillStyle = `rgba(${g},${g - 4},${g - 12},0.18)`
+  c.fillRect(x, y, 1 + rnd() * 2, 1 + rnd() * 2)
+}
+
+// The maria, roughly where they lie on the near side: soft-edged dark seas.
+// Each sea is a cluster of overlapping soft blobs, so its edge is ragged.
+const blob = (x, y, rx, ry, rot, a) => {
+  c.save(); c.translate(x, y); c.rotate(rot)
+  const g = c.createRadialGradient(0, 0, 0, 0, 0, 1)
+  g.addColorStop(0, `rgba(138,138,140,${a})`)
+  g.addColorStop(0.65, `rgba(142,142,143,${a * 0.8})`)
+  g.addColorStop(1, 'rgba(150,150,150,0)')
+  c.scale(rx, ry); c.beginPath(); c.arc(0, 0, 1, 0, Math.PI * 2)
+  c.fillStyle = g; c.fill(); c.restore()
+}
+const sea = (x, y, rx, ry, rot, a) => {
+  for (let i = 0; i < 7; i++) {
+    const dx = (rnd() - 0.5) * rx * R * 0.9, dy = (rnd() - 0.5) * ry * R * 0.9
+    const k = 0.45 + rnd() * 0.45
+    blob(CX + x * R + dx, CY + y * R + dy, rx * R * k, ry * R * k, rot + rnd(), a * 0.42)
+  }
+}
+sea(-0.30, -0.38, 0.30, 0.24, 0.3, 0.75)   // Imbrium
+sea(0.12, -0.33, 0.17, 0.15, 0, 0.7)      // Serenitatis
+sea(0.30, -0.05, 0.22, 0.17, -0.4, 0.72)  // Tranquillitatis
+sea(0.66, -0.20, 0.10, 0.09, 0, 0.8)      // Crisium
+sea(0.42, 0.20, 0.13, 0.12, 0.2, 0.6)     // Fecunditatis
+sea(0.18, 0.12, 0.10, 0.10, 0, 0.55)      // Nectaris
+sea(-0.55, -0.02, 0.26, 0.42, 0.15, 0.62) // Procellarum
+sea(-0.22, 0.30, 0.16, 0.12, 0.2, 0.55)   // Nubium
+sea(-0.42, 0.40, 0.11, 0.08, 0, 0.5)      // Humorum
+sea(0.0, -0.62, 0.30, 0.06, 0, 0.5)       // Frigoris
+
+// Craters: a dark floor, a lit rim towards the sun, a shadowed rim away.
+const crater = (x, y, r, a) => {
+  c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2)
+  c.fillStyle = `rgba(150,148,144,${a * 0.5})`; c.fill()
+  c.lineWidth = Math.max(1, r * 0.22)
+  c.beginPath(); c.arc(x, y, r, Math.PI * 0.75, Math.PI * 1.75)
+  c.strokeStyle = `rgba(110,108,104,${a})`; c.stroke()
+  c.beginPath(); c.arc(x, y, r, Math.PI * 1.75, Math.PI * 2.75)
+  c.strokeStyle = `rgba(250,248,240,${a})`; c.stroke()
+}
+for (let i = 0; i < 70; i++) {
+  const ang = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * R * 0.97
+  const r = 1.5 + Math.pow(rnd(), 4) * 10
+  crater(CX + Math.cos(ang) * d, CY + Math.sin(ang) * d, r, 0.12 + rnd() * 0.18)
+}
+
+// Tycho and Copernicus: bright young craters, Tycho with its rays.
+const ray = (x, y, n, len) => {
+  for (let i = 0; i < n; i++) {
+    const a = rnd() * Math.PI * 2, l = len * (0.5 + rnd() * 0.8)
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l)
+    c.strokeStyle = 'rgba(255,253,245,0.07)'; c.lineWidth = 1.5 + rnd() * 2; c.stroke()
+  }
+}
+const tycho = [CX - 0.12 * R, CY + 0.62 * R], copernicus = [CX - 0.30 * R, CY - 0.10 * R]
+ray(...tycho, 18, R * 0.9); ray(...copernicus, 10, R * 0.35)
+for (const [x, y, r] of [[...tycho, 9], [...copernicus, 10]]) {
+  c.beginPath(); c.arc(x, y, r * 1.8, 0, Math.PI * 2)
+  c.fillStyle = 'rgba(255,252,240,0.22)'; c.fill(); crater(x, y, r * 0.6, 0.5)
+}
+
+// Limb darkening: the edge of the disc falls off a little.
+const limb = c.createRadialGradient(CX, CY, R * 0.55, CX, CY, R)
+limb.addColorStop(0, 'rgba(0,0,0,0)')
+limb.addColorStop(1, 'rgba(40,36,30,0.30)')
+disc(); c.fillStyle = limb; c.fill()
+c.restore()
+</script>
