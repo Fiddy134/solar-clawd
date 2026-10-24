@@ -88,21 +88,38 @@ export function cellsSvg(base64, columns, rows, cell, top = 0, terminal = 0x282c
   return parts.join('')
 }
 
+const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+// Its own empty profile, so it never reaches for the person's.
+const HEADLESS = ['--headless', '--hide-scrollbars', `--user-data-dir=${join(OUT, 'chrome')}`, '--no-first-run', '--no-default-browser-check']
+// WebGL without a GPU: SwiftShader.
+const WEBGL = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+
+// A page (an .svg or .html in .preview/) laid down as a PNG at exactly
+// width × height.
+export function screenshot(file, width, height, name, isWebGl = false) {
+  const png = join(OUT, `${name}.png`)
+  const flags = isWebGl ? WEBGL : ['--disable-gpu']
+  execFileSync(CHROME, [...HEADLESS, ...flags, '--virtual-time-budget=4000', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${file}`], { stdio: 'ignore' })
+
+  return png
+}
+
+// The page's DOM once its scripts have run, for what a page reports back.
+export function dumpDom(file, isWebGl = false) {
+  const flags = isWebGl ? WEBGL : ['--disable-gpu']
+
+  return execFileSync(CHROME, [...HEADLESS, ...flags, '--virtual-time-budget=4000', '--dump-dom', `file://${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+}
+
 // An SVG laid down as a PNG at exactly width × height, by headless Chrome.
 export function svgToPng(body, width, height, name) {
   const svg = join(OUT, `${name}.svg`)
-  const png = join(OUT, `${name}.png`)
   writeFileSync(
     svg,
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" font-family="Menlo" shape-rendering="crispEdges">${body}</svg>`,
   )
-  execFileSync(
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    ['--headless', '--disable-gpu', '--hide-scrollbars', `--user-data-dir=${join(OUT, 'chrome')}`, '--no-first-run', '--no-default-browser-check', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${svg}`],
-    { stdio: 'ignore' },
-  )
 
-  return png
+  return screenshot(svg, width, height, name)
 }
 
 export function writePng(bytes, name) {

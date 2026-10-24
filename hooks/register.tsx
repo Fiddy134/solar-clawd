@@ -7,6 +7,7 @@ import { drawFrame, isPrintable, REACTION_SECONDS, ROWS } from './clawd'
 import type { Mode, Reaction } from './clawd'
 import { drawCorner, HQ_COLUMNS } from './hq'
 import { fromBase64, toBase64 } from './paint'
+import { shaderParams, skyShader } from './shader'
 import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 
@@ -34,6 +35,26 @@ const DEMO_WALLPAPER_MS = 1_500
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
 const GUESS_MS = 12 * 3_600_000
+
+// Ghostty draws the sky itself, from a shader the mod writes into its
+// runtime folder. Ghostty's config includes runtime/solar-clawd.ghostty,
+// which names the shader while the sky is up and is empty otherwise; each
+// change is followed by a reload, which Ghostty takes without a flicker.
+const RELOAD_GHOSTTY = [
+  '-e',
+  'tell application id "com.mitchellh.ghostty" to perform action "reload_config" on focused terminal of selected tab of front window',
+]
+// How often the sky is looked at: a new scene, the person away or back.
+const SKY_MS = 10_000
+// Away after this long without a key or the mouse: the sky goes, and with
+// it Ghostty's frame loop, until the person is back.
+const AWAY_MS = 5 * 60_000
+// Each Ghostty session leaves a heartbeat this often; one older than
+// ALIVE_MS is a session gone.
+const HEARTBEAT_MS = 60_000
+const ALIVE_MS = 5 * 60_000
+// Ghostty's own background, until it says otherwise.
+const GHOSTTY_BACKGROUND = 0x282c34
 
 // $.store keys: a place the person chose, and the last guess with its time.
 const CHOSEN_PLACE = 'place'
@@ -222,6 +243,132 @@ function plain(text: string): string {
   return [...text].map(ch => (isPrintable(ch.codePointAt(0)!) ? ch : '?')).join('')
 }
 
+// How long since the person last touched a key or the mouse.
+async function idleMs($: EngineInterface): Promise<number> {
+  try {
+    const { stdout } = await $.process.run(['/usr/sbin/ioreg', '-c', 'IOHIDSystem', '-d', '4'], { timeoutMs: 5_000 })
+    const ns = /"HIDIdleTime" = (\d+)/.exec(stdout)?.[1]
+
+    return ns ? Number(ns) / 1e6 : 0
+  } catch {
+    return 0
+  }
+}
+
+// The background Ghostty draws, which the shader shows the sky in place of.
+async function ghosttyBackground($: EngineInterface, bin: string): Promise<number> {
+  try {
+    const { stdout } = await $.process.run([`${bin}/ghostty`, '+show-config', '--default'], { timeoutMs: 5_000 })
+    const hex = /^background = #?([0-9a-f]{6})\s*$/im.exec(stdout)?.[1]
+
+    return hex ? parseInt(hex, 16) : GHOSTTY_BACKGROUND
+  } catch {
+    return GHOSTTY_BACKGROUND
+  }
+}
+
+// Ghostty's config files on macOS, the one to add the include to first.
+function ghosttyConfigs(home: string): string[] {
+  const support = `${home}/Library/Application Support/com.mitchellh.ghostty`
+
+  return [`${support}/config.ghostty`, `${support}/config`, `${home}/.config/ghostty/config.ghostty`, `${home}/.config/ghostty/config`]
+}
+
+// Where a Ghostty session keeps the sky's files, and what it last wrote:
+// the shader, the include, the heartbeat's time.
+type Ghostty = {
+  folder: string
+  include: string
+  shader: string
+  heartbeat: string
+  home: string
+  background: number
+  written: { shader: string; include: string; heartbeatAt: number; isBusy: boolean }
+}
+
+// Whether one of Ghostty's config files includes the mod's file.
+async function isIncluded($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
+  for (const path of ghosttyConfigs(ghostty.home)) {
+    const text = await $.fs.read(path).catch(() => '')
+    if (text.includes(ghostty.include)) return true
+  }
+
+  return false
+}
+
+async function reloadGhostty($: EngineInterface): Promise<void> {
+  await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 }).catch(() => undefined)
+}
+
+// The sky in Ghostty as it should be now: `shaderAt`'s shader while the
+// person is here and the sky is not hidden, nothing otherwise. Ghostty
+// reloads only when a file actually changed.
+async function updateGhosttySky(
+  $: EngineInterface,
+  ghostty: Ghostty,
+  isHidden: boolean,
+  shaderAt: (now: number) => string,
+): Promise<void> {
+  const { written } = ghostty
+  if (written.isBusy) return
+  written.isBusy = true
+  try {
+    const now = await $.clock.now()
+    if (now - written.heartbeatAt >= HEARTBEAT_MS) {
+      await $.fs.write(ghostty.heartbeat, String(now))
+      written.heartbeatAt = now
+    }
+    const isWanted = !isHidden && (await idleMs($)) < AWAY_MS
+    let isChanged = false
+    let include = ''
+    if (isWanted) {
+      const shader = shaderAt(now)
+      if (shader !== written.shader) {
+        await $.fs.write(ghostty.shader, shader)
+        written.shader = shader
+        isChanged = true
+      }
+      include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = true\n`
+    }
+    if (include !== written.include) {
+      await $.fs.write(ghostty.include, include)
+      written.include = include
+      isChanged = true
+    }
+    if (isChanged) await reloadGhostty($)
+  } finally {
+    written.isBusy = false
+  }
+}
+
+// The session is ending: its heartbeat goes, and the sky with it unless
+// another session is still alive.
+async function endGhosttySky($: EngineInterface, ghostty: Ghostty): Promise<void> {
+  const { folder, heartbeat, include } = ghostty
+  await $.process.run(['/bin/rm', '-f', heartbeat]).catch(() => undefined)
+  const now = await $.clock.now()
+  const entries = await $.fs.list(folder).catch(() => [])
+  const isAnotherAlive = entries.some(
+    entry => entry.name.startsWith('alive-') && `${folder}/${entry.name}` !== heartbeat && now - entry.mtimeMs < ALIVE_MS,
+  )
+  if (!isAnotherAlive && (await $.fs.read(include).catch(() => '')) !== '') {
+    await $.fs.write(include, '')
+    await reloadGhostty($)
+  }
+}
+
+// Adds the one include line to the config Ghostty reads first; `?` keeps
+// Ghostty quiet should the file ever be missing. Answers the line and file.
+async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string }> {
+  const config = ghosttyConfigs(ghostty.home)[0]!
+  const text = await $.fs.read(config).catch(() => '')
+  const line = `config-file = ?${ghostty.include}`
+  const gap = text === '' || text.endsWith('\n') ? '' : '\n'
+  await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\n`)
+
+  return { line, config }
+}
+
 export const register: Register = on => {
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
@@ -245,6 +392,9 @@ export const register: Register = on => {
   // wallpaper files go.
   let iterm: { sessionId: string; folder: string } | null = null
   const wallpaper = { at: 0, count: 0, isBusy: false, isShown: false, key: '' }
+  // Set when this session runs in Ghostty: where the sky's files go, and
+  // the background the terminal draws.
+  let ghostty: Ghostty | null = null
   const wallpaperCache: { current?: WallpaperCache } = {}
 
   const momentAt = (now: number): { ms: number; mode: Mode } => {
@@ -299,22 +449,30 @@ export const register: Register = on => {
       weather,
       isAuroraForced,
       moonTexture,
-      isClear: iterm !== null,
+      isClear: iterm !== null || (ghostty !== null && ghostty.written.include !== ''),
       reaction: reactionAt(now),
       track,
     }
+  }
+
+  // The Ghostty shader for a moment: the scene then, or in a demo the day.
+  const shaderAt = (now: number) => {
+    const { ms, mode } = momentAt(now)
+    const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
+
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { background: ghostty?.background ?? GHOSTTY_BACKGROUND, demo }))
   }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst]',
+      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | ghostty]',
       immediate: true,
     })
 
-    const sessionId = (await $.env.get('ITERM_SESSION_ID'))?.split(':')[1]
     const home = await $.env.get('HOME')
+    const sessionId = (await $.env.get('ITERM_SESSION_ID'))?.split(':')[1]
     if (sessionId && home) {
       iterm = { sessionId, folder: `${home}/Library/Caches/solar-clawd` }
       await $.process.run(['/bin/mkdir', '-p', iterm.folder])
@@ -326,6 +484,30 @@ export const register: Register = on => {
       if (rgba.length === MOON_SIZE * MOON_SIZE * 4) moonTexture = { size: MOON_SIZE, rgba }
     } catch {
       // A plain disc, then.
+    }
+
+    if ((await $.env.get('TERM_PROGRAM')) === 'ghostty' && home) {
+      const folder = `${$.plugin.root}/runtime`
+      const bin = (await $.env.get('GHOSTTY_BIN_DIR')) ?? '/Applications/Ghostty.app/Contents/MacOS'
+      const id = await $.session.id().catch(() => 'session')
+      ghostty = {
+        folder,
+        include: `${folder}/solar-clawd.ghostty`,
+        shader: `${folder}/sky.glsl`,
+        heartbeat: `${folder}/alive-${id}`,
+        home,
+        background: await ghosttyBackground($, bin),
+        written: { shader: '', include: '', heartbeatAt: -Infinity, isBusy: false },
+      }
+      // The sky shows only once Ghostty's config includes the mod's file.
+      if (!(await isIncluded($, ghostty))) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
+    }
+
+    if (ghostty !== null) {
+      const sky = ghostty
+      const update = async () => updateGhosttySky($, sky, await read($, isHidden), shaderAt)
+      void update().catch(() => undefined)
+      $.clock.every(SKY_MS, () => void update().catch(() => undefined))
     }
 
     // The network is not waited on: the sky starts in Stockholm.
@@ -444,11 +626,13 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Leave iTerm2 as it was found.
+  // Leave iTerm2 as it was found; in Ghostty the sky goes with the last
+  // session that shows it.
   on('session.end', async ($, e, next) => {
     if (iterm !== null && wallpaper.isShown) {
       await $.process.run(['/usr/bin/osascript', ...SET_BACKGROUND, iterm.sessionId, ''])
     }
+    if (ghostty !== null) await endGhosttySky($, ghostty)
 
     return next(e)
   })
@@ -520,6 +704,17 @@ export const register: Register = on => {
       pinnedAt = null
 
       return { text: 'Solar: följer solen igen.' }
+    }
+
+    if (word === 'ghostty') {
+      if (ghostty === null) return { text: 'Solar: den här sessionen körs inte i Ghostty.' }
+      if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty visar redan himlen.' }
+      const { line, config } = await includeInGhostty($, ghostty)
+      // Written again, so Ghostty reloads with the include in place.
+      ghostty.written.include = ''
+      await updateGhosttySky($, ghostty, await read($, isHidden), shaderAt)
+
+      return { text: `Solar: lade till "${line}" i ${config}.` }
     }
 
     if (word === 'norrsken') {

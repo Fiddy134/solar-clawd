@@ -356,7 +356,7 @@ export function paintSun(
 // --- Clouds -----------------------------------------------------------------
 
 // Shapes a rare cloud takes, cell by cell; each 'x' is a puff.
-const RARE_SHAPES = {
+export const RARE_SHAPES = {
   clawd: ['.xxxxxx.', '.x.xx.x.', 'xxxxxxxx', '.xxxxxx.', '.x.xx.x.'],
   heart: ['.xx.xx.', 'xxxxxxx', 'xxxxxxx', '.xxxxx.', '..xxx..', '...x...'],
   whale: ['...........x.x', '.xxxxxx......x', 'xxxxxxxxx...xx', 'xxxxxxxxxxxxx.', '.xxxxxxxxxx...'],
