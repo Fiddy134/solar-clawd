@@ -1,8 +1,9 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
-import { activityAt, drawFrame, ROWS } from './clawd'
+import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
 import { HQ_COLUMNS } from './hq'
+import { fromBase64 } from './paint'
 import { wallpaperPng } from './sky'
 
 const BAND = {
@@ -89,4 +90,13 @@ test('the band draws the words as cells and Clawd as a picture, and /solar hides
   expect(await hidden.find({ type: 'Raster' })).toBeUndefined()
   expect((await hidden.find({ type: 'Text' }))?.text).toBe('engine')
   await hidden.unmount()
+})
+
+test('control characters never reach a cell', () => {
+  expect([0x1b, 0x07, 0x7f, 0x9b].some(isPrintable)).toBe(false)
+  expect(['a', 'å', 'é', ' '].every(ch => isPrintable(ch.charCodeAt(0)))).toBe(true)
+  const place = { name: 'Evil\u001b]0;pwn\u0007', lat: 59.33, lon: 18.07 }
+  const cells = fromBase64(drawFrame({ ms: Date.UTC(2026, 9, 24, 10), t: 0, place, columns: 80, mode: 'live' }))
+  const words = new Uint32Array(cells.buffer, cells.byteOffset, cells.length / 4)
+  for (let i = 0; i < words.length; i += 3) expect(isPrintable(words[i]!) || words[i] === 0x2580 || words[i] === 0x2584).toBe(true)
 })

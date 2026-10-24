@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
-import { drawFrame, REACTION_SECONDS, ROWS } from './clawd'
+import { drawFrame, isPrintable, REACTION_SECONDS, ROWS } from './clawd'
 import type { Mode, Reaction } from './clawd'
 import { drawCorner, HQ_COLUMNS } from './hq'
 import { fromBase64, toBase64 } from './paint'
@@ -93,7 +93,8 @@ function asPlace(value: unknown): Place | null {
   const lat = number(field(value, 'lat'))
   const lon = number(field(value, 'lon'))
 
-  return typeof name === 'string' && lat !== null && lon !== null ? { name, lat, lon } : null
+  // A name from the network goes into cells and replies: printable and short.
+  return typeof name === 'string' && lat !== null && lon !== null ? { name: plain(name).slice(0, 40), lat, lon } : null
 }
 
 async function getJson($: EngineInterface, url: string): Promise<unknown> {
@@ -112,7 +113,7 @@ async function guessPlace($: EngineInterface): Promise<Place | null> {
   const city = field(info, 'city')
   const [lat, lon] = String(field(info, 'loc') ?? '').split(',').map(Number)
   if (typeof city === 'string' && Number.isFinite(lat) && Number.isFinite(lon)) {
-    return { name: city, lat: lat!, lon: lon! }
+    return asPlace({ name: city, lat, lon })
   }
 
   const who = await getJson($, 'https://ipwho.is/')
@@ -215,9 +216,10 @@ function placeText({ place, isChosen, weather }: Where): string {
   return `${place.name}${guessed}${now}`
 }
 
-// A track name as the band can draw it: one cell per character.
+// Text as the band can draw it: one cell per printable character, so no
+// control character from a track or a place name reaches the terminal.
 function plain(text: string): string {
-  return [...text].map(ch => (ch.codePointAt(0)! < 0x250 ? ch : '?')).join('')
+  return [...text].map(ch => (isPrintable(ch.codePointAt(0)!) ? ch : '?')).join('')
 }
 
 export const register: Register = on => {

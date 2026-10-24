@@ -547,6 +547,11 @@ export function drawFrame(view: View, withScene = true): string {
   return encode(c, glyphs, isClear)
 }
 
+// Latin a cell can hold, without the C0 and C1 control characters.
+export function isPrintable(code: number): boolean {
+  return (code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code < 0x250)
+}
+
 // The terminal's own background, where a clear band lets the wallpaper show.
 const DEFAULT = 0x01000000
 
@@ -586,9 +591,9 @@ function encode(canvas: Canvas, glyphs: Glyph[], isClear: boolean): string {
     for (let k = 0; k < glyph.text.length; k++) {
       const x = glyph.x + k
       // One cell per character: anything past Latin (a wide or combining
-      // character, half a surrogate pair) is drawn as '?'.
+      // character, half a surrogate pair) or a control character is '?'.
       const char = glyph.text.charCodeAt(k)
-      const code = char < 0x250 ? char : 0x3f
+      const code = isPrintable(char) ? char : 0x3f
       if (x < 0 || x >= w) continue
       const bg = background(x, glyph.y)
       const ink = glyph.fg || (!isClear && luminance(bg) > 0.6 ? 0x1b1f33 : 0xffffff)
