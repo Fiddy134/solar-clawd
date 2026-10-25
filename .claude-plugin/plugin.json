@@ -1,6 +1,12 @@
 {
   "name": "solar-clawd",
-  "version": "0.1.0",
-  "description": "A solar-gradient sky above the prompt that follows the real sun over Stockholm, with a pixel Clawd who sleeps, drinks coffee, codes or plays GTA VI by the hour",
+  "version": "0.2.0",
+  "description": "A living risograph sky behind the terminal that follows the real sun, moon and weather, with a pixel Clawd above the prompt",
+  "author": {
+    "name": "Vincent Rogvall",
+    "url": "https://github.com/Fiddy134"
+  },
+  "repository": "https://github.com/Fiddy134/solar-clawd",
+  "license": "GPL-3.0",
   "types": "./types/index.d.ts"
 }

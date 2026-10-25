@@ -17,17 +17,29 @@ Events are a pure function of the time and the sky, so every session shows the s
 
 ## Requirements
 
-- macOS, or Linux (untested — see [Linux](#linux))
-- [Claude Code](https://claude.com/claude-code) with mod support (tested on 2.1.310)
+- macOS, or Linux (see [Linux](#linux))
+- [Claude Code](https://claude.com/claude-code) 2.1.275 or later
 - [Ghostty](https://ghostty.org) 1.3 or later for the sky behind the terminal (iTerm2 gets it as a background image instead)
 
 ## Install
 
+At the prompt of a Claude Code session:
+
+```
+/plugin install solar-clawd --marketplace Fiddy134/solar-clawd
+```
+
+Answer `y` to add the marketplace and pick a scope (user, so it runs in every session). From a shell, the same is `claude plugin install solar-clawd --marketplace Fiddy134/solar-clawd`.
+
+Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds one optional include line to Ghostty's config (the only change it makes there); the included file names the shader while a Claude session runs and is empty otherwise. The sky shows only in the tabs where Claude runs.
+
+### Developing
+
+Clone the repository and load it as a plugin folder, which the session reloads as you save:
+
 ```sh
 git clone https://github.com/Fiddy134/solar-clawd ~/solar-clawd
 ```
-
-Load it as a plugin directory in `~/.claude/settings.json`:
 
 ```json
 {
@@ -37,21 +49,20 @@ Load it as a plugin directory in `~/.claude/settings.json`:
 }
 ```
 
-Start Claude Code in Ghostty and run `/solar ghostty` once. It adds one optional include line to Ghostty's config; the included file names the shader while a Claude session runs and is empty otherwise.
+That goes in `~/.claude/settings.json`. `claude plugin test .` runs the tests; `tools/preview/run.sh shader` and `tools/preview/run.sh band` render the sky and the band to PNGs without Ghostty (their flags are listed at the top of each file in `tools/preview/`), and `tools/preview/gif.sh` makes the GIF above.
 
 ## Linux
 
-> **Untested.** Linux support is written and covered by unit tests, but nobody has run it on a real Linux desktop yet. Reports and fixes are welcome.
-
-Installation is the same. `/solar ghostty` adds the include to `$XDG_CONFIG_HOME/ghostty/config.ghostty` (or to `config` if that is the file you have), defaulting to `~/.config/ghostty`.
+Run by a few people so far; reports and fixes are welcome. `/solar ghostty` adds the include to `$XDG_CONFIG_HOME/ghostty/config.ghostty` (or to `config` if that is the file you have), defaulting to `~/.config/ghostty`.
 
 The mod rewrites the shader and asks Ghostty to reload its config, which on Linux means a `SIGUSR2`:
 
-- If Ghostty runs as its systemd user service, the mod runs `systemctl --user reload app-com.mitchellh.ghostty.service` — the way [Ghostty's docs](https://ghostty.org/docs/linux/systemd) recommend.
+- If Ghostty runs as its systemd user service, the mod runs `systemctl --user reload app-com.mitchellh.ghostty.service`, the way [Ghostty's docs](https://ghostty.org/docs/linux/systemd) recommend.
 - Otherwise it sends `SIGUSR2` with `pkill -x ghostty`, but only if `ghostty --version` says 1.3 or later, since an older Ghostty would quit on that signal.
 
 What differs from macOS:
 
+- Ghostty draws with OpenGL there, so the shader flips its coordinates and reads the terminal's colours in linear light as well.
 - Battery is read from `/sys/class/power_supply` (the sky stands still on battery).
 - There is no idle detection, so the sky keeps animating while you are away.
 - No now-playing music in the band, and no iTerm2 background.

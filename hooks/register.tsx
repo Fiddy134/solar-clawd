@@ -642,6 +642,26 @@ async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: strin
 // loaded from: its comment, and the include of its runtime file.
 const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??\S*\/runtime\/solar-clawd\.ghostty$/]
 
+// Whether a config has an include line the mod added, wherever it points.
+async function hasOurInclude($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
+  for (const path of ghostty.configs) {
+    const text = await $.fs.read(path).catch(() => '')
+    if (text.split('\n').some(line => OUR_LINES[1]!.test(line.trim()))) return true
+  }
+
+  return false
+}
+
+// Where a Ghostty session keeps the sky's files: a folder of the person's
+// own, so the include line in Ghostty's config outlives the plugin's folder
+// (an installed plugin's moves with each update). It ends in /runtime, as
+// OUR_LINES expects.
+function runtimeFolder(home: string, isOnLinux: boolean, xdgState: string | null): string {
+  if (isOnLinux) return `${xdgState ?? `${home}/.local/state`}/solar-clawd/runtime`
+
+  return `${home}/Library/Application Support/solar-clawd/runtime`
+}
+
 // Adds the one include line to the config Ghostty reads first, in place of
 // any the mod added before; `?` keeps Ghostty quiet should the file ever be
 // missing. Answers the line and file, or null when the config is there but
@@ -879,7 +899,9 @@ export const register: Register = on => {
     const isOnLinux = await isLinuxHost($)
     if ((await $.env.get('TERM_PROGRAM')) === 'ghostty' && home) {
       const xdgConfig = isOnLinux ? (await $.env.get('XDG_CONFIG_HOME')) || null : null
-      const folder = `${$.plugin.root}/runtime`
+      const xdgState = isOnLinux ? (await $.env.get('XDG_STATE_HOME')) || null : null
+      const folder = runtimeFolder(home, isOnLinux, xdgState)
+      await $.process.run(['/bin/mkdir', '-p', folder]).catch(() => undefined)
       const id = await $.session.id().catch(() => 'session')
       ghostty = {
         id,
@@ -899,6 +921,13 @@ export const register: Register = on => {
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.
       ghostty.isIncluded = await isIncluded($, ghostty)
+      // An include the mod added before, to its own folder: moved here, and
+      // the old file emptied so Ghostty draws no second sky from it.
+      if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
+        ghostty.isIncluded = (await includeInGhostty($, ghostty)) !== null
+        const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
+        if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
+      }
       if (!ghostty.isIncluded) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
     }
 

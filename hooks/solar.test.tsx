@@ -519,6 +519,17 @@ test('/solar ghostty on Linux adds the include to the XDG config that is there',
   expect([...world.files.keys()].some(path => path.includes('Library/Application Support'))).toBe(false)
 })
 
+test('an include the mod added to its own folder before is moved to the stable one', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.files.set(CONFIG, { text: 'font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?/old/plugin/runtime/solar-clawd.ghostty\n', mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+  expect(runtime).toBe('/Users/test/Library/Application Support/solar-clawd/runtime')
+  expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`)
+})
+
 test('a sky another session took down comes back while this one wants it', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })

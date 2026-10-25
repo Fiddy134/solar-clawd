@@ -1,0 +1,13 @@
+{
+  "name": "solar-clawd",
+  "description": "Solar Clawd: a living risograph sky behind the terminal, for Claude Code",
+  "owner": {
+    "name": "Vincent Rogvall"
+  },
+  "plugins": [
+    {
+      "name": "solar-clawd",
+      "source": "./"
+    }
+  ]
+}
