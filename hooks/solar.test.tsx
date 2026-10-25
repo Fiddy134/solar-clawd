@@ -8,6 +8,7 @@ import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } from './beacon'
+import { elementsOf, issAt, issVisible } from './iss'
 import { fromBase64 } from './paint'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
@@ -719,8 +720,13 @@ test('Ghostty animates always while the lighthouse sweeps, stands still after it
 })
 
 // A Ghostty session to wait in: its shader and include as text.
-async function waitingWorld($: Engine, on: On, idle = { value: 1 }, before?: (clock: ReturnType<typeof mock.clock>) => void) {
-  const start = Date.UTC(2026, 9, 24, 20, 0)
+async function waitingWorld(
+  $: Engine,
+  on: On,
+  idle = { value: 1 },
+  before?: (clock: ReturnType<typeof mock.clock>) => void,
+  start = Date.UTC(2026, 9, 24, 20, 0),
+) {
   const clock = mock.clock(on, { now: start })
   before?.(clock)
   const world = ghosttyWorld(on, idle)
@@ -841,4 +847,74 @@ test('a pmset that fails counts as mains power', async ($, on) => {
   world.failing.add('/usr/bin/pmset')
   await clock.advance(61_000)
   expect(include()).toContain('custom-shader-animation = true')
+})
+
+// The ISS's elements from CelesTrak on 2026-10-25, and where satellite.js
+// (SGP4) put it from Stockholm then: [ms, elevation, azimuth] (tools/iss/check.sh).
+const ISS_OMM = {
+  OBJECT_NAME: 'ISS (ZARYA)', OBJECT_ID: '1998-067A', EPOCH: '2026-10-24T05:01:11.149248', MEAN_MOTION: 15.49030149,
+  ECCENTRICITY: 0.00068845, INCLINATION: 51.6335, RA_OF_ASC_NODE: 21.6229, ARG_OF_PERICENTER: 302.9098, MEAN_ANOMALY: 57.1228,
+  EPHEMERIS_TYPE: 0, CLASSIFICATION_TYPE: 'U', NORAD_CAT_ID: 25544, ELEMENT_SET_NO: 999, REV_AT_EPOCH: 59175,
+  BSTAR: 0.00014938171, MEAN_MOTION_DOT: 7.8e-5, MEAN_MOTION_DDOT: 0,
+}
+const ISS_REFERENCE = [
+  [1792891631149, 11.7, 162.98], // 01:27 UTC, up but in Earth's shadow
+  [1792897271149, 10.62, 222.38],
+  [1792903091149, 14.61, 228.63], // visible
+  [1792897451149, 20.8, 159.82], // visible
+  [1792897511149, 16.48, 137.48], // visible
+] as const
+const ISS_PASS = 1792897451149
+
+test('the ISS stands where satellite.js puts it', () => {
+  const elements = elementsOf([ISS_OMM])!
+  for (const [ms, elevation, azimuth] of ISS_REFERENCE) {
+    const got = issAt(elements, ms, STOCKHOLM)
+    expect(Math.abs(got.elevation - elevation)).toBeLessThan(1.5)
+    expect(Math.abs(((got.azimuth - azimuth + 540) % 360) - 180) * Math.cos((elevation * Math.PI) / 180)).toBeLessThan(1.5)
+  }
+})
+
+test('the ISS shows only on a visible pass', () => {
+  const elements = elementsOf([ISS_OMM])
+  expect(issVisible(elements, ISS_PASS, STOCKHOLM)).not.toBeNull()
+  expect(issVisible(elements, Date.UTC(2026, 9, 25, 11), STOCKHOLM)).toBeNull()
+  expect(issVisible(elements, ISS_REFERENCE[0][0], STOCKHOLM)).toBeNull()
+})
+
+test('no ISS from garbage, nothing, or old elements', () => {
+  expect(elementsOf('nope')).toBeNull()
+  expect(elementsOf([{}])).toBeNull()
+  expect(elementsOf(null)).toBeNull()
+  expect(issVisible(elementsOf([ISS_OMM]), ISS_PASS + 4 * 86_400_000, STOCKHOLM)).toBeNull()
+})
+
+test('during a pass the ISS moves every two seconds; a failed fetch shows none and breaks nothing', async ($, on) => {
+  const answer = { isUp: true }
+  const { clock, shader } = await waitingWorld(
+    $,
+    on,
+    { value: 1 },
+    () =>
+      on('http.fetch', (_, e) =>
+        answer.isUp && e.url.includes('celestrak')
+          ? { value: { status: 200, ok: true, headers: {}, text: JSON.stringify([ISS_OMM]), requestId: 'r', key: 'k' } }
+          : { deny: 'offline' },
+      ),
+    ISS_PASS - 12_000,
+  )
+  const seen = new Set<string>()
+  for (let i = 0; i < 5; i++) {
+    await clock.advance(2_000)
+    seen.add(/const vec2 ISS_AT = [^;]*;/.exec(shader())?.[0] ?? '')
+  }
+  expect(shader()).toContain('const float ISS_UP = 1.0;')
+  expect(seen.size).toBeGreaterThanOrEqual(4)
+})
+
+test('with no ISS elements to be had the sky goes on without it', async ($, on) => {
+  const { clock, shader } = await waitingWorld($, on, { value: 1 }, () => on('http.fetch', () => ({ deny: 'offline' })), ISS_PASS - 12_000)
+  await clock.advance(10_000)
+  expect(shader()).toContain('const float ISS_UP = 0.0;')
+  expect(shader()).toContain('void mainImage')
 })

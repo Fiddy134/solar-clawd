@@ -85,15 +85,21 @@ function horizontal(hourAngle: number, dec: number, lat: number): Sun {
 // NOAA's low-precision solar position: a fraction of a degree off, plenty
 // for a sky.
 export function sunAt(ms: number, lat = STOCKHOLM.lat, lon = STOCKHOLM.lon): Sun {
+  const [x, y, z] = sunDirection(ms)
+
+  return horizontal((gmstDegrees(ms) + lon) * RAD - Math.atan2(y, x), Math.asin(z), lat)
+}
+
+// The sun's direction from the Earth, a unit vector in equatorial
+// coordinates (x to the March equinox, z to the north pole).
+export function sunDirection(ms: number): [number, number, number] {
   const d = ms / DAY_MS - J2000_DAYS
   const g = (357.529 + 0.98560028 * d) * RAD
   const q = 280.459 + 0.98564736 * d
   const l = (q + 1.915 * Math.sin(g) + 0.02 * Math.sin(2 * g)) * RAD
   const tilt = (23.439 - 0.00000036 * d) * RAD
-  const ra = Math.atan2(Math.cos(tilt) * Math.sin(l), Math.cos(l))
-  const dec = Math.asin(Math.sin(tilt) * Math.sin(l))
 
-  return horizontal((gmstDegrees(ms) + lon) * RAD - ra, dec, lat)
+  return [Math.cos(l), Math.cos(tilt) * Math.sin(l), Math.sin(tilt) * Math.sin(l)]
 }
 
 // Greenwich mean sidereal time, in degrees.

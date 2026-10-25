@@ -32,6 +32,8 @@ export type ShaderParams = {
   // away draws it alone on the terminal's own background.
   beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
   onlyBeacon: boolean
+  // The ISS on a visible pass, where it is and was 20 s before; null otherwise.
+  iss: { at: DomePoint; trail: DomePoint } | null
   // Where a comet up now hangs on the dome, and the angle its tails point
   // (away from the sun, in the window's own axes); null with no comet.
   comet: { at: DomePoint; away: number } | null
@@ -113,6 +115,7 @@ export function shaderParams(
     shootingRate?: number
     beacon?: ShaderParams['beacon']
     onlyBeacon?: boolean
+    iss?: ShaderParams['iss']
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -140,6 +143,7 @@ export function shaderParams(
     // and with it Ghostty, still for the demo's length.
     scene,
     beacon: options.beacon ?? null,
+    iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     onlyBeacon: !!options.onlyBeacon && !!options.beacon,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -263,6 +267,9 @@ export function skyShader(params: ShaderParams): string {
     `const vec3 STOP_HORIZON[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[3])).join(', ')});`,
     ...Object.entries(INKS).map(([name, c]) => `const vec3 INK_${name.toUpperCase()} = ${rgb(c)};`),
     ...chartConstants(params.chart),
+    `const float ISS_UP = ${params.iss ? '1.0' : '0.0'};`,
+    `const vec2 ISS_AT = vec2(${f(params.iss?.at.x ?? 0)}, ${f(params.iss?.at.y ?? 0)});`,
+    `const vec2 ISS_TRAIL = vec2(${f(params.iss?.trail.x ?? 0)}, ${f(params.iss?.trail.y ?? 0)});`,
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
     `const float ONLY_BEACON = ${params.onlyBeacon ? '1.0' : '0.0'};`,
@@ -1003,6 +1010,23 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
   return sky;
 }
 
+// --- The ISS -----------------------------------------------------------------
+
+// The station on a real pass: a steady, faintly yellow point, brighter than
+// the stars, with a short fading trail back along its way. The mod writes
+// its place every two seconds while it passes.
+vec3 iss(vec3 sky, vec2 p, float u) {
+  vec2 at = domeToPixel(ISS_AT);
+  vec2 back = domeToPixel(ISS_TRAIL);
+  vec2 way = at - back;
+  float h = clamp(dot(p - back, way) / max(dot(way, way), 1e-6), 0.0, 1.0);
+  float line = length(p - back - way * h);
+  sky = mix(sky, vec3(1.0, 0.95, 0.8), clamp(0.6 - line, 0.0, 1.0) * h * h * 0.45);
+  float d = length(p - at);
+  sky = mix(sky, vec3(1.0, 0.96, 0.82), 0.4 * exp(-d / (0.25 * u)));
+  return ink(sky, vec3(1.0, 0.98, 0.9), d - 0.12 * u, 1.0);
+}
+
 // --- The lighthouse --------------------------------------------------------
 
 // A small striped lighthouse standing on the horizon at the right, lit
@@ -1098,6 +1122,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = tone(sky, k);
   if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, max(3.0, unit * 0.24), k, s.elevation);
   sky = events(sky, p, unit, k, true);
+  if (ISS_UP > 0.5) sky = iss(sky, p, unit);
   sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);

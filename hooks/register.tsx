@@ -11,6 +11,8 @@ import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import { staleFiles } from './tidy'
 import { animationOf, beaconAt } from './beacon'
+import { elementsOf, issVisible } from './iss'
+import type { Elements } from './iss'
 import type { Waiting } from './beacon'
 import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
@@ -68,6 +70,12 @@ const MILESTONE_MS = 3 * 60_000
 // $.store keys: a place the person chose, and the last guess with its time.
 const CHOSEN_PLACE = 'place'
 const GUESSED_PLACE = 'guessedPlace'
+// The ISS's elements as last fetched: { fetchedAt, json }.
+const ISS_ELEMENTS = 'iss'
+const ISS_URL = 'https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=json'
+// Elements are fetched at most this often, and the sky follows a pass this often.
+const ISS_MS = 86_400_000
+const ISS_TICK_MS = 2_000
 
 // Sets (or, given an empty path, clears) the background image of the one
 // iTerm2 session whose id is the first argument, and answers the size of its
@@ -128,6 +136,21 @@ function asPlace(value: unknown): Place | null {
 
   // A name from the network goes into cells and replies: printable and short.
   return typeof name === 'string' && lat !== null && lon !== null ? { name: plain(name).slice(0, 40), lat, lon } : null
+}
+
+// The ISS's elements: as stored while under a day old, fetched again after,
+// the stored ones kept should the network fail.
+async function issElements($: EngineInterface): Promise<Elements | null> {
+  const now = await $.clock.now()
+  const cached = (await $.store.get(ISS_ELEMENTS).catch(() => null)) as { fetchedAt?: unknown; json?: unknown } | null
+  const stored = cached ? elementsOf(cached.json) : null
+  if (stored && typeof cached?.fetchedAt === 'number' && now - cached.fetchedAt < ISS_MS) return stored
+  const json = await getJson($, ISS_URL)
+  const fresh = elementsOf(json)
+  if (!fresh) return stored
+  await $.store.set(ISS_ELEMENTS, { fetchedAt: now, json }).catch(() => undefined)
+
+  return fresh
 }
 
 async function getJson($: EngineInterface, url: string): Promise<unknown> {
@@ -560,6 +583,8 @@ export const register: Register = on => {
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
   let waiting: Waiting | null = null
+  // The ISS's elements, once fetched.
+  let issOrbit: Elements | null = null
   // Whether the Mac runs on battery, as last asked.
   const power = { isOnBattery: false }
   // Updates the Ghostty sky at once, once a Ghostty session has started.
@@ -643,9 +668,12 @@ export const register: Register = on => {
       isClear: iterm !== null || (ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''),
       reaction: reactionAt(now),
       track,
-      event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : shower,
+      event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
   }
+
+  // The ISS on a visible pass now; never in a demo or at a pinned time.
+  const issNow = (now: number, mode: Mode) => (mode === 'live' ? issVisible(issOrbit, now, where.place) : null)
 
   const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting })
 
@@ -656,7 +684,9 @@ export const register: Register = on => {
 
     const { events, context } = eventsNow(now)
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), ...extras }))
+    const iss = issNow(now, mode)
+
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras }))
   }
 
   on('session.start', async ($, e, next) => {
@@ -721,11 +751,22 @@ export const register: Register = on => {
       })
       void update().catch(() => undefined)
       refreshSky = () => void update().catch(() => undefined)
+      // While the ISS passes, its place every two seconds.
+      $.clock.every(ISS_TICK_MS, () => {
+        void (async () => {
+          if (issNow(await $.clock.now(), momentAt(await $.clock.now()).mode)) await update()
+        })().catch(() => undefined)
+      })
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
     }
 
     // The network is not waited on: the sky starts in Stockholm.
     void settlePlace($, where).catch(() => undefined)
+    const fetchIss = async () => {
+      issOrbit = (await issElements($)) ?? issOrbit
+    }
+    void fetchIss().catch(() => undefined)
+    $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
     $.clock.every(WEATHER_MS, () => void refreshWeather($, where).catch(() => undefined))
     // Away from the computer, or iTerm2 behind other windows: the wallpaper
     // stands still and the music is not asked after.
