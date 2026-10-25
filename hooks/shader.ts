@@ -5,6 +5,7 @@
 // again, and Ghostty told to reload, when they change.
 
 import { localMidnight, moonAt, sunAt } from './astro'
+import type { ActiveEvent, EventKind } from './events'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
 import { clamp, INKS } from './paint'
@@ -34,6 +35,26 @@ export type ShaderParams = {
   auroraFloor: number
   // The terminal's background: where the terminal shows it, the sky shows.
   background: number
+  // Events up now, each looped over its length (Ghostty's iTime cannot say
+  // when one began), and shooting stars an hour.
+  events: { kind: EventKind; seed: number; seconds: number }[]
+  shootingRate: number
+}
+
+// The shader's number for each event.
+const EVENT_INDEX: Record<EventKind, number> = {
+  satellite: 1,
+  balloon: 2,
+  birds: 3,
+  plane: 4,
+  rainbow: 5,
+  kite: 6,
+  leaves: 7,
+  blossom: 8,
+  comet: 9,
+  constellation: 10,
+  milestone: 11,
+  shootingStar: 12,
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -57,7 +78,12 @@ export function sceneAt(ms: number, place: SkyInput['place']): Scene {
 // from local midnight instead.
 export function shaderParams(
   input: SkyInput,
-  options: { background: number; demo?: { seconds: number; offsetMs?: number } | null },
+  options: {
+    background: number
+    demo?: { seconds: number; offsetMs?: number } | null
+    events?: readonly ActiveEvent[]
+    shootingRate?: number
+  },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
   const ms = round(input.ms, SCENE_MS)
@@ -86,6 +112,12 @@ export function shaderParams(
     aurora: isAuroraForced ? 0.9 : round(clamp(over / 3) * clear, 0.01),
     auroraFloor: isAuroraForced ? 0.4 : 0,
     background: options.background,
+    // A shooting star asked for is a shower: one every few seconds.
+    events: (options.events ?? [])
+      .filter(event => event.kind !== 'shootingStar')
+      .slice(0, 4)
+      .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
+    shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
   }
 }
 
@@ -127,6 +159,8 @@ const STOPS: readonly [number, number, number, number][] = [
 export function skyShader(params: ShaderParams): string {
   const { scene, moon, demo } = params
   const demoScenes = demo?.scenes ?? [scene]
+  // GLSL has no empty arrays: a placeholder when no event is up.
+  const events = params.events.length > 0 ? params.events : [{ kind: 'satellite' as const, seed: 0, seconds: 1 }]
   const constants = [
     `const vec3 BACKGROUND = ${rgb(params.background)};`,
     `const float ELEVATION = ${f(scene.elevation)};`,
@@ -150,6 +184,11 @@ export function skyShader(params: ShaderParams): string {
     `const vec3 STOP_MIDDLE[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[2])).join(', ')});`,
     `const vec3 STOP_HORIZON[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[3])).join(', ')});`,
     ...Object.entries(INKS).map(([name, c]) => `const vec3 INK_${name.toUpperCase()} = ${rgb(c)};`),
+    `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
+    `const int EVENT_COUNT = ${params.events.length};`,
+    `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
+    `const float EVENT_SEED[${events.length}] = ${floats(events.map(e => e.seed))};`,
+    `const float EVENT_SECONDS[${events.length}] = ${floats(events.map(e => Math.max(1, e.seconds)))};`,
     // The rare clouds' shapes, a row per uint, bit 0 the leftmost puff.
     ...Object.entries(RARE_SHAPES).map(([name, rows]) => {
       const bits = rows.map(row => [...row].reduce((sum, ch, i) => (ch === 'x' ? sum + 2 ** i : sum), 0))
@@ -533,6 +572,265 @@ vec3 weather(vec3 sky, vec2 p, float unit) {
   return sky;
 }
 
+
+// --- Events ------------------------------------------------------------------
+
+// A random number for an event's seed and a salt.
+float seeded(float seed, int salt) { return rand(int(seed) * 7919 + salt * 104729 + 3); }
+
+float segment(vec2 p, vec2 a, vec2 b) {
+  vec2 ab = b - a;
+  float h = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+  return length(p - a - ab * h);
+}
+
+// An ink laid down by distance: solid inside, antialiased at the edge.
+vec3 ink(vec3 sky, vec3 color, float d, float alpha) {
+  return mix(sky, color, clamp(0.5 - d, 0.0, 1.0) * alpha);
+}
+
+// Half dimmed, as the sun is: small things stay visible on a dimmed sky.
+vec3 lift(vec3 c, float k) { return mix(tone(c, k), c, 0.5); }
+
+vec3 shootingStars(vec3 sky, vec2 p, float u) {
+  float period = 3600.0 / SHOOTING_RATE;
+  float slot = floor(iTime / period);
+  int n = int(mod(slot, 100000.0));
+  float start = slot * period + rand(n * 3 + 1) * max(0.1, period - 1.2);
+  float age = iTime - start;
+  if (age < 0.0 || age > 0.9) return sky;
+  vec2 from = iResolution.xy * vec2(0.1 + 0.8 * rand(n * 3 + 2), 0.05 + 0.35 * rand(n * 3 + 3));
+  vec2 dir = normalize(vec2(rand(n) < 0.5 ? -1.0 : 1.0, 0.45));
+  vec2 head = from + dir * age * 24.0 * u;
+  float tail = 9.0 * u * min(1.0, age / 0.15);
+  float along = clamp(dot(head - p, dir) / tail, 0.0, 1.0);
+  float d = segment(p, head - dir * tail, head);
+  float fade = (1.0 - along) * (1.0 - age / 0.9);
+  return mix(sky, mix(vec3(1.0, 0.97, 0.9), INK_YELLOW, along), clamp(0.5 - d + 0.6, 0.0, 1.0) * fade);
+}
+
+vec3 satellite(vec3 sky, vec2 p, float u, float seed, float t) {
+  vec2 a = iResolution.xy * vec2(-0.05, 0.08 + 0.3 * seeded(seed, 1));
+  vec2 b = iResolution.xy * vec2(1.05, 0.05 + 0.3 * seeded(seed, 2));
+  vec2 at = mix(a, b, t);
+  return ink(sky, vec3(1.0, 0.97, 0.9), length(p - at) - 0.14 * u, 0.9);
+}
+
+vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+  float r = 2.2 * u;
+  vec2 c = vec2(mix(-0.1, 1.1, t) * iResolution.x, iResolution.y * (0.22 + 0.2 * seeded(seed, 1)) - t * 3.0 * u + sin(iTime * 0.5) * 0.3 * u);
+  vec2 q = p - c;
+  if (abs(q.x) > 2.0 * r || q.y < -1.6 * r || q.y > 2.4 * r) return sky;
+  // The envelope: a ball tapering to its mouth; the basket under it.
+  float ball = length(q / vec2(1.0, 1.15)) - r;
+  float fall = q.y / (1.7 * r);
+  float shoulder = q.y > 0.0 && q.y < 1.55 * r ? r * (1.0 - fall * fall) : 0.0;
+  float taper = shoulder > 0.0 ? abs(q.x) - shoulder : 1e9;
+  float envelope = min(ball, taper);
+  // How wide the envelope is at this height, so the gores follow its curve.
+  float across = max(r * sqrt(max(0.0, 1.0 - pow(q.y / (1.15 * r), 2.0))), shoulder);
+  vec2 b = abs(q - vec2(0.0, 1.9 * r)) - vec2(0.28, 0.16) * r;
+  float basket = max(b.x, b.y);
+  float ropes = min(segment(q, vec2(-0.32, 1.45) * r, vec2(-0.24, 1.75) * r), segment(q, vec2(0.32, 1.45) * r, vec2(0.24, 1.75) * r)) - 0.04 * u;
+  // Gores in three inks, the seed choosing their order; shaded to the right.
+  int gore = int(floor((q.x / max(across, 0.01) + 2.0) * 3.0)) + int(seed);
+  vec3 gores[3] = vec3[3](INK_PINK, INK_YELLOW, INK_ORANGE);
+  vec3 color = gores[gore % 3];
+  color = mix(color, mix(color, INK_INDIGO, 0.35), screen(p, clamp(q.x / r * 0.6 + 0.2, 0.0, 1.0), max(3.0, u * 0.24), 45.0));
+  sky = ink(sky, lift(color, k), envelope, 1.0);
+  sky = ink(sky, lift(mix(INK_ORANGE, INK_INDIGO, 0.4), k), min(basket, ropes), 1.0);
+  // The key plate, a little off register.
+  float key = abs(length((q - vec2(0.12, 0.1) * u) / vec2(1.0, 1.15)) - r) - 0.08 * u;
+  return ink(sky, lift(INK_INDIGO, k), key, 0.7);
+}
+
+vec3 birds(vec3 sky, vec2 p, float u, float seed, float t) {
+  bool isEast = seeded(seed, 1) < 0.5;
+  vec2 lead = vec2(mix(-0.15, 1.15, isEast ? t : 1.0 - t) * iResolution.x, iResolution.y * (0.12 + 0.25 * seeded(seed, 2)));
+  float back = isEast ? -1.0 : 1.0;
+  if (abs(p.x - lead.x) > 9.0 * u || abs(p.y - lead.y) > 6.0 * u) return sky;
+  float d = 1e9;
+  for (int i = 0; i < 9; i++) {
+    float rank = float((i + 1) / 2);
+    float side = i % 2 == 0 ? 1.0 : -1.0;
+    vec2 at = lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u);
+    float flap = sin(iTime * 7.0 + float(i) * 1.3) * 0.35 * u;
+    d = min(d, segment(p, at, at + vec2(-0.6 * u, -flap)));
+    d = min(d, segment(p, at, at + vec2(0.6 * u, -flap)));
+  }
+  return ink(sky, mix(INK_INDIGO, vec3(0.0), 0.3), d - 0.09 * u, 0.85);
+}
+
+vec3 plane(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+  bool isEast = seeded(seed, 1) < 0.5;
+  vec2 a = iResolution.xy * vec2(isEast ? -0.05 : 1.05, 0.1 + 0.25 * seeded(seed, 2));
+  vec2 b = iResolution.xy * vec2(isEast ? 1.05 : -0.05, 0.05 + 0.2 * seeded(seed, 3));
+  vec2 at = mix(a, b, t);
+  vec2 dir = normalize(b - a);
+  // The contrail: forming a little behind, widening and thinning out.
+  float behind = dot(at - p, dir);
+  if (behind > 0.0) {
+    float d = abs(dot(p - at, vec2(-dir.y, dir.x)));
+    float width = 0.1 * u + behind * 0.012;
+    float a2 = 0.6 * exp(-behind / (0.5 * iResolution.x)) * smoothstep(0.4 * u, 1.6 * u, behind);
+    float cover = smoothstep(width + 0.8, width - 0.8, d) * a2;
+    sky = mix(sky, lift(vec3(1.0), k), screen(p, cover, max(3.0, u * 0.24), 30.0) * 0.8 + cover * 0.25);
+  }
+  vec2 n = vec2(-dir.y, dir.x);
+  float body = segment(p, at - dir * 0.45 * u, at + dir * 0.45 * u) - 0.1 * u;
+  float wings = segment(p, at - n * 0.5 * u, at + n * 0.5 * u) - 0.07 * u;
+  return ink(sky, vec3(1.0, 0.98, 0.94), min(body, wings), 1.0);
+}
+
+// Three inks screened at their own angles: where they overlap the dots
+// mix, orange where pink meets yellow, green where yellow meets blue.
+vec3 rainbow(vec3 sky, vec2 p, float k) {
+  vec2 c = iResolution.xy * vec2(0.12, 1.2);
+  float radius = iResolution.y * 0.78;
+  float band = iResolution.y * 0.035;
+  float r = length(p - c);
+  float pitch = max(3.0, iResolution.y / 60.0 * 0.24);
+  // Fading toward the ground and toward the arc's ends.
+  float fade = 0.75 * smoothstep(iResolution.y * 1.0, iResolution.y * 0.55, p.y);
+  vec3 inks[3] = vec3[3](INK_PINK, INK_YELLOW, INK_BLUE);
+  float angles[3] = float[3](75.0, 0.0, 15.0);
+  for (int i = 0; i < 3; i++) {
+    float centre = radius + (1.0 - float(i)) * band;
+    float cover = smoothstep(band * 1.1, band * 0.3, abs(r - centre)) * fade;
+    sky = mix(sky, lift(inks[i], k), screen(p, cover * 0.7, pitch, angles[i]) * 0.75);
+  }
+  return sky;
+}
+
+vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
+  vec2 anchor = vec2(iResolution.x * (0.2 + 0.2 * seeded(seed, 1)), iResolution.y);
+  vec2 at = vec2(iResolution.x * (0.35 + 0.2 * seeded(seed, 2)) + sin(iTime * 0.7) * 1.5 * u, iResolution.y * (0.22 + 0.1 * seeded(seed, 3)) + sin(iTime * 1.1) * 0.8 * u);
+  float tilt = sin(iTime * 0.9) * 0.25;
+  vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * (p - at);
+  float diamond = (abs(q.x) / (0.9 * u) + abs(q.y) / (1.3 * u) - 1.0) * 0.9 * u;
+  vec3 color = (q.x < 0.0) == (q.y < 0.0) ? INK_PINK : INK_YELLOW;
+  sky = ink(sky, lift(INK_INDIGO, k), segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u, 0.5);
+  for (int j = 0; j < 6; j++) {
+    vec2 bow = at + vec2(sin(iTime * 2.0 + float(j)) * 0.5 * u, (float(j) + 1.6) * 0.7 * u);
+    sky = ink(sky, lift(j % 2 == 0 ? INK_BLUE : INK_PINK, k), length((p - bow) / vec2(1.6, 1.0)) - 0.16 * u, 1.0);
+  }
+  sky = ink(sky, lift(color, k), diamond, 1.0);
+  return ink(sky, lift(INK_INDIGO, k), abs(diamond) - 0.06 * u, 0.6);
+}
+
+// Leaves (or petals) tumbling across on the wind.
+vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
+  vec3 leaf[3] = vec3[3](INK_ORANGE, INK_YELLOW, mix(INK_ORANGE, INK_PINK, 0.5));
+  vec3 petal[3] = vec3[3](INK_PINK, vec3(0.98, 0.9, 0.93), mix(INK_PINK, vec3(1.0), 0.5));
+  for (int i = 0; i < 18; i++) {
+    float a = seeded(seed, i * 4);
+    float b = seeded(seed, i * 4 + 1);
+    float span = iResolution.x + 4.0 * u;
+    float x = mod(a * span + iTime * (2.0 + WIND * 0.6) * u * (0.6 + 0.8 * b), span) - 2.0 * u;
+    float y = mod(b * iResolution.y + iTime * 0.9 * u * (0.5 + a), iResolution.y + 4.0 * u) - 2.0 * u + sin(iTime * 1.7 + a * 9.0) * u;
+    vec2 q = p - vec2(x, y);
+    if (dot(q, q) > u * u) continue;
+    float spin = iTime * (1.5 + 2.0 * a) + b * 6.0;
+    q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
+    vec2 size = isBlossom ? vec2(0.22, 0.14) * u : vec2(0.36, 0.17) * u;
+    float d = (length(q / size) - 1.0) * min(size.x, size.y);
+    sky = ink(sky, lift(isBlossom ? petal[i % 3] : leaf[i % 3], k), d, 0.95);
+  }
+  return sky;
+}
+
+vec3 comet(vec3 sky, vec2 p, float u, float seed) {
+  vec2 head = iResolution.xy * vec2(0.14 + 0.25 * seeded(seed, 1), 0.14 + 0.14 * seeded(seed, 2));
+  vec2 dir = normalize(vec2(1.0, -0.38));
+  vec2 ion = normalize(vec2(1.0, -0.2));
+  float pitch = max(3.0, u * 0.24);
+  vec2 q = p - head;
+  float along = dot(q, dir);
+  if (along > 0.0) {
+    // The dust tail: broad, curving a little, yellow; the ion tail straight and blue.
+    float bend = along * along * 0.0006 / u;
+    float width = 0.3 * u + along * 0.13;
+    float d = abs(dot(q, vec2(-dir.y, dir.x)) - bend);
+    float cover = exp(-along / (11.0 * u)) * smoothstep(width, 0.0, d);
+    sky = mix(sky, INK_YELLOW, screen(p, cover * 0.8, pitch, 0.0) * 0.7);
+    float ionAlong = dot(q, ion);
+    float ionD = abs(dot(q, vec2(-ion.y, ion.x)));
+    float ionCover = exp(-ionAlong / (16.0 * u)) * smoothstep(0.25 * u + ionAlong * 0.02, 0.0, ionD);
+    sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.3), screen(p, ionCover * 0.7, pitch, 15.0) * 0.7);
+  }
+  sky = mix(sky, vec3(1.0, 0.97, 0.88), 0.35 * exp(-length(q) / (0.6 * u)));
+  return ink(sky, vec3(1.0, 0.98, 0.92), length(q) - 0.22 * u, 1.0);
+}
+
+// Clawd among the stars: his outline joined by faint lines, his eyes the brightest.
+const vec2 FIGURE[12] = vec2[12](vec2(1.0, 0.0), vec2(6.0, 0.0), vec2(6.0, 1.4), vec2(7.2, 2.0), vec2(6.0, 2.6), vec2(6.0, 3.2),
+  vec2(1.0, 3.2), vec2(1.0, 2.6), vec2(-0.2, 2.0), vec2(1.0, 1.4), vec2(2.0, 4.4), vec2(5.0, 4.4));
+vec3 constellation(vec3 sky, vec2 p, float u, float seed) {
+  float s = 1.7 * u;
+  // Left of the arc and below where a comet would hang.
+  vec2 o = iResolution.xy * vec2(0.08 + 0.22 * seeded(seed, 1), 0.34 + 0.12 * seeded(seed, 2));
+  float line = 1e9;
+  for (int i = 0; i < 10; i++) line = min(line, segment(p, o + FIGURE[i] * s, o + FIGURE[(i + 1) % 10] * s));
+  line = min(line, segment(p, o + vec2(2.0, 3.2) * s, o + FIGURE[10] * s));
+  line = min(line, segment(p, o + vec2(5.0, 3.2) * s, o + FIGURE[11] * s));
+  // Dashed, as star charts draw them.
+  float dash = step(0.5, fract(dot(p - o, vec2(0.7, 0.7)) / (0.5 * u)));
+  sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.5), clamp(0.5 - (line - 0.05 * u), 0.0, 1.0) * 0.22 * dash);
+  for (int i = 0; i < 12; i++) {
+    float twinkle = 0.75 + 0.25 * sin(iTime * (1.3 + float(i) * 0.37) + float(i));
+    sky = ink(sky, vec3(1.0, 0.97, 0.9), length(p - o - FIGURE[i] * s) - 0.13 * u, twinkle);
+  }
+  vec2 eyes[2] = vec2[2](vec2(2.4, 1.2), vec2(4.6, 1.2));
+  for (int i = 0; i < 2; i++) sky = ink(sky, INK_YELLOW, length(p - o - eyes[i] * s) - 0.2 * u, 0.95);
+  return sky;
+}
+
+// A milestone: risograph confetti over the whole window.
+vec3 confetti(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+  vec3 inks[5] = vec3[5](INK_PINK, INK_YELLOW, INK_BLUE, INK_GREEN, INK_ORANGE);
+  float fade = 1.0 - smoothstep(0.85, 1.0, t);
+  float seconds = t * 20.0;
+  for (int i = 0; i < 48; i++) {
+    float a = seeded(seed, i * 3);
+    float b = seeded(seed, i * 3 + 1);
+    float x = a * iResolution.x + sin(seconds * (1.0 + b) + a * 7.0) * 1.2 * u;
+    float y = -2.0 * u - b * iResolution.y * 0.6 + seconds * (2.5 + 3.0 * a) * u;
+    vec2 q = p - vec2(x, y);
+    if (dot(q, q) > u * u) continue;
+    float spin = seconds * (2.0 + 3.0 * b) + a * 6.0;
+    q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
+    vec2 e = abs(q) - vec2(0.45, 0.2) * u;
+    sky = ink(sky, lift(inks[i % 5], k), max(e.x, e.y), fade);
+  }
+  return sky;
+}
+
+// Every event up now; \`isBehind\` draws only what sits behind the clouds.
+vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
+  if (isBehind) {
+    if (SHOOTING_RATE > 0.0) sky = shootingStars(sky, p, u);
+  }
+  for (int i = 0; i < EVENT_COUNT; i++) {
+    int kind = EVENT_KIND[i];
+    float seed = EVENT_SEED[i];
+    float t = fract(iTime / EVENT_SECONDS[i] + seed * 0.001);
+    if (isBehind) {
+      if (kind == 1) sky = satellite(sky, p, u, seed, t);
+      if (kind == 5) sky = rainbow(sky, p, k);
+      if (kind == 9) sky = comet(sky, p, u, seed);
+      if (kind == 10) sky = constellation(sky, p, u, seed);
+      continue;
+    }
+    if (kind == 2) sky = balloon(sky, p, u, seed, t, k);
+    if (kind == 3) sky = birds(sky, p, u, seed, t);
+    if (kind == 4) sky = plane(sky, p, u, seed, t, k);
+    if (kind == 6) sky = kite(sky, p, u, seed, k);
+    if (kind == 7 || kind == 8) sky = drift(sky, p, u, seed, kind == 8, k);
+    if (kind == 11) sky = confetti(sky, p, u, seed, t, k);
+  }
+  return sky;
+}
+
 // --- The sky behind the terminal -------------------------------------------
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -560,7 +858,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
   sky = tone(sky, k);
   if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, max(3.0, unit * 0.24), k, s.elevation);
+  sky = events(sky, p, unit, k, true);
   sky = clouds(sky, p, s, unit, k);
+  sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
 
   fragColor = vec4(mix(sky, term.rgb, mask), 1.0);

@@ -10,6 +10,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { STOCKHOLM } from '../../hooks/astro.ts'
+import { contextAt, eventsAt, shootingRate } from '../../hooks/events.ts'
 import { shaderParams, skyShader } from '../../hooks/shader.ts'
 import { dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
 
@@ -17,10 +18,16 @@ const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
 const [width, height] = [Number(o.width), Number(o.height)]
 const ms = timeOf(o.at)
 const background = parseInt(o.background, 16)
+const weather = o.weather ? weatherOf(o.weather) : null
+// --event balloon (or several, comma-separated) plays them as a preview would.
+const forced = o.event ? String(o.event).split(',').map(kind => ({ kind, at: ms })) : []
+const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null)
+const events = eventsAt(ms, context, forced)
 const params = shaderParams(
-  { ms, t: ms / 1000, place: STOCKHOLM, weather: o.weather ? weatherOf(o.weather) : null, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
-  { background, demo: o.demo ? { seconds: 48 } : null },
+  { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
+  { background, demo: o.demo ? { seconds: 48 } : null, events, shootingRate: shootingRate(context) },
 )
+if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.
 const source = skyShader(params) + (o.broken ? '\nint broken = ;\n' : '')
 writeFileSync(join(OUT, 'sky.glsl'), source)

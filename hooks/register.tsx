@@ -4,6 +4,8 @@ import type { EngineInterface, Register } from 'claude-code'
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
 import { drawFrame, isPrintable, REACTION_SECONDS, ROWS } from './clawd'
+import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
+import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
@@ -52,6 +54,9 @@ const HEARTBEAT_MS = 60_000
 const ALIVE_MS = 5 * 60_000
 // Ghostty's own background, until it says otherwise.
 const GHOSTTY_BACKGROUND = 0x282c34
+
+// A turn of Claude's this long earns confetti when it is done.
+const MILESTONE_MS = 3 * 60_000
 
 // $.store keys: a place the person chose, and the last guess with its time.
 const CHOSEN_PLACE = 'place'
@@ -192,6 +197,8 @@ type Where = {
   weather: Weather | null
   offsetMs: number | undefined
   kp: number | null
+  // When it last rained there, for a rainbow after.
+  lastRainAt: number | null
 }
 
 async function refreshWeather($: EngineInterface, where: Where): Promise<void> {
@@ -199,6 +206,8 @@ async function refreshWeather($: EngineInterface, where: Where): Promise<void> {
   if (fetched) {
     where.weather = fetched.weather
     where.offsetMs = fetched.offsetMs
+    const sky = skyOf(fetched.weather.code)
+    if (sky === 'drizzle' || sky === 'rain' || sky === 'thunder') where.lastRainAt = await $.clock.now()
   }
   if (kp !== null) where.kp = kp
 }
@@ -379,10 +388,16 @@ export const register: Register = on => {
   let isAuroraForced = false
   let isWindForced = false
   let track: string | null = null
-  const where: Where = { place: STOCKHOLM, isChosen: false, weather: null, offsetMs: undefined, kp: null }
+  const where: Where = { place: STOCKHOLM, isChosen: false, weather: null, offsetMs: undefined, kp: null, lastRainAt: null }
+  // Events played on request (/solar event) or earned (a long turn done).
+  let forced: Forced[] = []
   // Claude's state as Clawd shows it: a turn running, waiting on the person,
   // and the last passing reaction.
-  const claude = { isWorking: false, isWaiting: false, passing: null as { kind: Reaction; at: number } | null }
+  const claude = {
+    isWorking: false,
+    isWaiting: false,
+    passing: null as { kind: Reaction; at: number } | null,
+  }
   // Set when this session runs in iTerm2: its session id and where the
   // wallpaper files go.
   let iterm: { sessionId: string; folder: string } | null = null
@@ -419,8 +434,21 @@ export const register: Register = on => {
     return null
   }
 
+  // The sky's events at a moment: those due then, and those forced, which
+  // run on the real clock whatever moment the sky shows.
+  const eventsNow = (now: number) => {
+    const { ms } = momentAt(now)
+    forced = forced.filter(event => now - event.at < PREVIEW_MS)
+    const context = contextAt(ms, where.place, where.weather, where.lastRainAt, where.offsetMs)
+    const events = eventsAt(ms, context, forced.map(event => ({ ...event, at: event.at - now + ms })))
+
+    return { events, context }
+  }
+
   const viewAt = (now: number, columns: number) => {
     const { ms, mode } = momentAt(now)
+    const { events, context } = eventsNow(now)
+    const shower = shootingRate(context) > 2 ? showerAt(context.time) : null
 
     // A preview of a stormy day keeps the rest of the weather as it is.
     const calm: Weather = { temperature: 8, code: 3, cloudCover: 60, wind: 0 }
@@ -438,6 +466,7 @@ export const register: Register = on => {
       isClear: iterm !== null || (ghostty !== null && ghostty.written.include !== ''),
       reaction: reactionAt(now),
       track,
+      event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : shower,
     }
   }
 
@@ -446,14 +475,17 @@ export const register: Register = on => {
     const { ms, mode } = momentAt(now)
     const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { background: ghostty?.background ?? GHOSTTY_BACKGROUND, demo }))
+    const { events, context } = eventsNow(now)
+    const background = ghostty?.background ?? GHOSTTY_BACKGROUND
+
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { background, demo, events, shootingRate: shootingRate(context) }))
   }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | ghostty]',
+      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | events | event <namn> | ghostty]',
       immediate: true,
     })
 
@@ -605,7 +637,12 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
       claude.isWorking = false
-      if (e.reason === 'answer') claude.passing = { kind: 'cheer', at: await $.clock.now() }
+      const now = await $.clock.now()
+      if (e.reason === 'answer') {
+        claude.passing = { kind: 'cheer', at: now }
+        // A long piece of work done: confetti over the sky.
+        if (e.durationMs > MILESTONE_MS) forced.push({ kind: 'milestone', at: now })
+      }
     }
 
     return next(e)
@@ -668,6 +705,22 @@ export const register: Register = on => {
       await updateGhosttySky($, ghostty, await read($, isHidden), shaderAt)
 
       return { text: `Solar: lade till "${line}" i ${config}.` }
+    }
+
+    if (word === 'events') {
+      const words = Object.values(EVENT_WORDS).join(', ')
+
+      return { text: `Solar: ${words}. Visa ett med /solar event <namn>.` }
+    }
+
+    if (word.startsWith('event')) {
+      const name = word.slice('event'.length).trim()
+      const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name)
+      if (!kind) return { text: `Solar: inget event som heter "${name}". /solar events listar dem.` }
+      forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
+      await update($, isHidden, () => false)
+
+      return { text: `Solar: ${EVENT_WORDS[kind]} i ${PREVIEW_MS / 1000} sekunder.` }
     }
 
     if (word === 'norrsken') {

@@ -6,6 +6,7 @@
 
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
 import { STOCKHOLM } from '../../hooks/astro.ts'
+import { contextAt, EVENT_WORDS, eventsAt, showerAt, shootingRate } from '../../hooks/events.ts'
 import { cellsSvg, moonTexture, options, svgToPng, timeOf, weatherOf } from './lib.mjs'
 
 const o = options({ columns: 80, frames: 1, dt: 0.25, cell: 10, mode: 'live' })
@@ -26,6 +27,10 @@ const view = {
   isClear: !!o.clear,
   track: o.track === undefined || o.track === true ? null : o.track,
 }
+// The event the band names: --event balloon forces one, as /solar event does.
+const context = contextAt(ms, STOCKHOLM, view.weather, null)
+const [event] = eventsAt(ms, context, o.event ? [{ kind: o.event, at: ms }] : [])
+view.event = event ? EVENT_WORDS[event.kind] : shootingRate(context) > 2 ? showerAt(context.time) : null
 
 const height = ROWS * cell * 2
 const gap = cell

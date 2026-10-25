@@ -3,6 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
+import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import { wallpaperPng } from './sky'
@@ -214,4 +215,99 @@ test('another live session keeps the sky up when this one ends', async ($, on) =
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect([...world.files.entries()].find(([path]) => path.endsWith('/solar-clawd.ghostty'))?.[1].text).toContain('custom-shader = ')
   expect(RELOADS(world.runs)).toBe(reloads)
+})
+
+// A context for a moment over Stockholm, with this weather.
+const contextFor = (ms: number, weather = { temperature: 12, code: 0, cloudCover: 5, wind: 3 }, lastRainAt: number | null = null) =>
+  contextAt(ms, STOCKHOLM, weather, lastRainAt)
+
+test('events are a pure function of time: the same moment, the same events', () => {
+  const ms = Date.UTC(2026, 6, 4, 10, 0)
+  for (let m = 0; m < 600; m += 7) {
+    const at = ms + m * 60_000
+    expect(eventsAt(at, contextFor(at))).toEqual(eventsAt(at, contextFor(at)))
+  }
+})
+
+test('events keep to their conditions and come about as often as they should', () => {
+  const count = (kind: string, from: number, days: number, weather?: Parameters<typeof contextFor>[1]) => {
+    const seen = new Set<number>()
+    for (let at = from; at < from + days * 86_400_000; at += 30_000) {
+      for (const event of eventsAt(at, contextFor(at, weather))) if (event.kind === kind) seen.add(event.start)
+    }
+    return seen.size
+  }
+  const july = Date.UTC(2026, 6, 1)
+  // Balloons fly by day in light wind, never at night, never in a gale.
+  for (const event of [Date.UTC(2026, 6, 4, 0, 30), Date.UTC(2026, 6, 4, 23, 0)].flatMap(at => eventsAt(at, contextFor(at)))) {
+    expect(event.kind).not.toBe('balloon')
+  }
+  expect(count('balloon', july, 10, { temperature: 20, code: 0, cloudCover: 5, wind: 14 })).toBe(0)
+  // About one balloon every third hour of a long summer day, a plane an hour.
+  const balloons = count('balloon', july, 10)
+  expect(balloons).toBeGreaterThan(30)
+  expect(balloons).toBeLessThan(70)
+  const planes = count('plane', july, 10)
+  expect(planes).toBeGreaterThan(120)
+  expect(planes).toBeLessThan(200)
+  // A comet now and then, not every week.
+  const comets = count('comet', Date.UTC(2026, 0, 1), 365, { temperature: 0, code: 0, cloudCover: 0, wind: 2 })
+  expect(comets).toBeGreaterThan(2)
+  expect(comets).toBeLessThan(9)
+})
+
+test('a rainbow needs the sun out after rain', () => {
+  const afternoon = Date.UTC(2026, 6, 4, 15, 0)
+  const sunny = { temperature: 18, code: 1, cloudCover: 30, wind: 3 }
+  expect(eventsAt(afternoon, contextFor(afternoon, sunny, afternoon - 10 * 60_000)).some(e => e.kind === 'rainbow')).toBe(true)
+  expect(eventsAt(afternoon, contextFor(afternoon, sunny, null)).some(e => e.kind === 'rainbow')).toBe(false)
+  expect(eventsAt(afternoon, contextFor(afternoon, { ...sunny, code: 63 }, afternoon)).some(e => e.kind === 'rainbow')).toBe(false)
+  const night = Date.UTC(2026, 6, 4, 23, 30)
+  expect(eventsAt(night, contextFor(night, sunny, night - 60_000)).some(e => e.kind === 'rainbow')).toBe(false)
+})
+
+test('shooting stars on clear nights, a shower in August and December', () => {
+  expect(shootingRate(contextFor(Date.UTC(2026, 6, 4, 12)))).toBe(0)
+  expect(shootingRate(contextFor(Date.UTC(2026, 9, 25, 23)))).toBe(2)
+  expect(shootingRate(contextFor(Date.UTC(2026, 9, 25, 23), { temperature: 5, code: 3, cloudCover: 100, wind: 3 }))).toBe(0)
+  expect(shootingRate(contextFor(Date.UTC(2026, 7, 12, 23)))).toBe(10)
+  expect(shootingRate(contextFor(Date.UTC(2026, 11, 13, 23)))).toBe(10)
+})
+
+test('a forced event plays for its length whatever the sky, and every event has a word', () => {
+  const noon = Date.UTC(2026, 6, 4, 12, 0)
+  const forced = [{ kind: 'comet' as const, at: noon }]
+  expect(eventsAt(noon + 5_000, contextFor(noon + 5_000), forced).some(e => e.kind === 'comet')).toBe(true)
+  expect(eventsAt(noon + 3_600_000, contextFor(noon + 3_600_000), forced).some(e => e.kind === 'comet')).toBe(false)
+  for (const spec of EVENTS) expect(spec.word.length).toBeGreaterThan(2)
+})
+
+test('/solar event plays an event in the sky, and a long turn earns confetti', async ($, on) => {
+  const start = Date.UTC(2026, 6, 4, 23, 30)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const shader = () => [...world.files.entries()].find(([path]) => path.endsWith('/runtime/sky.glsl'))?.[1].text ?? ''
+  const run = (args: string) =>
+    $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(11_000)
+  expect(shader()).toContain('const int EVENT_COUNT = 0;')
+
+  expect(await run('event komet')).toEqual(expect.objectContaining({ text: expect.stringContaining('komet') }))
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int EVENT_COUNT = 1;')
+  expect(shader()).toContain('const int EVENT_KIND[1] = int[1](9);')
+  // A preview ends.
+  await clock.advance(100_000)
+  expect(shader()).toContain('const int EVENT_COUNT = 0;')
+
+  await $.turn.complete({ answer: 'done', durationMs: 4 * 60_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10_000)
+  expect(shader()).toContain('int[1](11)')
 })

@@ -31,6 +31,8 @@ export type View = SkyInput & {
   reaction?: { kind: Reaction; age: number } | null
   // What is playing, "title - artist", if anything.
   track?: string | null
+  // The word for what is happening in the sky, if anything.
+  event?: string | null
 }
 
 const LABELS: Record<Activity, string> = {
@@ -596,6 +598,7 @@ export function drawFrame(view: View): string {
       weather && weather.wind >= 5 && `${Math.round(weather.wind)} m/s`,
     ], room),
     fit([
+      view.event && `* ${view.event}`,
       `sol ${Math.round(sun.elevation)}°`,
       moon.elevation > 0 && `måne ${Math.round(moon.illumination * 100)}%`,
       aurora && 'norrsken',
