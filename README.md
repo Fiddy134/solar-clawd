@@ -70,6 +70,8 @@ What differs from macOS:
 | `/solar event <name>` | Play an event for 90 seconds |
 | `/solar norrsken` | Toggle a forced aurora |
 | `/solar blåst` | Toggle a storm |
+| `/solar kasta` | Clawd throws a ball of paper in the wastebasket |
+| `/solar bränn` | The wastebasket burns for a while, as on `/compact` (the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
 
 The mod's own messages are in Swedish.

@@ -43,6 +43,8 @@ const ACTIVITY_MS = 3_000
 // guessed from the IP address is trusted this long before it is guessed again.
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
+// How long /solar bränn plays the wastebasket's fire.
+const BURN_SHOWN_MS = 8_000
 // How often the context window's fill is asked (it costs nothing), for the
 // pile of paper by Clawd.
 const PAPER_MS = 30_000
@@ -683,6 +685,10 @@ export const register: Register = on => {
     paper: null as number | null,
     // When the conversation began compacting, while it does.
     compactingSince: null as number | null,
+    // A fire played on request (/solar bränn) until then, and a ball thrown
+    // on request (/solar kasta) lying in the basket until then.
+    burnShownUntil: 0,
+    ballShownUntil: 0,
   }
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
@@ -747,13 +753,15 @@ export const register: Register = on => {
   // The sky's wastebasket: a ball for each tenth, and the fire.
   const basketAt = (now: number): ShaderParams['basket'] => {
     const isEmbers = claude.passing?.kind === 'embers' && now - claude.passing.at < REACTION_SECONDS.embers * 1000
-    const fire = claude.compactingSince !== null ? 'burn' : isEmbers ? 'embers' : null
+    const fire = claude.compactingSince !== null || now < claude.burnShownUntil ? 'burn' : isEmbers ? 'embers' : null
+    const balls = (claude.paper === null ? 0 : Math.floor(claude.paper / 10)) + (now < claude.ballShownUntil ? 1 : 0)
 
-    return { balls: claude.paper === null ? 0 : Math.floor(claude.paper / 10), fire }
+    return { balls: isEmbers ? 0 : balls, fire }
   }
 
   const reactionAt = (now: number) => {
     if (claude.compactingSince !== null) return { kind: 'burn' as const, age: (now - claude.compactingSince) / 1000 }
+    if (now < claude.burnShownUntil) return { kind: 'burn' as const, age: (now - (claude.burnShownUntil - BURN_SHOWN_MS)) / 1000 }
     const { passing } = claude
     // Looking up at the sky gives way to a question and to work.
     const isBusy = waiting?.mode === 'asking' || claude.isWorking
@@ -834,7 +842,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | events | event <namn> | ghostty]',
+      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | events | event <namn> | kasta | bränn | ghostty]',
       immediate: true,
     })
 
@@ -919,7 +927,7 @@ export const register: Register = on => {
     void fetchIss().catch(() => undefined)
     // A ball thrown lands in the sky's basket as it gets there.
     const readPaper = async () => {
-      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(800).then(() => refreshSky?.())
+      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
     }
     void readPaper()
     $.clock.every(PAPER_MS, () => void readPaper())
@@ -1064,7 +1072,7 @@ export const register: Register = on => {
       claude.isWorking = false
       claude.open.clear()
       const now = await $.clock.now()
-      if (takePaper(await contextFill($), now)) void $.clock.sleep(800).then(() => refreshSky?.())
+      if (takePaper(await contextFill($), now)) void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
@@ -1120,7 +1128,7 @@ export const register: Register = on => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
     claude.compactingSince = await $.clock.now()
     // The match lands, and the sky's basket catches fire.
-    void $.clock.sleep(800).then(() => refreshSky?.())
+    void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
     try {
       const result = await next(e)
       if (!('skip' in result)) {
@@ -1130,7 +1138,7 @@ export const register: Register = on => {
         claude.paper = null
         takePaper(await contextFill($), now)
         // Embers now, and an empty bin once they are out.
-        void $.clock.sleep(REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.())
+        void $.clock.sleep(REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
       }
 
       return result
@@ -1216,6 +1224,31 @@ export const register: Register = on => {
       return { text: `Solar: ${EVENT_WORDS[kind]} i ${PREVIEW_MS / 1000} sekunder.` }
     }
 
+    // Clawd's wastebasket, played: a ball thrown in, or the context burnt.
+    if (word === 'kasta') {
+      claude.passing = { kind: 'toss', at: now }
+      claude.ballShownUntil = now + PREVIEW_MS
+      void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      void $.clock.sleep(PREVIEW_MS + 100).then(() => refreshSky?.()).catch(() => undefined)
+
+      return { text: 'Solar: Clawd kastar en pappersboll i papperskorgen.' }
+    }
+
+    if (word === 'bränn') {
+      claude.burnShownUntil = now + BURN_SHOWN_MS
+      void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      void $.clock
+        .sleep(BURN_SHOWN_MS)
+        .then(() => {
+          claude.passing = { kind: 'embers', at: now + BURN_SHOWN_MS }
+          refreshSky?.()
+        })
+        .catch(() => undefined)
+      void $.clock.sleep(BURN_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
+
+      return { text: `Solar: papperskorgen brinner i ${BURN_SHOWN_MS / 1000} sekunder, som vid /compact (konversationen rörs inte).` }
+    }
+
     if (word === 'norrsken') {
       isAuroraForced = !isAuroraForced
 
@@ -1267,7 +1300,7 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar ÅÅÅÅ-MM-DD HH:MM, /solar plats <stad> /solar norrsken eller /solar blåst.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar ÅÅÅÅ-MM-DD HH:MM, /solar plats <stad>, /solar norrsken, /solar blåst, /solar kasta eller /solar bränn.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -1148,6 +1148,22 @@ test('a reaction under way is not cut short by looking up', () => {
   expect(nextPassing(cheer, 2000, false)).toBe(cheer)
 })
 
+test('/solar kasta throws a ball in the sky\'s basket, /solar bränn burns it for a while', async ($, on) => {
+  const { clock, shader } = await waitingWorld($, on)
+  const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  expect(shader()).toContain('const int BASKET_BALLS = 0;')
+  await solar('kasta')
+  await clock.advance(1_000)
+  expect(shader()).toContain('const int BASKET_BALLS = 1;')
+  await solar('bränn')
+  await clock.advance(1_000)
+  expect(shader()).toContain('const int BASKET_FIRE = 1;')
+  await clock.advance(8_000)
+  expect(shader()).toContain('const int BASKET_FIRE = 2;')
+  await clock.advance(4_000)
+  expect(shader()).toContain('const int BASKET_FIRE = 0;')
+})
+
 test('a shader changed on disk behind this session is written again', async ($, on) => {
   const { clock, world, runtime, shader } = await waitingWorld($, on)
   const mine = shader()
