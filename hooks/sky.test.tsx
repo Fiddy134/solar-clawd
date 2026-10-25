@@ -257,6 +257,25 @@ test('the lighthouse: orange when Claude asks, white when done', () => {
   expect(text({ beacon: { mode: 'asking', isUrgent: true } })).toContain('const float BEACON_URGENT = 1.0;')
 })
 
+test("glass knows Claude Code's own field colours, in linear light on Linux", () => {
+  const ms = Date.UTC(2026, 9, 24, 20)
+  // The colours the shader is given, back in 0–255 sRGB.
+  const fields = (isYUp: boolean) => {
+    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { isYUp }))
+    const list = /const vec3 FIELD_COLOURS\[(\d+)\] = vec3\[\d+\]\((.*)\);/.exec(text)
+    expect(list).not.toBeNull()
+    expect(text).toContain(`const int FIELD_COUNT = ${list![1]};`)
+    const srgb = (v: number) => (isYUp ? (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055) : v)
+    return [...list![2]!.matchAll(/vec3\(([\d.]+), ([\d.]+), ([\d.]+)\)/g)].map(m => m.slice(1, 4).map(v => Math.round(srgb(Number(v)) * 255)).join(','))
+  }
+  // diffRemoved, diffAdded, userMessageBackground, bashMessageBackgroundColor
+  // in 2.1.310's dark theme.
+  for (const isYUp of [false, true]) {
+    for (const colour of ['122,41,54', '34,92,43', '55,55,55', '65,60,65']) expect(fields(isYUp)).toContain(colour)
+  }
+  expect(fields(true)).toEqual(fields(false))
+})
+
 test('the lighthouse state: a question beats done, hurries after two minutes, is out after thirty', () => {
   expect(beaconAt([], 0)).toBeNull()
   expect(beaconAt([{ mode: 'done', since: 0 }, { mode: 'asking', since: 50_000 }], 60_000)).toEqual({ mode: 'asking', since: 50_000, isUrgent: false })

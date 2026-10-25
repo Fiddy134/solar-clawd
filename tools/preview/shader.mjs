@@ -74,8 +74,9 @@ void main() { mainImage(outColor, ${o['y-up'] ? 'gl_FragCoord.xy' : 'vec2(gl_Fra
 `
 
 // --band: Clawd's band above the prompt as the mod draws it, the sky
-// showing through it (with --paper, --reaction kind,age, --sky-basket).
-const CELL = 8
+// showing through it (with --paper, --reaction kind,age, --sky-basket;
+// --cell 16 for a Retina window's cells, 8 by default).
+const CELL = o.cell ? Number(o.cell) : 8
 const bandColumns = Math.floor(width / CELL)
 const bandTop = height - 120 - ROWS * CELL * 2 - 8
 const [reactionKind, reactionAge] = o.reaction ? String(o.reaction).split(',') : []

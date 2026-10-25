@@ -3,7 +3,7 @@
 export const MAIN = `
 // --- The sky behind the terminal -------------------------------------------
 
-// How much sky shows through dark fields of the terminal: a diff's red and
+// How much sky shows through Claude Code's own fields: a diff's red and
 // green rows, the prompt's and the shell's rows.
 const float GLASS = 0.55;
 
@@ -46,23 +46,31 @@ bool isField(vec3 term, vec2 uv) {
   return false;
 }
 
+// Whether term is one of the colours Claude Code fills its own fields with
+// (FIELD_COLOURS, in linear light on Linux as the terminal's image is
+// there; a Mac set to linear blending is not covered). The very colour: the
+// band's art comes within a step of them (a grey of 56 at night, by the
+// prompt's 55), and the faintest edges of letters on a field do too. The
+// cheap test, made first: every other pixel is done with after these
+// compares.
+bool isFieldColour(vec3 term) {
+  for (int i = 0; i < FIELD_COUNT; i++) {
+    vec3 off = abs(term - FIELD_COLOURS[i]);
+    if (max(off.r, max(off.g, off.b)) < 0.75 / 255.0) return true;
+  }
+  return false;
+}
+
 // How much of the sky shows through a terminal pixel that is not its
-// background. Fields darker than 0.35 are tinted glass, fading out by 0.4:
-// every dark field Claude Code's dark theme has (its diff's rows at 0.23 to
-// 0.33, the prompt's 0.22, the shell's 0.24) but not the brighter word
-// highlights inside a diff (0.43 and 0.54), which stay solid alike. Its
-// dimmest text, subtle at 0.31, is as dark as the fields: told from them by
-// its shape. Only on a dark background: on a light one, dark pixels are the
-// text.
+// background: GLASS where it is in one of Claude Code's own fields, of
+// their colour and of their shape; none anywhere else. Text on a field,
+// the band's pixel art and every colour not Claude Code's stay solid, as
+// they would without glass. Only on a dark background: on a light one,
+// dark pixels are the text.
 float glass(vec3 term, vec2 uv) {
   if (luminance(iBackgroundColor) > 0.5) return 0.0;
-  float l = luminance(term);
-  // On Linux the terminal's image is in linear light: measured back in sRGB.
-  // A Mac set to linear blending is not covered.
-  if (Y_UP > 0.5) l = pow(l, 1.0 / 2.2);
-  float dark = 1.0 - smoothstep(0.35, 0.4, l);
-  if (dark <= 0.0 || !isField(term, uv)) return 0.0;
-  return GLASS * dark;
+  if (!isFieldColour(term) || !isField(term, uv)) return 0.0;
+  return GLASS;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {

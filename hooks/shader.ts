@@ -258,6 +258,42 @@ const STOPS: readonly [number, number, number, number][] = [
   [90, 0x1f6ed6, 0x58a2f0, 0xb0d8fb],
 ]
 
+// The colours Claude Code fills its own fields with in its dark themes, as
+// 2.1.310's CLI has them (dark, then what dark-daltonized has of its own):
+// a diff's added and removed rows, dimmed and not, and the brighter
+// backgrounds of the words changed in them; the prompt's rows, hovered and
+// not; the shell's rows; the # of a memory; the composer's sidebar. Glass
+// lets the sky through these and nothing else: the band's pixel art, text
+// and any other colour stay solid.
+export const FIELD_COLOURS: readonly number[] = [
+  0x225c2b, // diffAdded
+  0x7a2936, // diffRemoved
+  0x47584a, // diffAddedDimmed
+  0x69484d, // diffRemovedDimmed
+  0x38a660, // diffAddedWord
+  0xb3596b, // diffRemovedWord
+  0x373737, // userMessageBackground
+  0x464646, // userMessageBackgroundHover
+  0x413c41, // bashMessageBackgroundColor
+  0x374146, // memoryBackgroundColor
+  0x262626, // composerSidebarBackground
+  0x004466, // diffAdded, daltonized
+  0x660000, // diffRemoved, daltonized
+  0x3e515b, // diffAddedDimmed, daltonized
+  0x3e2c2c, // diffRemovedDimmed, daltonized
+  0x0077b3, // diffAddedWord, daltonized
+  0xb30000, // diffRemovedWord, daltonized
+]
+
+// A colour as the shader reads the terminal's image: in linear light on
+// Linux (sRGB's own curve, as the GPU decodes it), as it is elsewhere.
+function seen(c: number, isLinear: boolean): string {
+  const channel = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const [r, g, b] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff].map(v => (isLinear ? channel(v / 255) : v / 255))
+
+  return `vec3(${f(r!)}, ${f(g!)}, ${f(b!)})`
+}
+
 function ints(values: number[]): string {
   return `int[${values.length}](${values.join(', ')})`
 }
@@ -332,6 +368,8 @@ export function skyShader(params: ShaderParams): string {
     `const int BASKET = ${params.basket ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
+    `const int FIELD_COUNT = ${FIELD_COLOURS.length};`,
+    `const vec3 FIELD_COLOURS[${FIELD_COLOURS.length}] = vec3[${FIELD_COLOURS.length}](${FIELD_COLOURS.map(c => seen(c, params.isYUp)).join(', ')});`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
