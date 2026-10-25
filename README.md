@@ -34,7 +34,7 @@ At the prompt of a Claude Code session:
 
 Answer `y` to add the marketplace and pick a scope (user, so it runs in every session). From a shell, the same is `claude plugin install solar-clawd --marketplace Fiddy134/solar-clawd`.
 
-Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds one optional include line to Ghostty's config; the included file names the shader while a Claude session runs and is empty otherwise. It also adds a right-hand margin of 240 points, where the lighthouse stands clear of the text; that is added once and kept when the sky is hidden. The sky shows only in the tabs where Claude runs.
+Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds one optional include line to Ghostty's config; the included file names the shader while a Claude session runs and is empty otherwise. It also adds a right-hand margin of 240 points, where the lighthouse stands clear of the text; that is added once and kept when the sky is hidden. A config that already includes the mod gets the margin once, at the next session start in Ghostty, and a toast says so. From then on the margin is yours: change or remove its `window-padding-x` line and it stays as you leave it. The sky shows only in the tabs where Claude runs.
 
 ### Developing
 

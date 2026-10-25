@@ -330,7 +330,8 @@ export const register: Register = on => {
         home,
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
-        stagePx: await stagePxOf($, isOnLinux),
+        // Asked below, once the config is known to include the sky.
+        stagePx: STAGE_PT,
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
         written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
@@ -340,13 +341,22 @@ export const register: Register = on => {
       ghostty.isIncluded = await isIncluded($, ghostty)
       // An include the mod added before, to its own folder: moved here, and
       // the old file emptied so Ghostty draws no second sky from it.
+      let isMarginNew = false
       if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
-        ghostty.isIncluded = (await includeInGhostty($, ghostty)) !== null
+        const added = await includeInGhostty($, ghostty)
+        ghostty.isIncluded = added !== null
+        isMarginNew = added?.isMarginNew ?? false
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
-      // An include without the stage padding (from before there was one).
-      if ((await hasOurInclude($, ghostty)) && !(await hasOurStage($, ghostty))) await includeInGhostty($, ghostty)
+      const isOurs = await hasOurInclude($, ghostty)
+      // An include from before there was a stage gets it, once: after that
+      // the margin is the person's, changed or taken away as they like.
+      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty))?.isMarginNew ?? false
+      if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${STAGE_PT}-point margin on the right of Ghostty's windows; new windows show it.`)
+      // The screen's scale costs a moment of osascript: asked only for a sky
+      // that shows.
+      if (isOurs) ghostty.stagePx = await stagePxOf($, isOnLinux)
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
@@ -668,6 +678,7 @@ export const register: Register = on => {
       if (added === null) return { text: `Solar: could not read Ghostty's config, so it is left as it is.` }
       const { line, config } = added
       ghostty.isIncluded = true
+      ghostty.stagePx = await stagePxOf($, ghostty.isLinux)
       await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($, ghostty)
 

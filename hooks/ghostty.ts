@@ -319,20 +319,26 @@ export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason
 // that terminal text never reaches, where the lighthouse stands.
 export const STAGE_PT = 240
 
+// The comment the mod writes above its include. The stage's margin came
+// later, and is given once, with this comment: from then on the padding is
+// the person's to change or take away, and stays as they leave it.
+const STAGED = '# Solar Clawd: the sky while a Claude session runs, and a stage for the lighthouse.'
+
 // The lines the mod itself added to a Ghostty config, from any folder it was
-// loaded from: its comment, the include of its runtime file, and the
-// padding that makes the stage strip.
+// loaded from: its comment (now or as it was), the include of its runtime
+// file, and the padding that makes the stage strip.
 const OUR_LINES = [
   /^# Solar Clawd: /,
   /^config-file\s*=\s*\??.*\/runtime\/solar-clawd\.ghostty$/,
   new RegExp(`^window-padding-x\\s*=\\s*\\d+\\s*,\\s*${STAGE_PT}$`),
 ]
 
-// Whether a config has the padding line the mod added.
+// Whether a config was given the stage: the comment it came with, whatever
+// the person has since done with the padding.
 export async function hasOurStage($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
   for (const path of ghostty.configs) {
     const text = await $.fs.read(path).catch(() => '')
-    if (text.split('\n').some(line => OUR_LINES[2]!.test(line.trim()))) return true
+    if (text.split('\n').some(line => line.trim() === STAGED)) return true
   }
 
   return false
@@ -358,12 +364,18 @@ export function runtimeFolder(home: string, isOnLinux: boolean, xdgState: string
   return `${home}/Library/Application Support/solar-clawd/runtime`
 }
 
-// Adds the one include line, and the stage padding after it, to the config
-// Ghostty reads first, in place of any the mod added before. The padding
-// keeps the left number of the person's own window-padding-x (else 2); `?`
-// keeps Ghostty quiet should the file ever be missing. Answers the line and file, or null when the config is there but
-// cannot be read: never written over.
-export async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
+// Adds the one include line, under the mod's comment, to the config Ghostty
+// reads first, in place of any the mod added before; `?` keeps Ghostty quiet
+// should the file ever be missing. A config not yet given the stage gets
+// its padding after the include, keeping the left number of the person's
+// own window-padding-x (the last, which is the one Ghostty uses; else 2);
+// one given it before keeps its padding lines as the person left them.
+// Answers the line, the file, and whether the margin is new to the config;
+// null when the config is there but cannot be read: never written over.
+export async function includeInGhostty(
+  $: EngineInterface,
+  ghostty: Ghostty,
+): Promise<{ line: string; config: string; isMarginNew: boolean } | null> {
   let config = ghostty.configs[0]!
   // On Linux the file that is there, config.ghostty if neither is.
   if (ghostty.isLinux) {
@@ -378,13 +390,16 @@ export async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Pr
   const isThere = await $.fs.exists(config).catch(() => true)
   const read = isThere ? await $.fs.read(config).catch(() => null) : ''
   if (read === null) return null
-  const rows = read.split('\n').filter(row => !OUR_LINES.some(pattern => pattern.test(row.trim())))
+  const isStaged = read.split('\n').some(row => row.trim() === STAGED)
+  const hadMargin = read.split('\n').some(row => OUR_LINES[2]!.test(row.trim()))
+  const ours = isStaged ? OUR_LINES.slice(0, 2) : OUR_LINES
+  const rows = read.split('\n').filter(row => !ours.some(pattern => pattern.test(row.trim())))
   const text = rows.join('\n')
-  const own = rows.map(row => /^window-padding-x\s*=\s*(\d+)/.exec(row.trim())).find(found => found !== null)
-  const left = own ? own[1] : '2'
+  const own = rows.map(row => /^window-padding-x\s*=\s*(\d+)/.exec(row.trim())).findLast(found => found !== null)
+  const padding = isStaged ? '' : `window-padding-x = ${own ? own[1] : '2'},${STAGE_PT}\n`
   const line = `config-file = ?${ghostty.include}`
   const gap = text === '' || text.endsWith('\n') ? '' : '\n'
-  await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\nwindow-padding-x = ${left},${STAGE_PT}\n`)
+  await $.fs.write(config, `${text}${gap}${STAGED}\n${line}\n${padding}`)
 
-  return { line, config }
+  return { line, config, isMarginNew: !isStaged && !hadMargin }
 }
