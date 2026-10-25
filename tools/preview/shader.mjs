@@ -121,11 +121,11 @@ lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20, w - ${stage} - 32))
 // light text on them, and a dim grey line on the plain background.
 if (${!!o.diff}) {
   const diff = [
-    ['#3d1418', '  13 -  float mask = smoothstep(0.02, 0.12, distance(term.rgb, iBackgroundColor));'],
-    ['#3d1418', '  14 -  if (mask >= 1.0) {'],
-    ['#14361c', '  13 +  float mask = smoothstep(0.02, 0.12, min(distance(term.rgb, iBackgroundColor), d));'],
-    ['#14361c', '  14 +  float g = glass(term.rgb);'],
-    ['#14361c', '  15 +  if (mask >= 1.0 && g == 0.0) {'],
+    ['#3d1418', '  41 -  const days = weekdays(start, end)'],
+    ['#3d1418', '  42 -  return days.length'],
+    ['#14361c', '  41 +  const days = weekdays(start, end).filter(isOpen)'],
+    ['#14361c', '  42 +  if (days.length === 0) return null'],
+    ['#14361c', '  43 +  return days.length'],
   ]
   diff.forEach(([fill, line], i) => {
     t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20)

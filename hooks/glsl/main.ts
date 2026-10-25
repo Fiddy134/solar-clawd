@@ -9,8 +9,13 @@ const float GLASS = 0.55;
 
 // How much of the sky shows through a terminal pixel that is not its
 // background. Dark ones are tinted glass; anything brighter, text, is solid.
+// Only on a dark background: on a light one, dark pixels are the text.
 float glass(vec3 term) {
-  return GLASS * (1.0 - smoothstep(0.18, 0.3, luminance(term)));
+  float l = luminance(term);
+  // On Linux the terminal's image is in linear light: measured back in sRGB.
+  // A Mac set to linear blending is not covered.
+  if (Y_UP > 0.5) l = pow(l, 1.0 / 2.2);
+  return GLASS * step(luminance(iBackgroundColor), 0.5) * (1.0 - smoothstep(0.18, 0.3, l));
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
