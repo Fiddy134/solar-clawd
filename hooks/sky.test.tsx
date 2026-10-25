@@ -272,8 +272,15 @@ test("glass knows Claude Code's own field colours, in linear light on Linux", ()
   // in 2.1.310's dark theme.
   for (const isYUp of [false, true]) {
     for (const colour of ['122,41,54', '34,92,43', '55,55,55', '65,60,65']) expect(fields(isYUp)).toContain(colour)
+    // A tool's diff as color-diff prints it, highlighted, in truecolor: its
+    // added and removed rows and words, and dark-daltonized's added ones.
+    for (const colour of ['2,40,0', '4,71,0', '61,1,0', '92,2,0', '0,27,41', '0,48,71']) expect(fields(isYUp)).toContain(colour)
   }
-  expect(fields(true)).toEqual(fields(false))
+  // On a Mac Ghostty hands the shader the terminal in Display P3, sRGB
+  // colours converted: color-diff's rows as a Ghostty there showed them
+  // (2,40,0 and 61,1,0), and the theme's diff. Greys are the same in both.
+  for (const colour of ['14,39,5', '55,6,3', '50,91,48']) expect(fields(false)).toContain(colour)
+  for (const colour of fields(true)) expect(fields(false)).toContain(colour)
 })
 
 test('the lighthouse state: a question beats done, hurries after two minutes, is out after thirty', () => {

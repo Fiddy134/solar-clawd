@@ -48,6 +48,7 @@ bool isField(vec3 term, vec2 uv) {
 
 // Whether term is one of the colours Claude Code fills its own fields with
 // (FIELD_COLOURS, in linear light on Linux as the terminal's image is
+// there, and on a Mac in Display P3 as well, as Ghostty converts them
 // there; a Mac set to linear blending is not covered). The very colour: the
 // band's art comes within a step of them (a grey of 56 at night, by the
 // prompt's 55), and the faintest edges of letters on a field do too. The
