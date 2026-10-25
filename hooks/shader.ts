@@ -58,6 +58,8 @@ export type ShaderParams = {
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
+  // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
+  isYUp: boolean
 }
 
 // The shader's number for each event.
@@ -130,6 +132,7 @@ export function shaderParams(
     beacon?: ShaderParams['beacon']
     iss?: ShaderParams['iss']
     basket?: ShaderParams['basket']
+    isYUp?: boolean
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -158,6 +161,7 @@ export function shaderParams(
     scene,
     beacon: options.beacon ?? null,
     basket: options.basket ?? null,
+    isYUp: !!options.isYUp,
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -288,6 +292,7 @@ export function skyShader(params: ShaderParams): string {
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
     `const int BASKET = ${params.basket ? 1 : 0};`,
+    `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
     `const int BASKET_BALLS = ${Math.max(0, Math.min(10, Math.round(params.basket?.balls ?? 0)))};`,
     `const int BASKET_FIRE = ${params.basket?.fire === 'burn' ? 1 : params.basket?.fire === 'embers' ? 2 : 0};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
@@ -309,8 +314,9 @@ export function skyShader(params: ShaderParams): string {
   return `// Solar Clawd's sky, written by hooks/shader.ts: edits here are overwritten.\n\n${constants.join('\n')}\n${BODY}`
 }
 
-// Everything but the constants. Coordinates are Ghostty's fragCoord, x right
-// and y down from the top left, as on sky.ts's Canvas.
+// Everything but the constants. Coordinates are x right and y down from the
+// top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
+// flipped from OpenGL's y up (Linux) when Y_UP is set.
 const BODY = `
 const float PI = 3.14159265;
 // The arc the sun and the moon cross, as fractions of the window.
@@ -378,7 +384,12 @@ vec2 domeToPixel(vec2 d) { return vec2(iResolution.x * 0.5 + d.x * iResolution.y
 
 // The terminal's cursor. Ghostty gives its bottom-left corner (y down, as
 // fragCoord; probed 2026-10-25) and its size in zw.
-vec2 cursorAt() { return vec2(iCurrentCursor.x + iCurrentCursor.z * 0.5, iCurrentCursor.y - iCurrentCursor.w * 0.5); }
+// With y up (OpenGL) the corner is the top-left one, so the same centre is
+// flipped as fragCoord is.
+vec2 cursorAt() {
+  vec2 c = vec2(iCurrentCursor.x + iCurrentCursor.z * 0.5, iCurrentCursor.y - iCurrentCursor.w * 0.5);
+  return Y_UP > 0.5 ? vec2(c.x, iResolution.y - c.y) : c;
+}
 
 // How much a star at \`at\` glints for the cursor: near it, just after it
 // moved, fading within a second.
@@ -1612,8 +1623,11 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec4 term = texture(iChannel0, fragCoord / iResolution.xy);
   // Wherever the terminal shows anything but its background (as Ghostty
-  // says it, theme and all), the terminal.
-  float mask = smoothstep(0.02, 0.12, distance(term.rgb, iBackgroundColor));
+  // says it, theme and all), the terminal. With linear alpha blending (the
+  // default on Linux) the terminal's image is in linear light while
+  // iBackgroundColor is sRGB: compared with both.
+  vec3 linearBackground = pow(iBackgroundColor, vec3(2.2));
+  float mask = smoothstep(0.02, 0.12, min(distance(term.rgb, iBackgroundColor), distance(term.rgb, linearBackground)));
   if (mask >= 1.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;
@@ -1626,7 +1640,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   }
   float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
 
-  vec2 p = fragCoord;
+  // fragCoord with y down from the top left, on every backend.
+  vec2 p = Y_UP > 0.5 ? vec2(fragCoord.x, iResolution.y - fragCoord.y) : fragCoord;
   Scene s = sceneNow();
   float k;
   vec3 sky = gradient(p, s, k);

@@ -477,7 +477,7 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
 type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null }
 
 // What the session's shader is asked to draw beyond the scene.
-type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null }
+type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // sky is not hidden, nothing otherwise, and Ghostty animating it as the
@@ -582,7 +582,8 @@ async function writeGhosttySky(
   const isWanted = !isHidden
   let include = ''
   if (isWanted) {
-    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent } }
+    // Ghostty draws with OpenGL on Linux, where fragCoord has y up.
+    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, isYUp: ghostty.isLinux }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).
     const shader = shaderAt(now, extras)

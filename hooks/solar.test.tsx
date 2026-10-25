@@ -483,6 +483,19 @@ test('on Linux Ghostty reloads on SIGUSR2, and nothing of the Mac is asked', asy
   expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript', '/usr/bin/lsappinfo'].includes(argv[0]!))).toBe(false)
 })
 
+test('on Linux the shader flips fragCoord, which OpenGL gives with y up', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  const runtime = await startGhostty($, on, clock, world)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float Y_UP = 1.0;')
+})
+
+test('on macOS fragCoord already has y down', async ($, on) => {
+  const { shader } = await waitingWorld($, on)
+  expect(shader()).toContain('const float Y_UP = 0.0;')
+})
+
 test('on Linux a Ghostty older than 1.3 is never sent SIGUSR2', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })

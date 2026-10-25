@@ -35,6 +35,8 @@ const params = shaderParams(
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
     // --basket 6 or 9,burn or 0,embers: the wastebasket in the corner.
+    // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
+    isYUp: !!o['y-up'],
     basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )
@@ -60,7 +62,7 @@ uniform float iTime;
 uniform sampler2D iChannel0;
 out vec4 outColor;
 ${source}
-void main() { mainImage(outColor, vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y)); }
+void main() { mainImage(outColor, ${o['y-up'] ? 'gl_FragCoord.xy' : 'vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y)'}); }
 `
 
 const page = `<!doctype html><html><body style="margin:0;background:#000">
