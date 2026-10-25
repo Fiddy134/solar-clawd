@@ -3,7 +3,7 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
+import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
 import { EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import type { DomePoint } from './dome'
@@ -391,4 +391,38 @@ test('the lighthouse stands on the stage strip when its width is known', () => {
   const text = (stagePx?: number) => skyShader(shaderParams({ ms: at, t: 0, place: STOCKHOLM, weather: null }, { stagePx }))
   expect(text()).toContain('const float STAGE_PX = 0.0;')
   expect(text(480)).toContain('const float STAGE_PX = 480.0;')
+})
+
+test('the keeper sleeps when Clawd does', () => {
+  const asleep = (ms: number) => {
+    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null, offsetMs: swedishOffsetMs(ms) }, {}))
+    return text.includes('const float KEEPER_ASLEEP = 1.0;') ? true : text.includes('const float KEEPER_ASLEEP = 0.0;') ? false : null
+  }
+  expect(asleep(swedish(2026, 10, 25, 4))).toBe(true)
+  expect(asleep(swedish(2026, 10, 25, 2))).toBe(false)
+  expect(asleep(swedish(2026, 10, 25, 7))).toBe(false)
+  expect(asleep(swedish(2027, 1, 1, 1))).toBe(false)
+})
+
+test("/solar event plays the keeper's abduction and surf, and the shader schedules them itself", () => {
+  const ms = swedish(2026, 8, 10, 12)
+  const ctx = contextFor(ms)
+  const shaderOf = (kind: 'abduction' | 'surf') => {
+    const events = eventsAt(ms, ctx, [{ kind, at: ms }])
+    expect(events.some(e => e.kind === kind)).toBe(true)
+    return skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { events }))
+  }
+  const ufo = shaderOf('abduction')
+  expect(ufo).toContain('const int KEEPER_FORCE = 1;')
+  expect(ufo).toContain('const int EVENT_COUNT = 0;')
+  expect(shaderOf('surf')).toContain('const int KEEPER_FORCE = 2;')
+  expect(skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}))).toContain('const int KEEPER_FORCE = 0;')
+  expect(EVENT_WORDS.abduction).toBe('ufo abduction')
+  expect(EVENT_WORDS.surf).toBe('surf')
+  const start = swedish(2026, 8, 10, 0)
+  for (let t = start; t < start + 7 * 86_400_000; t += 30_000) {
+    const kinds = eventsAt(t, contextFor(t)).map(e => e.kind)
+    expect(kinds).not.toContain('abduction')
+    expect(kinds).not.toContain('surf')
+  }
 })

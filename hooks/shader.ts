@@ -4,7 +4,8 @@
 // reload), so the scene is baked in as constants and the shader is written
 // again, and Ghostty told to reload, when they change.
 
-import { horizontalAt, localMidnight, moonAt, sunAt } from './astro'
+import { horizontalAt, localMidnight, localTime, moonAt, sunAt } from './astro'
+import { activityOn } from './clawd'
 import { chartAt, tileLines, tileStars } from './chart'
 import type { ChartStar } from './chart'
 import { domePoint } from './dome'
@@ -65,6 +66,8 @@ export type ShaderParams = {
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
+  // The keeper at the lighthouse: asleep when Clawd is, and a preview forced.
+  keeper: { isAsleep: boolean; force: 'none' | 'ufo' | 'surf' }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
   // The width of the strip at the right where the lighthouse stands, in
@@ -107,6 +110,9 @@ const EVENT_INDEX: Record<EventKind, number> = {
   fireworks: 20,
   dolphin: 21,
   pinkDolphin: 22,
+  // The shader schedules these itself; they are never drawn as events.
+  abduction: 23,
+  surf: 24,
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -145,7 +151,7 @@ export function sceneAt(ms: number, place: SkyInput['place']): Scene {
 // The shader's constants for a moment, `demo` playing the place's whole day
 // from local midnight instead.
 export function shaderParams(
-  input: SkyInput,
+  input: SkyInput & { offsetMs?: number },
   options: {
     demo?: { seconds: number; offsetMs?: number } | null
     events?: readonly ActiveEvent[]
@@ -201,10 +207,14 @@ export function shaderParams(
     auroraFloor: isAuroraForced ? 0.4 : 0,
     // A shooting star asked for is a shower: one every few seconds.
     events: (options.events ?? [])
-      .filter(event => event.kind !== 'shootingStar')
+      .filter(event => event.kind !== 'shootingStar' && event.kind !== 'abduction' && event.kind !== 'surf')
       .slice(0, 4)
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
+    keeper: {
+      isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep',
+      force: options.events?.some(event => event.kind === 'abduction') ? 'ufo' : options.events?.some(event => event.kind === 'surf') ? 'surf' : 'none',
+    },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -322,6 +332,8 @@ export function skyShader(params: ShaderParams): string {
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const float FIREWORKS = ${f(params.fireworks)};`,
     `const float FLAG_DAY = ${params.events.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
+    `const float KEEPER_ASLEEP = ${params.keeper.isAsleep ? '1.0' : '0.0'};`,
+    `const int KEEPER_FORCE = ${{ none: 0, ufo: 1, surf: 2 }[params.keeper.force]};`,
     `const int EVENT_COUNT = ${params.events.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
     `const float EVENT_SEED[${events.length}] = ${floats(events.map(e => e.seed))};`,

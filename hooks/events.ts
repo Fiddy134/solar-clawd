@@ -29,6 +29,8 @@ export type EventKind =
   | 'pinkDolphin'
   | 'milestone'
   | 'shootingStar'
+  | 'abduction'
+  | 'surf'
   // The Swedish days.
   | 'witch'
   | 'feathers'
@@ -116,6 +118,10 @@ export const EVENTS: readonly Spec[] = [
 const RAINBOW = { kind: 'rainbow', word: 'rainbow' } as const
 const MILESTONE = { kind: 'milestone', word: 'milestone', durationMs: 20_000 } as const
 const SHOOTING_STAR = { kind: 'shootingStar', word: 'shooting star' } as const
+// The keeper's own: the shader schedules his abduction and surf from iTime,
+// so these are previews only.
+const ABDUCTION = { kind: 'abduction', word: 'ufo abduction' } as const
+const SURF = { kind: 'surf', word: 'surf' } as const
 const SATELLITE = { kind: 'satellite', word: 'satellite' } as const
 
 // The Swedish days' words, as the band and /solar say them.
@@ -141,12 +147,14 @@ export const OLD_EVENT_WORDS: Record<string, EventKind> = {
 
 // Every event the band and /solar can name, its word first.
 export const EVENT_WORDS: Record<EventKind, string> = {
-  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'satellite' | DayKind>, string>),
+  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'abduction' | 'surf' | 'satellite' | DayKind>, string>),
   ...DAY_WORDS,
   satellite: SATELLITE.word,
   rainbow: RAINBOW.word,
   milestone: MILESTONE.word,
   shootingStar: SHOOTING_STAR.word,
+  abduction: ABDUCTION.word,
+  surf: SURF.word,
 }
 
 // How long a preview (`/solar event <name>`) plays an event that has no
