@@ -143,14 +143,15 @@ efteråt):
 
 - Texten, prompten och bandet slutar före marginalen, och shadern ritar i den:
   moln, regn, hav och papperskorgen går ända ut till kanten.
-- Med `2,180` blev remsan cirka 245 px bred i en 1975 px bred skärmdump, och
-  fyren (`0.88 × iResolution.x`) hamnade precis vid textens kant. För lite luft.
-- Med `2,240` blev remsan cirka 317 px bred (16 % av fönstret), och raderna
-  var fortfarande cirka 165 tecken långa. **Beslut: 240 pt till höger.**
-- Båda proven gav ungefär 1,33 px per punkt. Skärmens skalning och Claude
-  Codes egen marginal gör att remsans bredd i pixlar inte kan räknas fram ur
-  config-värdet ensamt. Shadern behöver få veta den (eller mäta den) på något
-  sätt som byggaren väljer. Fyren ska stå mitt på remsan.
+- Med `2,180` hamnade fyren (`0.88 × iResolution.x`) precis vid textens kant.
+  För lite luft.
+- Med `2,240` blev remsan cirka 16 % av fönstret, och raderna var fortfarande
+  cirka 165 tecken långa. **Beslut: 240 pt till höger.**
+- Skärmdumparna kom fram nedskalade (2000 px breda), men skärmen är en Retina
+  med `backingScaleFactor` 2 (3024 × 1964 px, 1512 × 982 pt). Omräknat stämmer
+  det: remsan är 240 pt × 2 = 480 riktiga pixlar. Shadern får därför remsans
+  bredd i pixlar som `240 × skalfaktorn`, där sessionen frågar macOS efter
+  skalfaktorn (på Linux räknas 1). Fyren ska stå mitt på remsan.
 
 ## Beslut: himlen animerar inte mer för hans skull
 
