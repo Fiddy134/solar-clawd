@@ -180,7 +180,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
 
 const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
 
-test('in Ghostty the sky is a shader, rewritten as the scene moves, off while the person is away', async ($, on) => {
+test('in Ghostty the sky is a shader, rewritten as the scene moves, still while the person is away', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
   const idle = { value: 3 }
@@ -205,14 +205,14 @@ test('in Ghostty the sky is a shader, rewritten as the scene moves, off while th
   await clock.advance(120_000)
   expect(RELOADS(world.runs)).toBe(2)
 
-  // Away five minutes: the sky goes, and comes back with the person.
+  // Away five minutes: the sky stands still, and moves again with the person.
   idle.value = 400
   await clock.advance(11_000)
-  expect(include?.[0] && world.files.get(include[0])?.text).toBe('')
+  expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = false')
   expect(RELOADS(world.runs)).toBe(3)
   idle.value = 1
   await clock.advance(11_000)
-  expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader = ')
+  expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = true')
   expect(RELOADS(world.runs)).toBe(4)
 
   // The last session ending takes the sky with it.
@@ -621,12 +621,12 @@ test('a failed ioreg keeps the last answer, and Ghostty asks no ioreg of its own
   const runtime = await startGhostty($, on, clock, world)
   idle.value = 400
   await clock.advance(10_000)
-  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toBe('')
+  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toContain('custom-shader-animation = false')
 
-  // ioreg fails while the person is away: still away, the sky stays off.
+  // ioreg fails while the person is away: still away, the sky stays still.
   world.failing.add('/usr/sbin/ioreg')
   await clock.advance(20_000)
-  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toBe('')
+  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toContain('custom-shader-animation = false')
 
   // One ioreg each three seconds, and none besides.
   world.failing.delete('/usr/sbin/ioreg')
@@ -745,14 +745,13 @@ test('the comet hangs at its place among the stars and turns with them', () => {
   expect(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}).comet).toBeNull()
 })
 
-test('the lighthouse: orange when Claude asks, white when done, and alone while you are away', () => {
+test('the lighthouse: orange when Claude asks, white when done', () => {
   const ms = Date.UTC(2026, 9, 24, 20)
   const text = (options: object) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, options))
   expect(text({})).toContain('const int BEACON = 0;')
   expect(text({ beacon: { mode: 'asking', isUrgent: false } })).toContain('const int BEACON = 1;')
   expect(text({ beacon: { mode: 'done', isUrgent: false } })).toContain('const int BEACON = 2;')
   expect(text({ beacon: { mode: 'asking', isUrgent: true } })).toContain('const float BEACON_URGENT = 1.0;')
-  expect(text({ beacon: { mode: 'done', isUrgent: false }, onlyBeacon: true })).toContain('const float ONLY_BEACON = 1.0;')
 })
 
 test('the lighthouse state: a question beats done, hurries after two minutes, is out after thirty', () => {
@@ -772,6 +771,7 @@ test('Ghostty animates always while the lighthouse sweeps, stands still after it
   expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: true })).toBe('always')
   expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: true })).toBe('false')
   expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false })).toBe('true')
+  expect(animationOf({ beacon: null, now: 0, isAway: true, isOnBattery: false })).toBe('false')
 })
 
 // A Ghostty session to wait in: its shader and include as text.
@@ -847,7 +847,7 @@ test('the lighthouse sweeps five minutes, then stands still, and is out after th
   expect(include()).toContain('custom-shader-animation = true')
 })
 
-test('away, the sky goes but the lighthouse stays', async ($, on) => {
+test('away, the sky and the lit lighthouse stand still', async ($, on) => {
   const idle = { value: 1 }
   const { clock, shader, include, ask } = await waitingWorld($, on, idle)
   await ask()
@@ -855,7 +855,7 @@ test('away, the sky goes but the lighthouse stays', async ($, on) => {
   await clock.advance(11_000)
   expect(include()).toContain('custom-shader = ')
   expect(include()).toContain('custom-shader-animation = false')
-  expect(shader()).toContain('const float ONLY_BEACON = 1.0;')
+  expect(shader()).toContain('const int BEACON = 1;')
 })
 
 test('the white lighthouse goes out once Ghostty is in front and the person at it; a question waits for its answer', async ($, on) => {

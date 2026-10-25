@@ -28,10 +28,8 @@ export type ShaderParams = {
   // The real stars and constellation lines on the dome; empty by day.
   chart: { stars: ChartStar[]; lines: [DomePoint, DomePoint][] }
   // The lighthouse: lit while Claude waits (orange asking, white done),
-  // hurrying once a question has waited; `onlyBeacon` while the person is
-  // away draws it alone on the terminal's own background.
+  // hurrying once a question has waited.
   beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
-  onlyBeacon: boolean
   // The ISS on a visible pass, where it is and was 20 s before; null otherwise.
   iss: { at: DomePoint; trail: DomePoint } | null
   // Where a comet up now hangs on the dome, and the angle its tails point
@@ -124,7 +122,6 @@ export function shaderParams(
     events?: readonly ActiveEvent[]
     shootingRate?: number
     beacon?: ShaderParams['beacon']
-    onlyBeacon?: boolean
     iss?: ShaderParams['iss']
   },
 ): ShaderParams {
@@ -154,7 +151,6 @@ export function shaderParams(
     scene,
     beacon: options.beacon ?? null,
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
-    onlyBeacon: !!options.onlyBeacon && !!options.beacon,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
       stars: chart.stars.map(star => ({ ...dome(star), mag: star.mag, bv: star.bv })),
@@ -283,7 +279,6 @@ export function skyShader(params: ShaderParams): string {
     `const vec2 ISS_TRAIL = vec2(${f(params.iss?.trail.x ?? 0)}, ${f(params.iss?.trail.y ?? 0)});`,
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
-    `const float ONLY_BEACON = ${params.onlyBeacon ? '1.0' : '0.0'};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
@@ -1378,11 +1373,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     return;
   }
   float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
-  // The person is away and Claude waits: the lighthouse alone.
-  if (ONLY_BEACON > 0.5) {
-    fragColor = vec4(mix(beacon(term.rgb, fragCoord, unit, 1.0), term.rgb, mask), 1.0);
-    return;
-  }
 
   vec2 p = fragCoord;
   Scene s = sceneNow();

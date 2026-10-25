@@ -30,9 +30,8 @@ const params = shaderParams(
     demo: o.demo ? { seconds: 48 } : null,
     events,
     shootingRate: shootingRate(context),
-    // --beacon asking|done [--urgent] [--only-beacon]: the lighthouse.
+    // --beacon asking|done [--urgent]: the lighthouse.
     beacon: o.beacon ? { mode: o.beacon, isUrgent: !!o.urgent } : null,
-    onlyBeacon: !!o['only-beacon'],
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
   },

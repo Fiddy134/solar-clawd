@@ -25,11 +25,12 @@ export function beaconAt(waits: readonly Waiting[], now: number): (Waiting & { i
 
 // Ghostty's custom-shader-animation for the sky now: `always` while the
 // beam sweeps (so it moves with Ghostty in the background), `false` for a
-// still sky (the lighthouse lit but no longer sweeping, or on battery),
+// still sky (the lighthouse lit but no longer sweeping, the person away,
+// or on battery),
 // `true` (animate while focused) otherwise.
 export function animationOf(o: { beacon: Waiting | null; now: number; isAway: boolean; isOnBattery: boolean }): 'true' | 'false' | 'always' {
   if (o.beacon && !o.isAway && o.now - o.beacon.since < BEACON_SWEEP_MS) return 'always'
-  if (o.beacon || o.isOnBattery) return 'false'
+  if (o.beacon || o.isAway || o.isOnBattery) return 'false'
 
   return 'true'
 }

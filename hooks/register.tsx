@@ -54,8 +54,8 @@ const RELOAD_GHOSTTY = [
 ]
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
-// Away after this long without a key or the mouse: the sky goes, and with
-// it Ghostty's frame loop, until the person is back.
+// Away after this long without a key or the mouse: the sky stands still,
+// and with it Ghostty's frame loop, until the person is back.
 const AWAY_MS = 5 * 60_000
 // Each Ghostty session leaves a heartbeat this often; one older than
 // ALIVE_MS is a session gone.
@@ -451,12 +451,11 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
 type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null }
 
 // What the session's shader is asked to draw beyond the scene.
-type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; onlyBeacon: boolean }
+type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
-// person is here and the sky is not hidden (or only the lighthouse, while
-// they are away and some session waits on them), nothing otherwise, and
-// Ghostty animating it as the lighthouse and the battery say. Ghostty
+// sky is not hidden, nothing otherwise, and Ghostty animating it as the
+// lighthouse, the battery and the person's being away say. Ghostty
 // reloads only when a file actually changed.
 //
 // Every session wants the same on or off (the hidden file and the person's
@@ -552,10 +551,10 @@ async function writeGhosttySky(
   const waits = [...(state.waiting ? [state.waiting] : []), ...(await othersWaiting($, ghostty, now))]
   const beacon = beaconAt(waits, now)
   const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
-  const isWanted = !isHidden && (!state.isAway || beacon !== null)
+  const isWanted = !isHidden
   let include = ''
   if (isWanted) {
-    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, onlyBeacon: state.isAway }
+    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent } }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).
     const shader = shaderAt(now, extras)
