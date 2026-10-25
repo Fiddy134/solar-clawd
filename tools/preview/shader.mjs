@@ -25,7 +25,14 @@ const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null
 const events = eventsAt(ms, context, forced)
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
-  { demo: o.demo ? { seconds: 48 } : null, events, shootingRate: shootingRate(context) },
+  {
+    demo: o.demo ? { seconds: 48 } : null,
+    events,
+    shootingRate: shootingRate(context),
+    // --beacon asking|done [--urgent] [--only-beacon]: the lighthouse.
+    beacon: o.beacon ? { mode: o.beacon, isUrgent: !!o.urgent } : null,
+    onlyBeacon: !!o['only-beacon'],
+  },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.

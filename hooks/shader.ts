@@ -27,6 +27,11 @@ export type ShaderParams = {
   scene: Scene
   // The real stars and constellation lines on the dome; empty by day.
   chart: { stars: ChartStar[]; lines: [DomePoint, DomePoint][] }
+  // The lighthouse: lit while Claude waits (orange asking, white done),
+  // hurrying once a question has waited; `onlyBeacon` while the person is
+  // away draws it alone on the terminal's own background.
+  beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
+  onlyBeacon: boolean
   // Where a comet up now hangs on the dome, and the angle its tails point
   // (away from the sun, in the window's own axes); null with no comet.
   comet: { at: DomePoint; away: number } | null
@@ -106,6 +111,8 @@ export function shaderParams(
     demo?: { seconds: number; offsetMs?: number } | null
     events?: readonly ActiveEvent[]
     shootingRate?: number
+    beacon?: ShaderParams['beacon']
+    onlyBeacon?: boolean
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -132,6 +139,8 @@ export function shaderParams(
     // In a demo the day plays from its table: a fixed scene keeps the text,
     // and with it Ghostty, still for the demo's length.
     scene,
+    beacon: options.beacon ?? null,
+    onlyBeacon: !!options.onlyBeacon && !!options.beacon,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
       stars: chart.stars.map(star => ({ ...dome(star), mag: star.mag, bv: star.bv })),
@@ -254,6 +263,9 @@ export function skyShader(params: ShaderParams): string {
     `const vec3 STOP_HORIZON[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[3])).join(', ')});`,
     ...Object.entries(INKS).map(([name, c]) => `const vec3 INK_${name.toUpperCase()} = ${rgb(c)};`),
     ...chartConstants(params.chart),
+    `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
+    `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
+    `const float ONLY_BEACON = ${params.onlyBeacon ? '1.0' : '0.0'};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
@@ -991,6 +1003,62 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
   return sky;
 }
 
+// --- The lighthouse --------------------------------------------------------
+
+// A small striped lighthouse standing on the horizon at the right, lit
+// while Claude waits. Its beam turns as a real one does: seen from the
+// side it reaches out left or right as long as it points across, and
+// flashes in the lantern as it comes round toward you. Any moment of the
+// turn looks right, so iTime's unknown start never shows.
+vec3 beacon(vec3 sky, vec2 p, float u) {
+  if (BEACON == 0) return sky;
+  vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
+  float speed = BEACON_URGENT > 0.5 ? 1.2 : 0.6;
+  float strength = BEACON_URGENT > 0.5 ? 1.0 : 0.75;
+  float foot = 0.62 * iResolution.y;
+  float x = 0.86 * iResolution.x;
+  float h = 4.2 * u;
+  vec2 lantern = vec2(x, foot - h - 0.3 * u);
+
+  // The beam, behind the tower.
+  float phase = iTime * speed;
+  float across = cos(phase);
+  vec2 dir = normalize(vec2(across >= 0.0 ? 1.0 : -1.0, -0.05));
+  vec2 v = p - lantern;
+  float along = dot(v, dir);
+  float reach = 0.6 * iResolution.y * abs(across);
+  if (along > 0.0 && along < reach && p.y < foot) {
+    float off = abs(dot(v, vec2(-dir.y, dir.x)));
+    float spread = along * 0.105 + 0.15 * u;
+    float cover = pow(1.0 - along / reach, 1.5) * smoothstep(spread, spread * 0.35, off);
+    sky = mix(sky, light, clamp(cover * 0.5 * strength, 0.0, 1.0));
+  }
+  // The flash as the beam comes round toward you.
+  float toward = max(0.0, sin(phase));
+  float glow = exp(-length(v) / (u * (0.5 + 1.4 * toward * toward)));
+  sky = mix(sky, light, clamp(glow * (0.35 + 0.55 * toward) * (0.6 + 0.4 * strength), 0.0, 1.0));
+
+  // The rock it stands on.
+  vec2 rock = (p - vec2(x, foot + 0.1 * u)) / vec2(1.5 * u, 0.5 * u);
+  if (p.y > foot - 0.3 * u && dot(rock, rock) < 1.0) sky = mix(sky, INK_INDIGO * 0.8, 0.95);
+  // The tower: narrowing as it rises, banded coral and white.
+  float t = (foot - p.y) / h;
+  float halfWidth = mix(0.55, 0.36, clamp(t, 0.0, 1.0)) * u;
+  if (t >= 0.0 && t <= 1.0 && abs(p.x - x) < halfWidth) {
+    bool coral = int(floor(t * 4.0)) % 2 == 0;
+    vec3 tower = coral ? vec3(0.96, 0.36, 0.32) : vec3(0.97, 0.95, 0.9);
+    sky = mix(sky, tower * (0.75 + 0.25 * smoothstep(halfWidth, 0.0, abs(p.x - x))), 0.92);
+  }
+  // The lantern room, lit, and its roof.
+  vec2 r = abs(p - lantern);
+  if (r.x < 0.42 * u && r.y < 0.3 * u) sky = mix(sky, light, 0.95);
+  float roof = foot - h - 0.6 * u;
+  if (p.y < roof && p.y > roof - 0.45 * u && abs(p.x - x) < 0.45 * u * (p.y - (roof - 0.45 * u)) / (0.45 * u)) {
+    sky = mix(sky, INK_INDIGO, 0.9);
+  }
+  return sky;
+}
+
 // --- The sky behind the terminal -------------------------------------------
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -1002,10 +1070,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }
+  float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
+  // The person is away and Claude waits: the lighthouse alone.
+  if (ONLY_BEACON > 0.5) {
+    fragColor = vec4(mix(beacon(term.rgb, fragCoord, unit), term.rgb, mask), 1.0);
+    return;
+  }
 
   vec2 p = fragCoord;
   Scene s = sceneNow();
-  float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
   float k;
   vec3 sky = gradient(p, s, k);
 
@@ -1028,6 +1101,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
+  sky = beacon(sky, p, unit);
 
   fragColor = vec4(mix(sky, term.rgb, mask), 1.0);
 }

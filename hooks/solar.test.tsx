@@ -682,3 +682,13 @@ test('the comet hangs at its place among the stars and turns with them', () => {
   expect(skyShader(params(ms))).toContain('const vec2 COMET_AT')
   expect(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}).comet).toBeNull()
 })
+
+test('the lighthouse: orange when Claude asks, white when done, and alone while you are away', () => {
+  const ms = Date.UTC(2026, 9, 24, 20)
+  const text = (options: object) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, options))
+  expect(text({})).toContain('const int BEACON = 0;')
+  expect(text({ beacon: { mode: 'asking', isUrgent: false } })).toContain('const int BEACON = 1;')
+  expect(text({ beacon: { mode: 'done', isUrgent: false } })).toContain('const int BEACON = 2;')
+  expect(text({ beacon: { mode: 'asking', isUrgent: true } })).toContain('const float BEACON_URGENT = 1.0;')
+  expect(text({ beacon: { mode: 'done', isUrgent: false }, onlyBeacon: true })).toContain('const float ONLY_BEACON = 1.0;')
+})
