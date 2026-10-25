@@ -9,6 +9,7 @@ import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
+import type { ShaderParams } from './shader'
 import { staleFiles } from './tidy'
 import { animationOf, beaconAt } from './beacon'
 import { elementsOf, issVisible } from './iss'
@@ -731,12 +732,24 @@ export const register: Register = on => {
 
   // How full the context window is now: another tenth filled, Clawd
   // throws a ball of paper in the basket.
-  const takePaper = (fill: number | null, now: number) => {
+  // Whether he threw.
+  const takePaper = (fill: number | null, now: number): boolean => {
     const before = claude.paper
     claude.paper = fill ?? before
     if (before !== null && fill !== null && claude.compactingSince === null && Math.floor(fill / 10) > Math.floor(before / 10)) {
       claude.passing = { kind: 'toss', at: now }
+
+      return true
     }
+
+    return false
+  }
+  // The sky's wastebasket: a ball for each tenth, and the fire.
+  const basketAt = (now: number): ShaderParams['basket'] => {
+    const isEmbers = claude.passing?.kind === 'embers' && now - claude.passing.at < REACTION_SECONDS.embers * 1000
+    const fire = claude.compactingSince !== null ? 'burn' : isEmbers ? 'embers' : null
+
+    return { balls: claude.paper === null ? 0 : Math.floor(claude.paper / 10), fire }
   }
 
   const reactionAt = (now: number) => {
@@ -787,6 +800,7 @@ export const register: Register = on => {
       isClear: iterm !== null || (ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''),
       reaction: reactionAt(now),
       paper: claude.paper,
+      isBasketInSky: ghostty !== null && ghostty.isIncluded && ghostty.written.include !== '',
       track,
       event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
@@ -813,7 +827,7 @@ export const register: Register = on => {
     if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras }))
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, basket: basketAt(now) }))
   }
 
   on('session.start', async ($, e, next) => {
@@ -903,7 +917,10 @@ export const register: Register = on => {
       issOrbit = (await issElements($)) ?? issOrbit
     }
     void fetchIss().catch(() => undefined)
-    const readPaper = async () => takePaper(await contextFill($), await $.clock.now())
+    // A ball thrown lands in the sky's basket as it gets there.
+    const readPaper = async () => {
+      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(800).then(() => refreshSky?.())
+    }
     void readPaper()
     $.clock.every(PAPER_MS, () => void readPaper())
     $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
@@ -1047,7 +1064,7 @@ export const register: Register = on => {
       claude.isWorking = false
       claude.open.clear()
       const now = await $.clock.now()
-      takePaper(await contextFill($), now)
+      if (takePaper(await contextFill($), now)) void $.clock.sleep(800).then(() => refreshSky?.())
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
@@ -1102,6 +1119,8 @@ export const register: Register = on => {
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
     claude.compactingSince = await $.clock.now()
+    // The match lands, and the sky's basket catches fire.
+    void $.clock.sleep(800).then(() => refreshSky?.())
     try {
       const result = await next(e)
       if (!('skip' in result)) {
@@ -1110,11 +1129,14 @@ export const register: Register = on => {
         claude.compactingSince = null
         claude.paper = null
         takePaper(await contextFill($), now)
+        // Embers now, and an empty bin once they are out.
+        void $.clock.sleep(REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.())
       }
 
       return result
     } finally {
       claude.compactingSince = null
+      refreshSky?.()
     }
   })
 

@@ -30,6 +30,10 @@ export type ShaderParams = {
   // The lighthouse: lit while Claude waits (orange asking, white done),
   // hurrying once a question has waited.
   beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
+  // The wastebasket in the bottom right corner: balls of paper, a tenth of
+  // the context window each, and a fire while the conversation compacts
+  // (embers just after); null where the band keeps its own.
+  basket: { balls: number; fire: 'burn' | 'embers' | null } | null
   // The ISS on a visible pass, where it is and was 20 s before; null otherwise.
   iss: { at: DomePoint; trail: DomePoint } | null
   // Where a comet up now hangs on the dome, and the angle its tails point
@@ -125,6 +129,7 @@ export function shaderParams(
     shootingRate?: number
     beacon?: ShaderParams['beacon']
     iss?: ShaderParams['iss']
+    basket?: ShaderParams['basket']
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -152,6 +157,7 @@ export function shaderParams(
     // and with it Ghostty, still for the demo's length.
     scene,
     beacon: options.beacon ?? null,
+    basket: options.basket ?? null,
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -281,6 +287,9 @@ export function skyShader(params: ShaderParams): string {
     `const vec2 ISS_TRAIL = vec2(${f(params.iss?.trail.x ?? 0)}, ${f(params.iss?.trail.y ?? 0)});`,
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
+    `const int BASKET = ${params.basket ? 1 : 0};`,
+    `const int BASKET_BALLS = ${Math.max(0, Math.min(10, Math.round(params.basket?.balls ?? 0)))};`,
+    `const int BASKET_FIRE = ${params.basket?.fire === 'burn' ? 1 : params.basket?.fire === 'embers' ? 2 : 0};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
@@ -607,6 +616,10 @@ uint shapeRow(int kind, int row) {
 
 vec3 tone(vec3 c, float k) { return vivid(c * k, SATURATION); }
 
+// The UFO among the clouds prints as the events do, further down.
+vec3 ink(vec3 sky, vec3 color, float d, float alpha);
+vec3 lift(vec3 c, float k);
+
 // Clouds drift west to east and come back as new ones, lit from the sky
 // behind them; printed, the lit tops take pink (violet by night, orange at
 // sunset) and the undersides blue, two plates a little off register.
@@ -640,18 +653,29 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
     vec2 q = p - o;
 
     if (kind == 6) {
-      // Now and then not a cloud at all.
-      float px = max(1.0, floor(size / 6.0 + 0.5));
-      ivec2 cell = ivec2(floor(q / px));
-      if (cell.x < 0 || cell.x > 6 || cell.y < 0 || cell.y > 3) continue;
-      int rx = cell.x;
-      bool dome = cell.y < 2 && abs(rx - 3) <= (cell.y == 0 ? 1 : 2);
-      bool hull = cell.y == 2 || (cell.y == 3 && rx > 0 && rx < 6);
-      if (!dome && !hull) continue;
-      bool light = cell.y == 3 && rx % 2 == 0;
-      bool blink = int(floor(iTime * 2.0)) % 3 == rx % 3;
-      vec3 c = dome ? vec3(0.561, 0.89, 1.0) : light ? (blink ? INK_YELLOW : INK_PINK) : vec3(0.604, 0.643, 0.722);
-      sky = mix(sky, tone(c, k), opacity);
+      // Now and then not a cloud at all: a saucer, printed as the balloon
+      // is, rocking a little, its lights running round its rim.
+      float px = max(1.0, size / 6.0);
+      vec2 v = q - vec2(3.5, 2.3) * px;
+      if (abs(v.x) > 5.0 * px || abs(v.y) > 4.0 * px) continue;
+      float tilt = sin(iTime * 1.3 + float(seed % 97)) * 0.08;
+      v = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * v;
+      v.y += sin(iTime * 1.7 + float(seed % 89)) * 0.25 * px;
+      float hull = (length(v / vec2(3.6, 0.95)) - px) * 0.95;
+      float dome = v.y < -0.3 * px ? length(v - vec2(0.0, -0.55 * px)) - 1.55 * px : 1e9;
+      vec3 steel = mix(vec3(0.82, 0.84, 0.9), INK_BLUE, 0.15);
+      vec3 body = mix(steel, mix(steel, INK_INDIGO, 0.45), screen(p, clamp(0.15 + v.y / px * 0.45, 0.0, 1.0), pitch, 45.0));
+      vec3 glass = mix(mix(INK_BLUE, vec3(1.0), 0.35), vec3(1.0), screen(p, clamp(0.5 - (v.x + v.y) / px * 0.3, 0.0, 1.0), pitch, 15.0) * 0.6);
+      sky = ink(sky, lift(glass, k), dome, 1.0);
+      sky = ink(sky, lift(body, k), hull, 1.0);
+      for (int j = 0; j < 5; j++) {
+        bool isLit = int(floor(iTime * 3.0)) % 5 == j;
+        sky = ink(sky, isLit ? INK_YELLOW : lift(INK_PINK, k), length(v - vec2(float(j - 2) * 1.25 * px, 0.25 * px)) - 0.3 * px, 1.0);
+      }
+      // The key plate, a little off register.
+      vec2 w = v - vec2(0.12, 0.1) * px;
+      float key = min(abs((length(w / vec2(3.6, 0.95)) - px) * 0.95), w.y < -0.3 * px ? abs(length(w - vec2(0.0, -0.55 * px)) - 1.55 * px) : 1e9);
+      sky = ink(sky, lift(INK_INDIGO, k), key - 0.06 * px, 0.6);
       continue;
     }
 
@@ -1478,6 +1502,111 @@ vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   return ink(sky, lift(INK_INDIGO, k), abs(key) - 0.05 * u, 0.6);
 }
 
+// --- The wastebasket -------------------------------------------------------
+
+// A crumpled ball of paper: a disc with a crease, screened darker away from
+// the light, its key plate off register; \`burnt\` blackens it.
+vec3 paperBall(vec3 sky, vec2 p, vec2 at, float r, int seed, float k, float burnt) {
+  vec2 v = p - at;
+  float d = length(v) - r;
+  if (d > 3.0) return sky;
+  vec3 paper = mix(lift(vec3(0.97, 0.95, 0.9), k), vec3(0.18, 0.1, 0.1), burnt);
+  float pitch = max(3.0, r * 0.35);
+  vec3 c = mix(paper, mix(paper, INK_INDIGO, 0.35), screen(p, clamp(0.2 + dot(v / r, vec2(0.5, 0.6)) * 0.5, 0.0, 1.0), pitch, 45.0));
+  float a = float(seed) * 2.4;
+  float crease = abs(dot(v, vec2(cos(a), sin(a)))) - 0.04 * r;
+  c = mix(c, mix(c, INK_INDIGO, 0.45), smoothstep(1.0, 0.0, crease) * step(length(v), r * 0.8));
+  sky = ink(sky, c, d, 1.0);
+  return ink(sky, lift(INK_INDIGO, k), abs(length(v - vec2(0.12, 0.1) * r) - r) - 0.5, 0.6);
+}
+
+// A tongue of fire rising from \`foot\`, \`h\` tall and \`w\` wide at its base,
+// flickering; how much it covers \`p\`.
+float flame(vec2 p, vec2 foot, float h, float w, float phase) {
+  float f = (foot.y - p.y) / h;
+  if (f < 0.0 || f > 1.0) return 0.0;
+  float sway = sin(f * 3.0 + iTime * 6.0 + phase) * 0.18 * w * f;
+  float width = w * pow(1.0 - f, 0.7) * smoothstep(0.0, 0.12, f);
+  return smoothstep(width, width * 0.6, abs(p.x - foot.x - sway));
+}
+
+// The wastebasket in the bottom right corner, wire mesh over a dark inside:
+// the context window's paper in balls inside it, the last over the rim.
+// While the conversation compacts it burns, the balls blackening, flames
+// in three inks and smoke rising; embers and smoke just after.
+const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0.5, -1.15), vec2(0.05, -1.1), vec2(0.55, -1.15),
+  vec2(-0.55, -1.85), vec2(0.05, -1.8), vec2(0.6, -1.85), vec2(-0.3, -2.55), vec2(0.4, -2.6));
+vec3 basket(vec3 sky, vec2 p, float u, float k) {
+  if (BASKET == 0) return sky;
+  float pitch = max(3.0, u * 0.24);
+  // Its own unit, a little larger than the sky's.
+  u *= 1.25;
+  float hgt = 2.6 * u;
+  vec2 base = vec2(iResolution.x - 2.2 * u, iResolution.y - 0.9 * u);
+  vec2 v = p - base;
+  if (abs(v.x) > 3.0 * u || v.y > 0.5 * u || v.y < -hgt - 6.0 * u) return sky;
+  float rise = clamp(-v.y / hgt, 0.0, 1.0);
+  float halfWidth = mix(0.85, 1.15, rise) * u;
+  bool isInside = v.y <= 0.0 && v.y >= -hgt && abs(v.x) <= halfWidth;
+  bool isBurning = BASKET_FIRE == 1;
+  float burnt = isBurning ? 0.55 + 0.25 * sin(iTime * 2.0) : 0.0;
+
+  // Smoke, behind it all.
+  if (BASKET_FIRE != 0) {
+    for (int j = 0; j < 4; j++) {
+      float age = fract(iTime * 0.22 + float(j) * 0.25);
+      vec2 at = base + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 0.5 * u, -hgt - 0.8 * u - age * 4.5 * u);
+      float puff = smoothstep(1.0, 0.4, length(p - at) / ((0.35 + 0.7 * age) * u)) * (1.0 - age) * (isBurning ? 0.6 : 0.4);
+      sky = mix(sky, lift(vec3(0.62, 0.62, 0.68), k), screen(p, puff, pitch, 45.0) * 0.8);
+    }
+  }
+  if (isInside) sky = mix(sky, tone(INK_INDIGO, k) * 0.55, 0.85);
+  for (int i = 0; i < 8; i++) {
+    if (i >= BASKET_BALLS) break;
+    sky = paperBall(sky, p, base + BALL_AT[i] * u, 0.42 * u, i + 3, k, burnt);
+  }
+  // The mesh, the sides, the rim and the base, in steel.
+  vec3 steel = lift(mix(vec3(0.78, 0.8, 0.88), INK_BLUE, 0.2), k);
+  if (isInside) {
+    float a = abs(fract((v.x + v.y) / (0.42 * u)) - 0.5) * 0.42 * u;
+    float b = abs(fract((v.x - v.y) / (0.42 * u)) - 0.5) * 0.42 * u;
+    sky = ink(sky, steel, min(a, b) - 0.04 * u, 0.8);
+  }
+  if (v.y <= 0.0 && v.y >= -hgt) sky = ink(sky, steel, abs(abs(v.x) - halfWidth) - 0.06 * u, 1.0);
+  if (abs(v.x) <= 1.25 * u) sky = ink(sky, steel, abs(v.y + hgt) - 0.11 * u, 1.0);
+  if (abs(v.x) <= 0.85 * u) sky = ink(sky, steel, abs(v.y) - 0.09 * u, 1.0);
+  // The key plate, a little off register.
+  vec2 w = v - vec2(0.12, 0.1) * u;
+  float wr = clamp(-w.y / hgt, 0.0, 1.0);
+  if (w.y <= 0.0 && w.y >= -hgt) sky = ink(sky, lift(INK_INDIGO, k), abs(abs(w.x) - mix(0.85, 1.15, wr) * u) - 0.04 * u, 0.5);
+  for (int i = 8; i < 10; i++) {
+    if (i >= BASKET_BALLS) break;
+    sky = paperBall(sky, p, base + BALL_AT[i] * u, 0.42 * u, i + 3, k, burnt);
+  }
+
+  // The fire: pink, orange and yellow tongues, each smaller than the last.
+  if (isBurning) {
+    vec3 inks[3] = vec3[3](INK_PINK, INK_ORANGE, INK_YELLOW);
+    float angles[3] = float[3](75.0, 45.0, 0.0);
+    for (int layer = 0; layer < 3; layer++) {
+      float scale = 1.0 - float(layer) * 0.28;
+      float cover = 0.0;
+      for (int i = 0; i < 3; i++) {
+        float x = (-0.6 + 0.6 * float(i)) * u;
+        float h = (1.4 + 0.9 * (0.5 + 0.5 * sin(iTime * (2.3 + float(i) * 0.7) + float(i) * 1.9))) * u * scale;
+        cover = max(cover, flame(p, base + vec2(x, -hgt + 0.6 * u), h, 0.55 * u * scale, float(i * 3 + layer)));
+      }
+      sky = mix(sky, inks[layer], screen(p, cover * 0.95, pitch, angles[layer]));
+    }
+  }
+  // Embers in the bottom of an emptied bin.
+  if (BASKET_FIRE == 2 && isInside && v.y > -0.6 * u) {
+    float glow = step(0.82, rand(int(floor(p.x / pitch)) * 31 + int(floor(p.y / pitch)) * 17 + int(floor(iTime * 4.0))));
+    sky = mix(sky, INK_ORANGE, glow * 0.9);
+  }
+  return sky;
+}
+
 // --- The sky behind the terminal -------------------------------------------
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -1523,6 +1652,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
+  sky = basket(sky, p, unit, k);
 
   fragColor = vec4(mix(sky, term.rgb, mask), 1.0);
 }

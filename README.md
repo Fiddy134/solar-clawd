@@ -9,9 +9,9 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 ## What's in the sky
 
 - **The real sky** — sun and moon positions and phases, bright stars and constellations, the ISS on its actual visible passes, aurora from NOAA's Kp index, and the weather from Open-Meteo (clouds, rain, snow, wind).
-- **Small, rare events** — hot-air balloons, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).
+- **Small, rare events** — hot-air balloons, now and then a flying saucer among the clouds, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).
 - **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and the tomte's sleigh, New Year's fireworks.
-- **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. Behind Clawd stands a wire wastebasket: he tosses a ball of paper into it for each tenth of the context window, and when the conversation is compacted he throws in a match and the context burns away; he reads a book while Claude only reads, and types while it edits or runs commands.
+- **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. In the bottom right corner stands a wire wastebasket (in the band behind Clawd when there is no shader): he tosses a ball of paper into it for each tenth of the context window, and when the conversation is compacted he throws in a match and the context burns away; he reads a book while Claude only reads, and types while it edits or runs commands.
 
 Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
 

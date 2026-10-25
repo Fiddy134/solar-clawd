@@ -34,11 +34,15 @@ const params = shaderParams(
     beacon: o.beacon ? { mode: o.beacon, isUrgent: !!o.urgent } : null,
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
+    // --basket 6 or 9,burn or 0,embers: the wastebasket in the corner.
+    basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.
-const source = skyShader(params) + (o.broken ? '\nint broken = ;\n' : '')
+// --ufo: every cloud a saucer, to see one.
+const sky = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params)
+const source = sky + (o.broken ? '\nint broken = ;\n' : '')
 writeFileSync(join(OUT, 'sky.glsl'), source)
 
 // Ghostty's frame, as WebGL can give it: y from the top, iChannel0 the

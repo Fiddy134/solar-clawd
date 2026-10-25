@@ -28,6 +28,8 @@ const view = {
   track: o.track === undefined || o.track === true ? null : o.track,
   // --paper 85: the context window's fill, Clawd's pile of paper.
   paper: o.paper === undefined ? null : Number(o.paper),
+  // --sky-basket: the basket stands in Ghostty's sky; he throws down toward it.
+  isBasketInSky: !!o['sky-basket'],
 }
 // The event the band names: --event balloon forces one, as /solar event does.
 const context = contextAt(ms, STOCKHOLM, view.weather, null)

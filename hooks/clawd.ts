@@ -55,6 +55,9 @@ export type View = SkyInput & {
   // How full Claude's context window is, 0 to 100: the paper in the
   // wastebasket behind him.
   paper?: number | null
+  // The wastebasket stands in the sky's corner (Ghostty's shader) instead:
+  // he throws the paper down toward it.
+  isBasketInSky?: boolean
 }
 
 const LABELS: Record<Activity, string> = {
@@ -458,6 +461,7 @@ function reactionOverrides(
   y: number,
   t: number,
   isAwake: boolean,
+  isInSky: boolean,
 ): Overrides {
   if (!reaction) return { glyphs: [] }
   const { kind, age } = reaction
@@ -488,9 +492,9 @@ function reactionOverrides(
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
   // A ball of paper over his shoulder into the basket.
-  if (kind === 'toss') return { eyes: 'left', arms: age < 0.35 ? 'up' : 'down', glyphs: [] }
+  if (kind === 'toss') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.35 ? 'up' : 'down', glyphs: [] }
   // A match thrown in, then watching the context burn away, and the smoke.
-  if (kind === 'burn') return { eyes: 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
+  if (kind === 'burn') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
   if (kind === 'embers') return { eyes: 'closed', glyphs: [] }
   // Something in the sky: eyes up, a claw pointing at it.
   if (kind === 'lookUp') {
@@ -547,15 +551,16 @@ function paintBasket(c: Canvas, x: number, y: number, paper: number | null | und
 }
 
 // What flies to the basket: a ball of paper, or a lit match, arcing back
-// over his shoulder.
-function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction']): void {
+// over his shoulder to the one behind him, or out and down toward the one
+// in the sky's corner.
+function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'], isInSky: boolean): void {
   const age = reaction?.kind === 'toss' ? reaction.age : reaction?.kind === 'burn' ? reaction.age : null
   if (age === null || age > 0.8) return
   const f = age / 0.8
-  const px = Math.round(x - 4 * f)
-  const py = Math.round(y + 1 - 3 * f * (1 - f) * 2 - f)
+  const px = Math.round(isInSky ? x + 5 + 12 * f : x - 4 * f)
+  const py = Math.round(isInSky ? y + 1 - 4 * f * (1 - f) + 4 * f : y + 1 - 3 * f * (1 - f) * 2 - f)
   c.set(px, py, reaction!.kind === 'toss' ? CREAM : INKS.yellow)
-  if (reaction!.kind === 'burn') c.set(px + 1, py + 1, WOOD)
+  if (reaction!.kind === 'burn') c.set(px + (isInSky ? -1 : 1), py + 1, WOOD)
 }
 
 // --- Frame ----------------------------------------------------------------
@@ -578,11 +583,12 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   }
   const scene = SCENES[activity]
   const seated = scene.pose(stage)
-  const override = reactionOverrides(c, chase ? null : reaction, x, y, t, isAwake)
+  const isInSky = !!view.isBasketInSky
+  const override = reactionOverrides(c, chase ? null : reaction, x, y, t, isAwake, isInSky)
 
   paintOccasion(c, occasion, x - 8, y, t, light)
   scene.behind(stage)
-  paintBasket(c, x, y, view.paper, light, t, chase ? null : reaction)
+  if (!isInSky) paintBasket(c, x, y, view.paper, light, t, chase ? null : reaction)
 
   const cx = x + Math.round(chase?.dx ?? 0)
   const cy = y + Math.round(chase?.dy ?? override.dy ?? 0)
@@ -591,7 +597,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   paintClawd(c, cx, cy, eyes, arms, chase?.legs ?? 'stand', light)
   scene.front(stage)
   if (isAwake && !chase) paintWork(c, reaction, x, y, t, light)
-  if (!chase) paintThrow(c, x, y, reaction)
+  if (!chase) paintThrow(c, x, y, reaction, isInSky)
 
   const hat = state.hat && HATS[state.hat]
   if (hat) {

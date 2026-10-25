@@ -1087,6 +1087,18 @@ test('the wastebasket fills with the context window, a ball at a time, and burns
   expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'embers', age: 1 } })).not.toBe(drawFrame({ ...view, paper: 90 }))
 })
 
+test('in Ghostty the wastebasket stands in the sky: its balls and its fire are baked in', () => {
+  const text = (basket: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { basket } as never))
+  expect(text(null)).toContain('const int BASKET = 0;')
+  expect(text({ balls: 7, fire: null })).toContain('const int BASKET_BALLS = 7;')
+  expect(text({ balls: 14, fire: null })).toContain('const int BASKET_BALLS = 10;')
+  expect(text({ balls: 3, fire: 'burn' })).toContain('const int BASKET_FIRE = 1;')
+  expect(text({ balls: 0, fire: 'embers' })).toContain('const int BASKET_FIRE = 2;')
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
+  // The band throws toward the sky's basket instead of keeping its own.
+  expect(drawFrame({ ...view, isBasketInSky: true })).not.toBe(drawFrame(view))
+})
+
 test('the shader glances at the cursor, and never at iDate', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
   expect(text).toContain('iCurrentCursor')
