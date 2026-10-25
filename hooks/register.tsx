@@ -2,21 +2,35 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
-import type { Place } from './astro'
-import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained, THROW_SECONDS, toolKind, workKind } from './clawd'
+import type { Waiting } from './beacon'
+import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, THROW_SECONDS, toolKind, workKind } from './clawd'
+import type { Mode, Reaction } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
-import type { Mode, Reaction } from './clawd'
+import {
+  endGhosttySky,
+  ghosttyConfigs,
+  ghosttyKnowsReloadSignal,
+  hasOurInclude,
+  includeInGhostty,
+  isIncluded,
+  reloadGhostty,
+  runtimeFolder,
+  shareWaiting,
+  tidy,
+  updateGhosttySky,
+} from './ghostty'
+import type { Ghostty, SkyExtras, SkyState } from './ghostty'
+import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
+import { issVisible } from './iss'
+import type { Elements } from './iss'
+import { ITERM_FRONTMOST, NOW_PLAYING, SET_BACKGROUND } from './mac'
+import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
+import type { Where } from './net'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import type { ShaderParams } from './shader'
-import { tabMark } from './shader'
-import { staleFiles } from './tidy'
-import { animationOf, beaconAt } from './beacon'
-import { elementsOf, issVisible } from './iss'
-import type { Elements } from './iss'
-import type { Waiting } from './beacon'
-import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
+import { skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
@@ -40,8 +54,7 @@ const DEMO_WALLPAPER_MS = 1_500
 const IDLE_WALLPAPER_MS = 5 * 60_000
 // How often the person's idleness (and iTerm2 being in front) is asked.
 const ACTIVITY_MS = 3_000
-// Weather and aurora are asked for this often, music this often; a place
-// guessed from the IP address is trusted this long before it is guessed again.
+// Weather and aurora are asked for this often, music this often.
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
 // How long /solar bränn plays the wastebasket's fire.
@@ -49,245 +62,19 @@ const BURN_SHOWN_MS = 8_000
 // How often the context window's fill is asked (it costs nothing), for the
 // pile of paper by Clawd.
 const PAPER_MS = 30_000
-const GUESS_MS = 12 * 3_600_000
 
-// Ghostty draws the sky itself, from a shader the mod writes into its
-// runtime folder. Ghostty's config includes runtime/solar-clawd.ghostty,
-// which names the shader while the sky is up and is empty otherwise; each
-// change is followed by a reload, which Ghostty takes without a flicker.
-const RELOAD_GHOSTTY = [
-  '-e',
-  'tell application id "com.mitchellh.ghostty" to perform action "reload_config" on focused terminal of selected tab of front window',
-]
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
 // Away after this long without a key or the mouse: the sky stands still,
 // and with it Ghostty's frame loop, until the person is back.
 const AWAY_MS = 5 * 60_000
-// Each Ghostty session leaves a heartbeat this often; one older than
-// ALIVE_MS is a session gone.
-const HEARTBEAT_MS = 60_000
-const ALIVE_MS = 5 * 60_000
 // How often to ask whether the Mac runs on battery.
 const BATTERY_MS = 60_000
 
 // A turn of Claude's this long earns confetti when it is done.
 const MILESTONE_MS = 3 * 60_000
-
-// $.store keys: a place the person chose, and the last guess with its time.
-const CHOSEN_PLACE = 'place'
-const GUESSED_PLACE = 'guessedPlace'
-// The ISS's elements as last fetched: { fetchedAt, json }.
-const ISS_ELEMENTS = 'iss'
-const ISS_URL = 'https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=json'
-// Elements are fetched at most this often, and the sky follows a pass this often.
-const ISS_MS = 86_400_000
+// While the ISS passes, the sky follows it this often.
 const ISS_TICK_MS = 2_000
-
-// Sets (or, given an empty path, clears) the background image of the one
-// iTerm2 session whose id is the first argument, and answers the size of its
-// window in points: "ok <width> <height>".
-const SET_BACKGROUND = [
-  'on run argv',
-  'set targetId to item 1 of argv',
-  'set imagePath to item 2 of argv',
-  'tell application id "com.googlecode.iterm2"',
-  'repeat with w in windows',
-  'repeat with t in tabs of w',
-  'repeat with s in sessions of t',
-  'if (id of s) is targetId then',
-  'set background image of s to imagePath',
-  'set b to bounds of w',
-  'return "ok " & ((item 3 of b) - (item 1 of b)) & " " & ((item 4 of b) - (item 2 of b)) & " " & (frontmost as text)',
-  'end if',
-  'end repeat',
-  'end repeat',
-  'end repeat',
-  'end tell',
-  'return "missing"',
-  'end run',
-].flatMap(line => ['-e', line])
-
-// Whether iTerm2 is the app in front.
-const ITERM_FRONTMOST = ['-e', 'tell application id "com.googlecode.iterm2" to return frontmost as text']
-
-// "title - artist" of what Spotify or Music plays, or nothing. Neither app is
-// started: each is asked only while it already runs, through `run script`
-// so its terms are not looked up unless it does.
-const NOW_PLAYING = [
-  'set out to ""',
-  'try',
-  'repeat with appId in {"com.spotify.client", "com.apple.Music"}',
-  'if out is "" and application id appId is running then',
-  'set out to run script "tell application id \\"" & appId & "\\"\nif player state is playing then return name of current track & \\" - \\" & artist of current track\nreturn \\"\\"\nend tell"',
-  'end if',
-  'end repeat',
-  'end try',
-  'return out',
-].flatMap(line => ['-e', line])
-
-type Json = Record<string, unknown>
-
-function field(value: unknown, key: string): unknown {
-  return typeof value === 'object' && value !== null ? (value as Json)[key] : undefined
-}
-
-function number(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function asPlace(value: unknown): Place | null {
-  const name = field(value, 'name')
-  const lat = number(field(value, 'lat'))
-  const lon = number(field(value, 'lon'))
-
-  // A name from the network goes into cells and replies: printable and short.
-  return typeof name === 'string' && lat !== null && lon !== null ? { name: plain(name).slice(0, 40), lat, lon } : null
-}
-
-// The ISS's elements: as stored while under a day old, fetched again after,
-// the stored ones kept should the network fail.
-async function issElements($: EngineInterface): Promise<Elements | null> {
-  const now = await $.clock.now()
-  const cached = (await $.store.get(ISS_ELEMENTS).catch(() => null)) as { fetchedAt?: unknown; json?: unknown } | null
-  const stored = cached ? elementsOf(cached.json) : null
-  if (stored && typeof cached?.fetchedAt === 'number' && now - cached.fetchedAt < ISS_MS) return stored
-  const json = await getJson($, ISS_URL)
-  const fresh = elementsOf(json)
-  if (!fresh) return stored
-  await $.store.set(ISS_ELEMENTS, { fetchedAt: now, json }).catch(() => undefined)
-
-  return fresh
-}
-
-async function getJson($: EngineInterface, url: string): Promise<unknown> {
-  try {
-    const response = await $.http.fetch(url)
-
-    return response.ok ? (JSON.parse(response.text) as unknown) : null
-  } catch {
-    return null
-  }
-}
-
-// Where this machine seems to be, from its IP address: a town, roughly.
-async function guessPlace($: EngineInterface): Promise<Place | null> {
-  const info = await getJson($, 'https://ipinfo.io/json')
-  const city = field(info, 'city')
-  const [lat, lon] = String(field(info, 'loc') ?? '').split(',').map(Number)
-  if (typeof city === 'string' && Number.isFinite(lat) && Number.isFinite(lon)) {
-    return asPlace({ name: city, lat, lon })
-  }
-
-  const who = await getJson($, 'https://ipwho.is/')
-  const fallback = {
-    name: field(who, 'city'),
-    lat: field(who, 'latitude'),
-    lon: field(who, 'longitude'),
-  }
-
-  return field(who, 'success') === true ? asPlace(fallback) : null
-}
-
-async function findPlace($: EngineInterface, name: string): Promise<Place | null> {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?count=1&language=sv&format=json&name=${encodeURIComponent(name)}`
-  const first = (field(await getJson($, url), 'results') as unknown[] | undefined)?.[0]
-
-  return asPlace({
-    name: field(first, 'name'),
-    lat: field(first, 'latitude'),
-    lon: field(first, 'longitude'),
-  })
-}
-
-// The weather now and the place's UTC offset, which carries its summer time.
-async function fetchWeather(
-  $: EngineInterface,
-  place: Place,
-): Promise<{ weather: Weather; offsetMs: number } | null> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.lat}&longitude=${place.lon}&current=temperature_2m,weather_code,cloud_cover,wind_speed_10m&wind_speed_unit=ms&timezone=auto`
-  const body = await getJson($, url)
-  const current = field(body, 'current')
-  const temperature = number(field(current, 'temperature_2m'))
-  const code = number(field(current, 'weather_code'))
-  const cloudCover = number(field(current, 'cloud_cover'))
-  const wind = number(field(current, 'wind_speed_10m'))
-  const offset = number(field(body, 'utc_offset_seconds'))
-  if (temperature === null || code === null || cloudCover === null || wind === null || offset === null) {
-    return null
-  }
-
-  return { weather: { temperature, code, cloudCover, wind }, offsetMs: offset * 1000 }
-}
-
-// The planetary Kp index (0 to 9) over the last few minutes, from NOAA.
-async function fetchKp($: EngineInterface): Promise<number | null> {
-  const rows = await getJson($, 'https://services.swpc.noaa.gov/json/planetary_k_index_1m.json')
-  if (!Array.isArray(rows)) return null
-  const recent = rows.slice(-10).map(row => number(field(row, 'estimated_kp')) ?? 0)
-
-  return recent.length > 0 ? Math.max(...recent) : null
-}
-
-// Where the sky is and what it is doing there: Stockholm and Swedish time
-// until a place and its weather come in.
-type Where = {
-  place: Place
-  isChosen: boolean
-  weather: Weather | null
-  offsetMs: number | undefined
-  kp: number | null
-  // When it last rained there, for a rainbow after.
-  lastRainAt: number | null
-}
-
-async function refreshWeather($: EngineInterface, where: Where): Promise<void> {
-  const [fetched, kp] = await Promise.all([fetchWeather($, where.place), fetchKp($)])
-  if (fetched) {
-    where.weather = fetched.weather
-    where.offsetMs = fetched.offsetMs
-    const sky = skyOf(fetched.weather.code)
-    if (sky === 'drizzle' || sky === 'rain' || sky === 'thunder') where.lastRainAt = await $.clock.now()
-  }
-  if (kp !== null) where.kp = kp
-}
-
-// A chosen place wins; else a recent guess; else a new guess.
-async function settlePlace($: EngineInterface, where: Where): Promise<void> {
-  const chosen = asPlace(await $.store.get(CHOSEN_PLACE))
-  where.isChosen = chosen !== null
-  if (chosen) {
-    where.place = chosen
-  } else {
-    const now = await $.clock.now()
-    const cached = await $.store.get(GUESSED_PLACE)
-    const guessed = asPlace(field(cached, 'place'))
-    const at = number(field(cached, 'at')) ?? 0
-    if (guessed && now - at < GUESS_MS) {
-      where.place = guessed
-    } else {
-      const fresh = await guessPlace($)
-      if (fresh) {
-        where.place = fresh
-        await $.store.set(GUESSED_PLACE, { place: fresh, at: now })
-      }
-    }
-  }
-  await refreshWeather($, where)
-}
-
-function placeText({ place, isChosen, weather }: Where): string {
-  const guessed = isChosen ? '' : ' (gissad från din IP-adress)'
-  const now = weather ? `, ${Math.round(weather.temperature)}°C ${SKY_WORDS[skyOf(weather.code)]}` : ''
-
-  return `${place.name}${guessed}${now}`
-}
-
-// Text as the band can draw it: one cell per printable character, so no
-// control character from a track or a place name reaches the terminal.
-function plain(text: string): string {
-  return [...text].map(ch => (isPrintable(ch.codePointAt(0)!) ? ch : '?')).join('')
-}
 
 // How full the context window is, 0 to 100, for Clawd's pile of paper;
 // null when it could not say.
@@ -297,406 +84,8 @@ async function contextFill($: EngineInterface): Promise<number | null> {
   return usage?.context.percent ?? null
 }
 
-// Whether the session runs on Linux, as uname says; anything it does not
-// say plainly counts as the Mac.
-async function isLinuxHost($: EngineInterface): Promise<boolean> {
-  const answer = await $.process.run(['uname', '-s'], { timeoutMs: 5_000 }).catch(() => null)
-
-  return answer?.stdout.trim() === 'Linux'
-}
-
-// Whether the computer runs on battery: on battery the Ghostty sky stands
-// still. Anything pmset (or Linux's power supplies) does not say plainly
-// counts as mains power.
-async function isOnBattery($: EngineInterface, isOnLinux: boolean): Promise<boolean> {
-  try {
-    if (isOnLinux) {
-      const { stdout } = await $.process.run(['sh', '-c', 'cat /sys/class/power_supply/*/status 2>/dev/null'], { timeoutMs: 5_000 })
-
-      return stdout.split('\n').some(line => line.trim() === 'Discharging')
-    }
-    const { stdout } = await $.process.run(['/usr/bin/pmset', '-g', 'batt'], { timeoutMs: 5_000 })
-
-    return stdout.includes("'Battery Power'")
-  } catch {
-    return false
-  }
-}
-
-// How long since the person last touched a key or the mouse; null on
-// Linux, which has no one way to ask.
-async function idleMs($: EngineInterface, isOnLinux: boolean): Promise<number | null> {
-  if (isOnLinux) return null
-  try {
-    const { stdout } = await $.process.run(['/usr/sbin/ioreg', '-c', 'IOHIDSystem', '-d', '4'], { timeoutMs: 5_000 })
-    const ns = /"HIDIdleTime" = (\d+)/.exec(stdout)?.[1]
-
-    return ns ? Number(ns) / 1e6 : null
-  } catch {
-    return null
-  }
-}
-
-// Whether Ghostty is the app in front, as lsappinfo says (it needs no
-// permissions); null when it could not say, as on Linux.
-async function isGhosttyInFront($: EngineInterface, isOnLinux: boolean): Promise<boolean | null> {
-  if (isOnLinux) return null
-  try {
-    const { stdout: front } = await $.process.run(['/usr/bin/lsappinfo', 'front'], { timeoutMs: 5_000 })
-    if (front.trim() === '') return null
-    const { stdout } = await $.process.run(['/usr/bin/lsappinfo', 'info', '-only', 'bundleid', front.trim()], { timeoutMs: 5_000 })
-    const id = /bundleID="([^"]+)"/.exec(stdout)?.[1]
-
-    return id ? id === 'com.mitchellh.ghostty' : null
-  } catch {
-    return null
-  }
-}
-
-// Ghostty's config files, the one to add the include to first: on macOS
-// Application Support before ~/.config, on Linux only the XDG folder.
-function ghosttyConfigs(home: string, isOnLinux: boolean, xdgConfig: string | null): string[] {
-  const xdg = `${xdgConfig ?? `${home}/.config`}/ghostty`
-  if (isOnLinux) return [`${xdg}/config.ghostty`, `${xdg}/config`]
-  const support = `${home}/Library/Application Support/com.mitchellh.ghostty`
-
-  return [`${support}/config.ghostty`, `${support}/config`, `${xdg}/config.ghostty`, `${xdg}/config`]
-}
-
-// Where a Ghostty session keeps the sky's files, and what it last wrote:
-// the shader, the include, the heartbeat's time.
-type Ghostty = {
-  // This session's id, which its heartbeat and its temp files are named by.
-  id: string
-  folder: string
-  include: string
-  shader: string
-  heartbeat: string
-  // What this session waits on the person for, while it does: other
-  // sessions read it, so any of their skies lights the lighthouse.
-  waiting: string
-  // Present while the sky is hidden: /solar in any session hides it for all.
-  hidden: string
-  home: string
-  configs: string[]
-  isLinux: boolean
-  // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
-  knowsReloadSignal: boolean
-  // Whether Ghostty's config includes the mod's file, asked each minute.
-  isIncluded: boolean
-  written: {
-    shader: string
-    include: string
-    // The tab's mark as last written (markOf).
-    mark: string
-    heartbeatAt: number
-    // A change Ghostty has not yet reloaded for: tried again each tick.
-    isReloadOwed: boolean
-    // Set as the session ends: no tick writes after it.
-    isEnded: boolean
-    // The update under way, which the session's end waits on, and whether
-    // something changed while it ran, so it runs again.
-    running: Promise<void> | null
-    isAgain: boolean
-  }
-}
-
-// Whether one of Ghostty's config files includes the mod's file, on a line
-// of its own (a commented-out line does not count).
-async function isIncluded($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
-  for (const path of ghostty.configs) {
-    const text = await $.fs.read(path).catch(() => '')
-    const lines = text.split('\n').map(line => line.trim().replace(/^config-file\s*=\s*\??/, ''))
-    if (text.split('\n').some((line, i) => /^config-file\s*=/.test(line.trim()) && lines[i] === ghostty.include)) return true
-  }
-
-  return false
-}
-
-// Removes what crashed sessions left in `folder`; `keep` is this session's.
-async function tidy($: EngineInterface, folder: string, keep: string[]): Promise<void> {
-  const now = await $.clock.now()
-  const entries = await $.fs.list(folder).catch(() => [])
-  const paths = staleFiles(entries, folder, now, keep)
-  if (paths.length > 0) await $.process.run(['/bin/rm', '-f', ...paths]).catch(() => undefined)
-}
-
-// Ghostty's config, and with it the shader, is one for every tab and
-// window. A session marks its own tab instead: palette colour 16 (black,
-// in the colour cube) one step off, which no one sees and the shader looks
-// for, so the sky shows only where Claude runs. Written to the session's
-// own terminal: the tty of the process the mod's commands run under.
-const UNMARK_TAB = '\x1b]104;16\x1b\\'
-// The mark for what this tab's wastebasket holds (tabMark).
-function markOf(basket: ShaderParams['basket']): string {
-  const hex = tabMark(basket).map(v => v.toString(16).padStart(2, '0'))
-
-  return `\x1b]4;16;rgb:${hex.join('/')}\x1b\\`
-}
-async function markTab($: EngineInterface, sequence: string): Promise<void> {
-  const script = 'tty=$(ps -o tty= -p $PPID | tr -d " "); case "$tty" in ""|"?"*) exit 1;; esac; printf "%s" "$1" > "/dev/$tty"'
-  await $.process.run(['sh', '-c', script, 'sh', sequence], { timeoutMs: 5_000 }).catch(() => undefined)
-}
-
-// Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
-// through systemd while it runs as its service, else sent to it straight,
-// but only to a Ghostty new enough to know the signal (to an older one it
-// is the end).
-async function reloadGhostty($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
-  try {
-    if (ghostty.isLinux) {
-      const service = await $.process
-        .run(['systemctl', '--user', 'reload', 'app-com.mitchellh.ghostty.service'], { timeoutMs: 5_000 })
-        .catch(() => null)
-      if (service?.exitCode === 0) return true
-      if (!ghostty.knowsReloadSignal) return false
-      const { exitCode } = await $.process.run(['pkill', '-USR2', '-x', 'ghostty'], { timeoutMs: 5_000 })
-
-      return exitCode === 0
-    }
-    const { exitCode } = await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 })
-
-    return exitCode === 0
-  } catch {
-    return false
-  }
-}
-
-// Whether the Ghostty on the PATH is 1.3 or later.
-async function ghosttyKnowsReloadSignal($: EngineInterface): Promise<boolean> {
-  const answer = await $.process.run(['ghostty', '--version'], { timeoutMs: 5_000 }).catch(() => null)
-  const [major = 0, minor = 0] = (/Ghostty (\d+)\.(\d+)/.exec(answer?.stdout ?? '') ?? []).slice(1).map(Number)
-
-  return major > 1 || (major === 1 && minor >= 3)
-}
-
-// Writes `text` to a file of this session's own beside `path`, then moves it
-// into place: Ghostty, reloading at any moment, never reads half a file.
-async function writeWhole($: EngineInterface, path: string, text: string, id: string): Promise<void> {
-  const temp = `${path}.tmp-${id}`
-  await $.fs.write(temp, text)
-  const { exitCode } = await $.process.run(['/bin/mv', '-f', temp, path])
-  if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
-}
-
-// What the Ghostty sky depends on besides the time: whether the person is
-// away, whether the Mac runs on battery, and what this session waits on the
-// person for.
-type SkyState = {
-  isAway: boolean
-  isOnBattery: boolean
-  waiting: Waiting | null
-  basketAt: (now: number) => ShaderParams['basket']
-  livelyAt: (now: number) => boolean
-}
-
-// What the session's shader is asked to draw beyond the scene.
-type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean }
-
-// The sky in Ghostty as it should be now: `shaderAt`'s shader while the
-// sky is not hidden, nothing otherwise, and Ghostty animating it as the
-// lighthouse, the battery and the person's being away say. Ghostty
-// reloads only when a file actually changed.
-//
-// Every session wants the same on or off (the hidden file and the person's
-// idleness are shared), so the include is checked against the disk and put
-// right whoever changed it. The shader's text is this session's own: it is
-// written when it changes here, the last session to change it winning.
-// One update at a time, again if asked for while one ran, and none once the
-// session has ended.
-async function updateGhosttySky(
-  $: EngineInterface,
-  ghostty: Ghostty,
-  shaderAt: (now: number, extras: SkyExtras) => string,
-  state: () => SkyState,
-): Promise<void> {
-  const { written } = ghostty
-  if (written.isEnded) return
-  if (written.running !== null) {
-    written.isAgain = true
-    return
-  }
-  do {
-    written.isAgain = false
-    written.running = writeGhosttySky($, ghostty, shaderAt, state())
-    try {
-      await written.running
-    } finally {
-      written.running = null
-    }
-  } while (written.isAgain && !written.isEnded)
-}
-
-// What other live sessions wait on the person for: their waiting files,
-// counted only while their heartbeat is fresh.
-async function othersWaiting($: EngineInterface, ghostty: Ghostty, now: number): Promise<Waiting[]> {
-  const entries = await $.fs.list(ghostty.folder).catch(() => [])
-  const own = ghostty.waiting.slice(ghostty.folder.length + 1)
-  const alive = new Map(entries.filter(entry => entry.name.startsWith('alive-')).map(entry => [entry.name.slice(6), entry.mtimeMs]))
-  const waits: Waiting[] = []
-  for (const entry of entries) {
-    if (!entry.name.startsWith('waiting-') || entry.name === own) continue
-    const beat = alive.get(entry.name.slice(8))
-    if (beat === undefined || now - beat >= ALIVE_MS) continue
-    const wait = asWaiting(await $.fs.read(`${ghostty.folder}/${entry.name}`).catch(() => ''))
-    if (wait) waits.push(wait)
-  }
-
-  return waits
-}
-
-function asWaiting(text: string): Waiting | null {
-  try {
-    const value = JSON.parse(text) as unknown
-    const mode = field(value, 'mode')
-    const since = number(field(value, 'since'))
-
-    return (mode === 'asking' || mode === 'done') && since !== null ? { mode, since } : null
-  } catch {
-    return null
-  }
-}
-
 // The notifications that ask the person something.
 const ASKING = ['permission_prompt', 'elicitation_dialog']
-
-// Shares a change in what this session waits on the person for, and
-// updates the sky for it at once.
-async function shareWaiting($: EngineInterface, ghostty: Ghostty | null, waiting: Waiting | null, refresh: (() => void) | null): Promise<void> {
-  if (ghostty === null) return
-  await writeWaiting($, ghostty, waiting).catch(() => undefined)
-  refresh?.()
-}
-
-// Writes what this session waits on the person for where others read it,
-// or takes it away.
-async function writeWaiting($: EngineInterface, ghostty: Ghostty, waiting: Waiting | null): Promise<void> {
-  if (waiting) await $.fs.write(ghostty.waiting, JSON.stringify(waiting))
-  else await $.process.run(['/bin/rm', '-f', ghostty.waiting]).catch(() => undefined)
-}
-
-async function writeGhosttySky(
-  $: EngineInterface,
-  ghostty: Ghostty,
-  shaderAt: (now: number, extras: SkyExtras) => string,
-  state: SkyState,
-): Promise<void> {
-  const { written } = ghostty
-  const now = await $.clock.now()
-  // The tab's mark when its basket changes, and again each minute: a
-  // `reset` in the tab would have cleared it.
-  const mark = markOf(state.basketAt(now))
-  if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
-    await markTab($, mark)
-    written.mark = mark
-  }
-  if (now - written.heartbeatAt >= HEARTBEAT_MS) {
-    await $.fs.write(ghostty.heartbeat, String(now))
-    written.heartbeatAt = now
-    ghostty.isIncluded = await isIncluded($, ghostty)
-  }
-  const waits = [...(state.waiting ? [state.waiting] : []), ...(await othersWaiting($, ghostty, now))]
-  const beacon = beaconAt(waits, now)
-  const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
-  const isWanted = !isHidden
-  let include = ''
-  if (isWanted) {
-    // Ghostty draws with OpenGL on Linux, where fragCoord has y up.
-    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, isYUp: ghostty.isLinux }
-    // Against the disk, not what this session last wrote: another session
-    // may have written the same (no reload) or something else (put right).
-    const shader = shaderAt(now, extras)
-    if (shader !== (await $.fs.read(ghostty.shader).catch(() => null))) {
-      await writeWhole($, ghostty.shader, shader, ghostty.id)
-      written.isReloadOwed = true
-    }
-    written.shader = shader
-    const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery, isLively: state.livelyAt(now) })
-    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
-  }
-  const onDisk = await $.fs.read(ghostty.include).catch(() => null)
-  if (include !== onDisk) {
-    await writeWhole($, ghostty.include, include, ghostty.id)
-    written.isReloadOwed = true
-  }
-  written.include = include
-  if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($, ghostty))
-}
-
-// The session is ending: its heartbeat goes, and the sky with it unless
-// another session is still alive. A /clear or a resume goes on in the same
-// process: the sky stays.
-async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
-  if (reason === 'clear' || reason === 'resume') return
-  ghostty.written.isEnded = true
-  await markTab($, UNMARK_TAB)
-  await ghostty.written.running?.catch(() => undefined)
-  const { folder, heartbeat, include } = ghostty
-  await $.process.run(['/bin/rm', '-f', heartbeat, ghostty.waiting]).catch(() => undefined)
-  const now = await $.clock.now()
-  const entries = await $.fs.list(folder).catch(() => [])
-  const isAnotherAlive = entries.some(
-    entry => entry.name.startsWith('alive-') && `${folder}/${entry.name}` !== heartbeat && now - entry.mtimeMs < ALIVE_MS,
-  )
-  if (!isAnotherAlive && (await $.fs.read(include).catch(() => '')) !== '') {
-    await writeWhole($, include, '', ghostty.id)
-    await reloadGhostty($, ghostty)
-  }
-}
-
-// The lines the mod itself added to a Ghostty config, from any folder it was
-// loaded from: its comment, and the include of its runtime file.
-const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??\S*\/runtime\/solar-clawd\.ghostty$/]
-
-// Whether a config has an include line the mod added, wherever it points.
-async function hasOurInclude($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
-  for (const path of ghostty.configs) {
-    const text = await $.fs.read(path).catch(() => '')
-    if (text.split('\n').some(line => OUR_LINES[1]!.test(line.trim()))) return true
-  }
-
-  return false
-}
-
-// Where a Ghostty session keeps the sky's files: a folder of the person's
-// own, so the include line in Ghostty's config outlives the plugin's folder
-// (an installed plugin's moves with each update). It ends in /runtime, as
-// OUR_LINES expects.
-function runtimeFolder(home: string, isOnLinux: boolean, xdgState: string | null): string {
-  if (isOnLinux) return `${xdgState ?? `${home}/.local/state`}/solar-clawd/runtime`
-
-  return `${home}/Library/Application Support/solar-clawd/runtime`
-}
-
-// Adds the one include line to the config Ghostty reads first, in place of
-// any the mod added before; `?` keeps Ghostty quiet should the file ever be
-// missing. Answers the line and file, or null when the config is there but
-// cannot be read: never written over.
-async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
-  let config = ghostty.configs[0]!
-  // On Linux the file that is there, config.ghostty if neither is.
-  if (ghostty.isLinux) {
-    for (const path of ghostty.configs) {
-      if (await $.fs.exists(path).catch(() => false)) {
-        config = path
-        break
-      }
-    }
-    await $.process.run(['mkdir', '-p', config.slice(0, config.lastIndexOf('/'))]).catch(() => undefined)
-  }
-  const isThere = await $.fs.exists(config).catch(() => true)
-  const read = isThere ? await $.fs.read(config).catch(() => null) : ''
-  if (read === null) return null
-  const text = read
-    .split('\n')
-    .filter(row => !OUR_LINES.some(pattern => pattern.test(row.trim())))
-    .join('\n')
-  const line = `config-file = ?${ghostty.include}`
-  const gap = text === '' || text.endsWith('\n') ? '' : '\n'
-  await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\n`)
-
-  return { line, config }
-}
 
 export const register: Register = on => {
   // The band as last drawn, so the timer can repaint it in place, and the
