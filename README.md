@@ -2,11 +2,13 @@
 
 A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a pixel Clawd lives in a band above the prompt — sleeping, drinking coffee, coding, cheering when Claude finishes and facepalming when a tool fails.
 
-![Four skies: day, dusk, aurora at night, rain](assets/skies.png)
+![A low sun over the sea, the lighthouse lit, a dolphin, and Clawd at work above the prompt](assets/demo.gif)
 
 Everything is printed in a risograph style: a handful of inks, halftone screens and a key plate slightly off register.
 
 ## What's in the sky
+
+![Four skies: day, dusk, aurora at night, rain](assets/skies.png)
 
 - **The real sky** — sun and moon positions and phases, bright stars and constellations, the ISS on its actual visible passes, aurora from NOAA's Kp index, and the weather from Open-Meteo (clouds, rain, snow, wind).
 - **Small, rare events** — hot-air balloons, now and then a flying saucer among the clouds, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).

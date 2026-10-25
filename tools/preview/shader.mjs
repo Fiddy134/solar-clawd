@@ -12,7 +12,8 @@ import { join } from 'node:path'
 import { STOCKHOLM } from '../../hooks/astro.ts'
 import { contextAt, eventsAt, shootingRate } from '../../hooks/events.ts'
 import { shaderParams, skyShader, tabMark } from '../../hooks/shader.ts'
-import { dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
+import { drawFrame, ROWS } from '../../hooks/clawd.ts'
+import { cellsSvg, dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
 const [width, height] = [Number(o.width), Number(o.height)]
@@ -43,7 +44,10 @@ const params = shaderParams(
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.
 // --ufo: every cloud a saucer, to see one.
-const sky = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params)
+const whole = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params)
+// --without clouds,beacon: mainImage without those stages, to see what each costs (with --bench).
+const left = o.without ? String(o.without).split(',') : []
+const sky = whole.split('\n').filter(line => !left.some(name => new RegExp(`sky = ${name}\\(`).test(line))).join('\n')
 const source = sky + (o.broken ? '\nint broken = ;\n' : '')
 writeFileSync(join(OUT, 'sky.glsl'), source)
 
@@ -65,6 +69,35 @@ ${source}
 void main() { mainImage(outColor, ${o['y-up'] ? 'gl_FragCoord.xy' : 'vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y)'}); }
 `
 
+// --band: Clawd's band above the prompt as the mod draws it, the sky
+// showing through it (with --paper, --reaction kind,age, --sky-basket).
+const CELL = 8
+const bandColumns = Math.floor(width / CELL)
+const bandTop = height - 120 - ROWS * CELL * 2 - 8
+const [reactionKind, reactionAge] = o.reaction ? String(o.reaction).split(',') : []
+const bandSvg = o.band
+  ? `<svg xmlns="http://www.w3.org/2000/svg" width="${bandColumns * CELL}" height="${ROWS * CELL * 2}" font-family="Menlo" shape-rendering="crispEdges">${cellsSvg(
+      drawFrame({
+        columns: bandColumns,
+        ms,
+        t: ms / 1000 + Number(o.time),
+        mode: 'live',
+        place: STOCKHOLM,
+        weather,
+        isClear: true,
+        paper: o.paper === undefined ? null : Number(o.paper),
+        isBasketInSky: !!o['sky-basket'],
+        reaction: reactionKind ? { kind: reactionKind, age: Number(reactionAge ?? 0) } : null,
+        event: null,
+      }),
+      bandColumns,
+      ROWS,
+      CELL,
+      0,
+      background,
+    )}</svg>`
+  : null
+
 const page = `<!doctype html><html><body style="margin:0;background:#000">
 <canvas id="c" width="${width}" height="${height}" style="display:block"></canvas>
 <pre id="log" style="position:absolute;top:0;left:0;margin:8px;color:#f66;font:12px Menlo;white-space:pre-wrap"></pre>
@@ -82,6 +115,7 @@ const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 fil
 lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20))
 t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
 t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
+const render = () => {
 const gl = document.getElementById('c').getContext('webgl2', { preserveDrawingBuffer: true })
 if (!gl) fail('no WebGL2')
 const shader = (type, text) => {
@@ -115,18 +149,37 @@ try {
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
-  document.title = 'ok'
+  // --bench n: the time a frame takes, over n frames (SwiftShader, on the CPU).
+  const runs = ${Number(o.bench ?? 0)}
+  if (runs > 0) {
+    const pixel = new Uint8Array(4)
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
+    const begin = performance.now()
+    for (let i = 0; i < runs; i++) { gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel) }
+    document.title = 'ok ' + ((performance.now() - begin) / runs).toFixed(1)
+  } else document.title = 'ok'
 } catch (error) { fail(String(error.message || error)) }
+}
+const bandSvg = ${JSON.stringify(bandSvg)}
+if (bandSvg) {
+  const band = new Image()
+  band.onload = () => { t.drawImage(band, 0, ${bandTop}); render() }
+  band.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(bandSvg)
+} else render()
 </script></body></html>`
 const html = join(OUT, `${o.out ?? 'shader'}.html`)
 writeFileSync(html, page)
 
 const dom = dumpDom(html, true)
-const failed = /<title>fail<\/title>/.test(dom) || !/<title>ok<\/title>/.test(dom)
+const failed = /<title>fail<\/title>/.test(dom) || !/<title>ok( [\d.]+)?<\/title>/.test(dom)
 if (failed) {
   const text = /<pre id="log"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1] ?? dom.slice(0, 2000)
   console.error(text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'))
   process.exit(1)
+}
+if (o.bench) {
+  console.log(`${/<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]} ms a frame`)
+  process.exit(0)
 }
 console.log(screenshot(html, width, height, o.out ?? 'shader', true))
 console.log(`${source.length} chars, scene`, JSON.stringify(params.scene))
