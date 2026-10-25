@@ -182,21 +182,51 @@ vec3 splash(vec3 sky, vec2 p, vec2 at, float age, float s, float u, float k) {
   return sky;
 }
 
-// A dolphin in the lighthouse's sea, leaping now and then: an arc out of
-// the water and back, a splash where it leaves and where it goes in.
-// Sometimes a pink one.
+// Two shapes' union, rounded where they meet, as a cartoon's are.
+float smin(float a, float b, float r) {
+  float h = max(r - abs(a - b), 0.0) / r;
+  return min(a, b) - h * h * r * 0.25;
+}
+
+// The dolphin's body bent along its leap, in units of its size, nose
+// forward along x and back up along y: the ends droop toward the water as
+// its arc does, and the tail beats with \`beat\`.
+vec2 dolphinBend(vec2 q, float beat) {
+  float tail = 1.0 - smoothstep(-1.3, -0.2, q.x);
+  return vec2(q.x, q.y + 0.2 * q.x * q.x - 0.12 * beat * tail);
+}
+
+// The dolphin as a cartoon draws one, from b bent: a round melon of a
+// forehead over a short beak, a plump body tapering to the tail, a
+// swept-back fin on its back, a flipper and the flukes.
+float dolphinShape(vec2 b) {
+  float torso = limb(b, vec2(0.3, 0.0), vec2(-0.95, 0.0), 0.4, 0.11);
+  float melon = length(b - vec2(0.5, 0.12)) - 0.4;
+  float beak = limb(b, vec2(0.8, -0.14), vec2(1.08, -0.15), 0.15, 0.12);
+  float body = smin(smin(torso, melon, 0.2), beak, 0.12);
+  float fin = smin(limb(b, vec2(0.05, 0.3), vec2(-0.22, 0.62), 0.17, 0.07), limb(b, vec2(-0.22, 0.62), vec2(-0.45, 0.74), 0.07, 0.025), 0.06);
+  float flipper = limb(b, vec2(0.2, -0.28), vec2(-0.12, -0.6), 0.1, 0.04);
+  float flukes = limb(vec2(b.x, abs(b.y)), vec2(-0.95, 0.02), vec2(-1.32, 0.34), 0.08, 0.06);
+  return smin(body, min(fin, min(flipper, flukes)), 0.08);
+}
+
+// A dolphin in the lighthouse's sea, out beyond the keeper's line, leaping
+// now and then: an arc out of the water and back, its body bending with
+// it, a splash where it leaves and where it goes in. A face to it: an eye
+// with a glint and a smile. Sometimes a pink one.
 vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   // A little way out from the horizon, nearer than the lighthouse.
+  Lighthouse l = lighthouse(u);
   float level = (ARC.w + 0.03) * iResolution.y;
   float period = 7.0;
-  float air = 1.3;
+  float air = 1.6;
   float clock = iTime + seed;
   int n = int(floor(clock / period));
   float local = mod(clock, period);
-  float s = 0.7 * u;
+  float s = 0.7 * l.s;
   float span = 3.4 * s;
   float side = rand(n * 17 + 3) < 0.5 ? 1.0 : -1.0;
-  float x0 = iResolution.x * (0.72 + 0.09 * rand(n * 31 + int(seed))) + (side < 0.0 ? span : 0.0);
+  float x0 = l.x - (5.4 + 1.0 * rand(n * 31 + int(seed))) * l.s - side * span * 0.5;
   if (abs(p.x - x0 - side * span * 0.5) > span + 2.0 * s || abs(p.y - level) > 4.0 * s) return sky;
   sky = splash(sky, p, vec2(x0, level), local, s, u, k);
   sky = splash(sky, p, vec2(x0 + side * span, level), local - air, s, u, k);
@@ -208,18 +238,25 @@ vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   // Its back up, whichever way it swims.
   vec2 back = side * vec2(vel.y, -vel.x);
   vec2 d = p - at;
-  vec2 q = vec2(dot(d, vel), dot(d, back));
-  float body = min(limb(q, vec2(0.85, 0.0) * s, vec2(-0.85, 0.0) * s, 0.24 * s, 0.07 * s), limb(q, vec2(1.25, -0.02) * s, vec2(0.8, 0.0) * s, 0.06 * s, 0.15 * s));
-  float fin = limb(q, vec2(0.1, 0.18) * s, vec2(-0.25, 0.52) * s, 0.1 * s, 0.02 * s);
-  float fluke = limb(vec2(q.x, abs(q.y)), vec2(-0.8, 0.0) * s, vec2(-1.15, 0.3) * s, 0.08 * s, 0.04 * s);
-  float shape = min(body, min(fin, fluke));
-  // Blue-grey (or pink), its belly paler, screened.
-  vec3 skin = isPink ? lift(mix(INK_PINK, vec3(1.0, 0.88, 0.92), 0.35), k) : tone(mix(INK_BLUE, vec3(0.55, 0.6, 0.7), 0.45), k);
-  vec3 color = mix(skin, mix(skin, vec3(0.95), 0.6), screen(p, smoothstep(0.0, -0.2 * s, q.y), max(3.0, u * 0.24), 45.0));
+  float beat = sin(local * 12.0);
+  vec2 b = dolphinBend(vec2(dot(d, vel), dot(d, back)) / s, beat);
+  float shape = dolphinShape(b) * s;
+  // Blue-grey (or pink), its belly and the underside of its beak paler,
+  // screened; the flipper and the flukes in its skin.
+  vec3 skin = isPink ? lift(mix(INK_PINK, vec3(1.0, 0.88, 0.92), 0.35), k) : lift(mix(INK_BLUE, vec3(0.62, 0.7, 0.82), 0.55), k);
+  float belly = (1.0 - smoothstep(-0.2, 0.0, b.y)) * smoothstep(-0.95, -0.7, b.x) * step(0.0, limb(b, vec2(0.2, -0.28), vec2(-0.12, -0.6), 0.1, 0.04));
+  vec3 color = mix(skin, mix(skin, vec3(0.95), 0.6), screen(p, belly, max(3.0, u * 0.24), 45.0));
   sky = ink(sky, color, shape, 1.0);
+  // The key plate a little off register, round the whole of it.
   vec2 off = d - vec2(0.1, 0.08) * u;
-  vec2 q2 = vec2(dot(off, vel), dot(off, back));
-  float key = min(limb(q2, vec2(0.85, 0.0) * s, vec2(-0.85, 0.0) * s, 0.24 * s, 0.07 * s), limb(q2, vec2(0.1, 0.18) * s, vec2(-0.25, 0.52) * s, 0.1 * s, 0.02 * s));
-  return ink(sky, lift(INK_INDIGO, k), abs(key) - 0.05 * u, 0.6);
+  vec2 b2 = dolphinBend(vec2(dot(off, vel), dot(off, back)) / s, beat);
+  sky = ink(sky, lift(INK_INDIGO, k), abs(dolphinShape(b2) * s) - 0.05 * u, 0.6);
+  // Its smile, from the beak's tip curling up toward the eye, and the eye
+  // with a glint of the paper in it.
+  float smile = abs(length(b - vec2(1.0, 0.18)) - 0.33) * s;
+  if (b.x > 0.76 && b.x < 1.16 && b.y < 0.18) sky = ink(sky, lift(INK_INDIGO, k), smile - max(0.9, 0.05 * s), 0.9);
+  vec2 eye = vec2(0.62, 0.06);
+  sky = ink(sky, lift(INK_INDIGO, k), length(b - eye) * s - max(1.6, 0.1 * s), 1.0);
+  return ink(sky, CREAM, length(b - eye - vec2(0.03, 0.035)) * s - max(0.8, 0.035 * s), 1.0);
 }
 `
