@@ -477,9 +477,9 @@ vec3 stars(vec3 sky, vec2 p, float strength, float size) {
   // Faint fill: the bright stars are the real ones (realStars).
   float bright = (kind < 3u ? 0.48 : 0.35 + float(hashi(n + 5) % 5u) * 0.1) * twinkle;
   // Fainter near the horizon, where the air is thick.
-  float glint = glance(at);
-  float a = strength * bright * (1.0 - smoothstep(0.45, 0.8, at.y / iResolution.y)) * (1.0 + 1.5 * glint);
-  float disc = (d.x < size * (0.5 + glint) + 0.5 && d.y < size * (0.5 + glint) + 0.5) ? 1.0 : 0.0;
+  float near = glance(at);
+  float a = strength * bright * (1.0 - smoothstep(0.45, 0.8, at.y / iResolution.y)) * (1.0 + 1.5 * near);
+  float disc = (d.x < size * (0.5 + near) + 0.5 && d.y < size * (0.5 + near) + 0.5) ? 1.0 : 0.0;
   float glint = kind < 3u && size > 1.0 && min(d.x, d.y) < 0.5 ? 0.35 * (1.0 - max(d.x, d.y) / (size * 2.0 + 1.0)) : 0.0;
   return mix(sky, tint, clamp(a * max(disc, glint), 0.0, 1.0));
 }
