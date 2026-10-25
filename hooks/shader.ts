@@ -5,6 +5,8 @@
 // again, and Ghostty told to reload, when they change.
 
 import { localMidnight, moonAt, sunAt } from './astro'
+import { chartAt, tileLines, tileStars } from './chart'
+import type { ChartStar } from './chart'
 import { domePoint } from './dome'
 import type { DomePoint } from './dome'
 import type { ActiveEvent, EventKind } from './events'
@@ -23,6 +25,8 @@ export type Scene = {
 
 export type ShaderParams = {
   scene: Scene
+  // The real stars and constellation lines on the dome; empty by day.
+  chart: { stars: ChartStar[]; lines: [DomePoint, DomePoint][] }
   // Where the moon is on the dome, null while it is below the horizon.
   moon: { illumination: number; isWaxing: boolean; at: DomePoint | null }
   // A whole day for /solar demo: scenes evenly through it, played in `seconds`.
@@ -104,10 +108,19 @@ export function shaderParams(
     demo = { scenes, seconds: options.demo.seconds }
   }
 
+  // The stars where they stand (in a demo, where they stood as it began);
+  // by day there are none to show, and the shader stays short.
+  const scene = demo ? demo.scenes[0]! : sceneAt(ms, place)
+  const chart = demo || scene.elevation < -4 ? chartAt(ms, place) : { stars: [], lines: [] }
+
   return {
     // In a demo the day plays from its table: a fixed scene keeps the text,
     // and with it Ghostty, still for the demo's length.
-    scene: demo ? demo.scenes[0]! : sceneAt(ms, place),
+    scene,
+    chart: {
+      stars: chart.stars.map(star => ({ ...dome(star), mag: star.mag, bv: star.bv })),
+      lines: chart.lines.map(([a, b]) => [dome(a), dome(b)] as [DomePoint, DomePoint]),
+    },
     moon: { illumination: round(moon.illumination, 0.01), isWaxing: moon.isWaxing, at: moon.elevation > 0 ? dome(domePoint(moon)) : null },
     demo,
     cloudiness: round(greyness(weather), 0.01),
@@ -159,6 +172,41 @@ const STOPS: readonly [number, number, number, number][] = [
   [90, 0x1f6ed6, 0x58a2f0, 0xb0d8fb],
 ]
 
+function ints(values: number[]): string {
+  return `int[${values.length}](${values.join(', ')})`
+}
+
+function vec2s(points: DomePoint[]): string {
+  return `vec2[${points.length}](${points.map(p => `vec2(${f(p.x)}, ${f(p.y)})`).join(', ')})`
+}
+
+// The chart as the shader reads it: stars and lines, and the tiles that say
+// which of them lie near each pixel. GLSL has no empty arrays: one
+// placeholder each when there is nothing to show.
+function chartConstants(chart: ShaderParams['chart']): string[] {
+  const nothing = { x: 0, y: 0 }
+  const stars = chart.stars.length > 0 ? chart.stars : [{ ...nothing, mag: 9, bv: 0 }]
+  const lines = chart.lines.length > 0 ? chart.lines : [[nothing, nothing] as [DomePoint, DomePoint]]
+  const starTiles = tileStars(chart.stars)
+  const lineTiles = tileLines(chart.lines)
+  const tiles = starTiles.start.length
+
+  return [
+    `const int STAR_COUNT = ${chart.stars.length};`,
+    `const vec2 STAR_AT[${stars.length}] = ${vec2s(stars)};`,
+    `const vec2 STAR_LOOK[${stars.length}] = vec2[${stars.length}](${stars.map(s => `vec2(${f(s.mag)}, ${f(s.bv)})`).join(', ')});`,
+    `const int TILE_START[${tiles}] = ${ints(starTiles.start)};`,
+    `const int TILE_COUNT[${tiles}] = ${ints(starTiles.count)};`,
+    `const int TILE_STAR[${Math.max(1, starTiles.index.length)}] = ${ints(starTiles.index.length > 0 ? starTiles.index : [0])};`,
+    `const int LINE_COUNT = ${chart.lines.length};`,
+    `const vec2 LINE_A[${lines.length}] = ${vec2s(lines.map(l => l[0]))};`,
+    `const vec2 LINE_B[${lines.length}] = ${vec2s(lines.map(l => l[1]))};`,
+    `const int LINE_TILE_START[${tiles}] = ${ints(lineTiles.start)};`,
+    `const int LINE_TILE_COUNT[${tiles}] = ${ints(lineTiles.count)};`,
+    `const int LINE_TILE_LINE[${Math.max(1, lineTiles.index.length)}] = ${ints(lineTiles.index.length > 0 ? lineTiles.index : [0])};`,
+  ]
+}
+
 // The whole shader for these constants: the same text for the same params.
 export function skyShader(params: ShaderParams): string {
   const { scene, moon, demo } = params
@@ -189,6 +237,7 @@ export function skyShader(params: ShaderParams): string {
     `const vec3 STOP_MIDDLE[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[2])).join(', ')});`,
     `const vec3 STOP_HORIZON[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[3])).join(', ')});`,
     ...Object.entries(INKS).map(([name, c]) => `const vec3 INK_${name.toUpperCase()} = ${rgb(c)};`),
+    ...chartConstants(params.chart),
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const int EVENT_COUNT = ${params.events.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
@@ -344,7 +393,8 @@ vec3 stars(vec3 sky, vec2 p, float strength, float size) {
   float cell = 37.0;
   vec2 c = floor(p / cell);
   int n = int(c.x) * 7919 + int(c.y) * 104729;
-  if (rand(n) > 0.6) return sky;
+  // Sparse: the real stars carry the sky, these only fill it.
+  if (rand(n) > 0.35) return sky;
   float margin = size * 3.0 + 1.0;
   vec2 at = c * cell + margin + vec2(rand(n + 1), rand(n + 2)) * (cell - margin * 2.0);
   vec2 d = abs(p - at);
@@ -352,12 +402,52 @@ vec3 stars(vec3 sky, vec2 p, float strength, float size) {
   uint kind = hashi(n + 3) % 20u;
   vec3 tint = kind == 0u ? vec3(1.0, 0.824, 0.659) : kind == 1u ? vec3(0.722, 0.8, 1.0) : vec3(1.0, 0.973, 0.925);
   float twinkle = 0.75 + 0.25 * sin(iTime * (1.5 + float(hashi(n + 4) % 7u) * 0.4) + float(hashi(n + 6) % 100u));
-  float bright = (kind < 3u ? 0.95 : 0.35 + float(hashi(n + 5) % 5u) * 0.1) * twinkle;
+  // Faint fill: the bright stars are the real ones (realStars).
+  float bright = (kind < 3u ? 0.48 : 0.35 + float(hashi(n + 5) % 5u) * 0.1) * twinkle;
   // Fainter near the horizon, where the air is thick.
   float a = strength * bright * (1.0 - smoothstep(0.45, 0.8, at.y / iResolution.y));
   float disc = (d.x < size * 0.5 + 0.5 && d.y < size * 0.5 + 0.5) ? 1.0 : 0.0;
   float glint = kind < 3u && size > 1.0 && min(d.x, d.y) < 0.5 ? 0.35 * (1.0 - max(d.x, d.y) / (size * 2.0 + 1.0)) : 0.0;
   return mix(sky, tint, clamp(a * max(disc, glint), 0.0, 1.0));
+}
+
+// The dome point under a pixel, and the chart tile it falls in (-1 outside).
+vec2 pixelToDome(vec2 p) { return vec2((p.x - iResolution.x * 0.5) / iResolution.y, p.y / iResolution.y); }
+int chartTile(int column, int row) {
+  if (column < 0 || column >= 80 || row < 0 || row >= 16) return -1;
+  return row * 80 + column;
+}
+
+// The real stars near \`p\`: as bright as their magnitude, tinted by their
+// colour index, the brightest with a soft glint.
+vec3 realStars(vec3 sky, vec2 p, float strength, float size) {
+  vec2 d = pixelToDome(p);
+  int column = int(floor((d.x + 1.6) / 0.04));
+  int row = int(floor(d.y / 0.04));
+  for (int dy = -1; dy <= 1; dy++) {
+    for (int dx = -1; dx <= 1; dx++) {
+      int tile = chartTile(column + dx, row + dy);
+      if (tile < 0) continue;
+      int first = TILE_START[tile];
+      for (int k = first; k < first + TILE_COUNT[tile]; k++) {
+        int i = TILE_STAR[k];
+        vec2 at = domeToPixel(STAR_AT[i]);
+        float mag = STAR_LOOK[i].x;
+        float bv = STAR_LOOK[i].y;
+        float r = size * (0.9 + max(0.0, 3.5 - mag) * 0.6);
+        float dist = length(p - at);
+        if (dist > r * 4.0) continue;
+        vec3 tint = bv < 0.2 ? vec3(0.78, 0.86, 1.0) : bv > 1.2 ? vec3(1.0, 0.8, 0.62) : vec3(1.0, 0.97, 0.92);
+        float twinkle = 0.85 + 0.15 * sin(iTime * (1.1 + mod(float(i), 7.0) * 0.3) + float(i));
+        float bright = clamp((4.5 - mag) / 3.5, 0.3, 1.0) * twinkle;
+        float core = clamp(r - dist + 0.5, 0.0, 1.0);
+        float halo = mag < 2.0 ? 0.45 * exp(-dist / (r * 0.8)) : 0.0;
+        float a = strength * bright * (1.0 - smoothstep(0.5, 0.85, at.y / iResolution.y));
+        sky = mix(sky, tint, clamp(a * max(core, halo), 0.0, 1.0));
+      }
+    }
+  }
+  return sky;
 }
 
 // --- The moon ----------------------------------------------------------------
@@ -591,6 +681,26 @@ float segment(vec2 p, vec2 a, vec2 b) {
   vec2 ab = b - a;
   float h = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
   return length(p - a - ab * h);
+}
+
+// The constellations' lines near \`p\`: dashed and faint, as star charts draw them.
+vec3 chartLines(vec3 sky, vec2 p, float u, float strength) {
+  vec2 d = pixelToDome(p);
+  int tile = chartTile(int(floor((d.x + 1.6) / 0.04)), int(floor(d.y / 0.04)));
+  if (tile < 0) return sky;
+  float line = 1e9;
+  vec2 along = vec2(0.0);
+  int first = LINE_TILE_START[tile];
+  for (int k = first; k < first + LINE_TILE_COUNT[tile]; k++) {
+    int i = LINE_TILE_LINE[k];
+    vec2 a = domeToPixel(LINE_A[i]);
+    vec2 b = domeToPixel(LINE_B[i]);
+    float dist = segment(p, a, b);
+    if (dist < line) { line = dist; along = a; }
+  }
+  if (line > 2.0) return sky;
+  float dash = step(0.5, fract(length(p - along) / (0.5 * u)));
+  return mix(sky, mix(INK_BLUE, vec3(1.0), 0.5), clamp(0.5 - (line - 0.05 * u), 0.0, 1.0) * 0.15 * dash * strength);
 }
 
 // An ink laid down by distance: solid inside, antialiased at the edge.
@@ -863,7 +973,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   float auroraStrength = AURORA * max(AURORA_FLOOR, night);
   if (auroraStrength > 0.0) sky = aurora(sky, p, auroraStrength);
   float starStrength = night * (1.0 - CLOUDINESS * 0.9);
-  if (starStrength > 0.03) sky = stars(sky, p, starStrength, max(1.0, floor(iResolution.y / 700.0 + 0.5)));
+  if (starStrength > 0.03) {
+    float size = max(1.0, floor(iResolution.y / 700.0 + 0.5));
+    sky = stars(sky, p, starStrength, size);
+    if (STAR_COUNT > 0) sky = realStars(sky, p, starStrength, size);
+    if (LINE_COUNT > 0 && night > 0.6 && CLOUDINESS < 0.5) sky = chartLines(sky, p, unit, (night - 0.6) / 0.4);
+  }
   vec2 body = arcPoint(s.progress);
   if (s.isDay < 0.5 && MOON_UP > 0.5) sky = moonAt(sky, p, domeToPixel(MOON_AT), unit * 2.0, (0.35 + 0.65 * night) * (1.0 - CLOUDINESS * 0.8));
 

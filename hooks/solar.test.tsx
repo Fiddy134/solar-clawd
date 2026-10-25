@@ -6,6 +6,7 @@ import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishC
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
 import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
+import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { fromBase64 } from './paint'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
@@ -626,4 +627,46 @@ test('the moon stands where it is, and is gone below the horizon', () => {
   const down = Date.UTC(2026, 9, 24, 8)
   expect(shaderParams({ ms: down, t: 0, place: STOCKHOLM, weather: null }, {}).moon.at).toBeNull()
   expect(skyShader(params)).toContain('const vec2 MOON_AT')
+})
+
+test('the chart: Orion south on a January night, Vega overhead in August, Polaris always', () => {
+  const january = chartAt(Date.UTC(2026, 0, 15, 21), STOCKHOLM) // 22:00 local
+  const betelgeuse = january.stars.find(s => s.mag < 0.6 && s.bv > 1.5)!
+  expect(Math.abs(betelgeuse.x)).toBeLessThan(0.35)
+  expect(betelgeuse.y).toBeGreaterThan(ZENITH_Y)
+  const august = chartAt(Date.UTC(2026, 7, 15, 21), STOCKHOLM) // 23:00 local
+  const vega = august.stars.find(s => s.mag < 0.1 && s.bv < 0.1)!
+  expect(Math.hypot(vega.x, vega.y - ZENITH_Y)).toBeLessThan(0.12)
+  expect(january.lines.length).toBeGreaterThan(5)
+})
+
+test('a southern sky charts without Polaris, and every star sits in its own tile', () => {
+  const cape = chartAt(Date.UTC(2026, 5, 1, 20), { name: 'Kapstaden', lat: -33.9, lon: 18.4 })
+  expect(cape.stars.length).toBeGreaterThan(20)
+  for (const s of cape.stars) expect(s.y >= 0 && s.y <= HORIZON).toBe(true)
+  const { stars, lines } = chartAt(Date.UTC(2026, 0, 15, 21), STOCKHOLM)
+  const tiles = tileStars(stars)
+  expect(tiles.start.length).toBe(80 * 16)
+  stars.forEach((s, i) => {
+    if (Math.abs(s.x) >= 1.6) return
+    const tile = Math.min(15, Math.floor(s.y / TILE)) * 80 + Math.floor((s.x + 1.6) / TILE)
+    const own = tiles.index.slice(tiles.start[tile], tiles.start[tile]! + tiles.count[tile]!)
+    expect(own).toContain(i)
+  })
+  // A line is listed in the tile under its midpoint.
+  const lineTiles = tileLines(lines)
+  lines.forEach(([a, b], i) => {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2
+    if (Math.abs(mx) >= 1.6) return
+    const tile = Math.min(15, Math.floor(my / TILE)) * 80 + Math.floor((mx + 1.6) / TILE)
+    expect(lineTiles.index.slice(lineTiles.start[tile], lineTiles.start[tile]! + lineTiles.count[tile]!)).toContain(i)
+  })
+})
+
+test('a night shader carries the real stars, a day shader none', () => {
+  const night = skyShader(shaderParams({ ms: Date.UTC(2026, 0, 15, 21), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(Number(/const int STAR_COUNT = (\d+);/.exec(night)?.[1])).toBeGreaterThan(50)
+  expect(Number(/const int LINE_COUNT = (\d+);/.exec(night)?.[1])).toBeGreaterThan(5)
+  const day = skyShader(shaderParams({ ms: Date.UTC(2026, 5, 15, 10), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(day).toContain('const int STAR_COUNT = 0;')
 })
