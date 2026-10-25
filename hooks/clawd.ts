@@ -18,8 +18,26 @@ export type Activity = 'sleep' | 'coffee' | 'code' | 'gta'
 
 export type Mode = 'live' | 'demo' | 'pinned'
 
-// What Claude is up to, as Clawd shows it.
-export type Reaction = 'working' | 'cheer' | 'facepalm' | 'wave' | 'lookUp'
+// What Claude is up to, as Clawd shows it: `working` while it writes or
+// runs things, `reading` while it only reads, `tidy` once the conversation
+// is compacted.
+export type Reaction = 'working' | 'reading' | 'cheer' | 'facepalm' | 'wave' | 'lookUp' | 'tidy'
+
+// What a tool does, as Clawd shows it: reads, writes (or runs), or neither
+// as far as he can tell.
+export function toolKind(tool: string): 'read' | 'write' | null {
+  if (['Read', 'Grep', 'Glob', 'LS', 'WebFetch', 'WebSearch', 'NotebookRead', 'ToolSearch'].includes(tool)) return 'read'
+  if (['Edit', 'Write', 'MultiEdit', 'NotebookEdit', 'Bash'].includes(tool)) return 'write'
+
+  return null
+}
+
+// Clawd at work: reading only while every open call reads.
+export function workKind(open: Iterable<'read' | 'write'>): 'working' | 'reading' {
+  const kinds = [...open]
+
+  return kinds.length > 0 && kinds.every(kind => kind === 'read') ? 'reading' : 'working'
+}
 
 export type View = SkyInput & {
   columns: number
@@ -33,6 +51,9 @@ export type View = SkyInput & {
   track?: string | null
   // The word for what is happening in the sky, if anything.
   event?: string | null
+  // How full Claude's context window is, 0 to 100: the pile of paper by
+  // his side.
+  paper?: number | null
 }
 
 const LABELS: Record<Activity, string> = {
@@ -412,6 +433,8 @@ function paintFireworks(c: Canvas, right: number, t: number): void {
 // How long a passing reaction lasts, in seconds.
 export const REACTION_SECONDS: Record<Reaction, number> = {
   working: Infinity,
+  reading: Infinity,
+  tidy: 3,
   cheer: 2.5,
   facepalm: 3,
   wave: Infinity,
@@ -437,7 +460,13 @@ function reactionOverrides(
   const { kind, age } = reaction
   const dots = '.'.repeat(1 + (Math.floor(t * 3) % 3))
 
-  if (kind === 'working') return { glyphs: [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: PALE }] }
+  if (kind === 'working' || kind === 'reading') {
+    const glyphs = [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: PALE }]
+    if (!isAwake) return { glyphs }
+    if (kind === 'reading') return { eyes: 'right', arms: 'typing', glyphs }
+
+    return { eyes: 'right', arms: Math.floor(t * 8) % 2 === 0 ? 'typing' : 'down', glyphs }
+  }
   if (!isAwake) {
     const mark = kind === 'cheer' ? '!' : kind === 'lookUp' ? '*' : '?'
 
@@ -455,6 +484,12 @@ function reactionOverrides(
 
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
+  // The conversation compacted: the pile swept into its box, a happy face.
+  if (kind === 'tidy') {
+    const sparkle = Math.floor(age * 6) % 2 === 0 ? '*' : '+'
+
+    return { eyes: 'closed', arms: age < 1.5 ? 'up' : 'down', glyphs: [{ x: x - 3, y: 0, text: sparkle, fg: INKS.yellow }] }
+  }
   // Something in the sky: eyes up, a claw pointing at it.
   if (kind === 'lookUp') {
     c.set(x + 6, y, CLAWD.O)
@@ -466,6 +501,38 @@ function reactionOverrides(
   c.set(x + 6, y + (isHigh ? 0 : 1), CLAWD.O)
 
   return { arms: 'right-up', glyphs: [{ x: x + 7, y: 0, text: '?', fg: INKS.yellow }] }
+}
+
+// What he works with, in front of whatever the scene has there: a book
+// open in his claws while Claude reads, a page turning now and then; keys
+// under them while it writes.
+function paintWork(c: Canvas, reaction: View['reaction'], x: number, y: number, t: number, light: number): void {
+  if (reaction?.kind === 'reading') {
+    print(c, x + 6, y + 2, [t % 2.5 < 0.3 ? 'pP' : 'PP', 'CC'], { P: CREAM, p: SKY_INK, C: INKS.blue }, light)
+  }
+  if (reaction?.kind === 'working') print(c, x + 6, y + 3, ['kkk'], { k: PALE }, light, { shaded: 'k' })
+}
+
+// The pile of paper at his left, a sheet for each fifth of the context
+// window, the top one wobbling and Clawd sweating once it is nearly full.
+// While he tidies, the pile goes into a box.
+function paintPaper(c: Canvas, x: number, y: number, paper: number | null | undefined, light: number, t: number, tidyAge: number | null): void {
+  const bottom = y + 3
+  if (tidyAge !== null) {
+    const left = paper ? Math.min(5, Math.floor(paper / 20) + 1) : 0
+    const sheets = Math.max(0, Math.round(left * (1 - tidyAge / 1.5)))
+    for (let i = 0; i < sheets; i++) print(c, x - 3, bottom - 2 - i, ['SS'], { S: i % 2 === 0 ? CREAM : deeper(CREAM) }, light)
+    print(c, x - 4, bottom - 1, ['b..b', 'bbbb'], { b: mix(WOOD, CREAM, 0.35) }, light, { shaded: 'b' })
+    return
+  }
+  if (paper === null || paper === undefined || paper <= 0) return
+  const sheets = Math.min(5, Math.floor(paper / 20) + 1)
+  const isFull = paper >= 80
+  for (let i = 0; i < sheets; i++) {
+    const wobble = isFull && i === sheets - 1 ? Math.round(Math.sin(t * 5)) : 0
+    print(c, x - 3 + wobble, bottom - i, ['SS'], { S: i % 2 === 0 ? CREAM : deeper(CREAM) }, light)
+  }
+  if (isFull) c.blend(x - 1, y + (Math.floor(t * 2) % 2), SKY_INK, 0.9)
 }
 
 // --- Frame ----------------------------------------------------------------
@@ -492,6 +559,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
 
   paintOccasion(c, occasion, x - 6, y, t, light)
   scene.behind(stage)
+  paintPaper(c, x, y, view.paper, light, t, reaction?.kind === 'tidy' ? reaction.age : null)
 
   const cx = x + Math.round(chase?.dx ?? 0)
   const cy = y + Math.round(chase?.dy ?? override.dy ?? 0)
@@ -499,6 +567,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   const arms = chase ? 'down' : override.arms ?? seated.arms
   paintClawd(c, cx, cy, eyes, arms, chase?.legs ?? 'stand', light)
   scene.front(stage)
+  if (isAwake && !chase) paintWork(c, reaction, x, y, t, light)
 
   const hat = state.hat && HATS[state.hat]
   if (hat) {

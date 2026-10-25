@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
-import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained } from './clawd'
+import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
@@ -42,6 +42,9 @@ const ACTIVITY_MS = 3_000
 // guessed from the IP address is trusted this long before it is guessed again.
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
+// How often the context window's fill is asked (it costs nothing), for the
+// pile of paper by Clawd.
+const PAPER_MS = 30_000
 const GUESS_MS = 12 * 3_600_000
 
 // Ghostty draws the sky itself, from a shader the mod writes into its
@@ -280,6 +283,14 @@ function placeText({ place, isChosen, weather }: Where): string {
 // control character from a track or a place name reaches the terminal.
 function plain(text: string): string {
   return [...text].map(ch => (isPrintable(ch.codePointAt(0)!) ? ch : '?')).join('')
+}
+
+// How full the context window is, 0 to 100, for Clawd's pile of paper;
+// null when it could not say.
+async function contextFill($: EngineInterface): Promise<number | null> {
+  const usage = await $.session.usage().catch(() => null)
+
+  return usage?.context.percent ?? null
 }
 
 // Whether the session runs on Linux, as uname says; anything it does not
@@ -650,6 +661,10 @@ export const register: Register = on => {
   const claude = {
     isWorking: false,
     passing: null as { kind: Reaction; at: number } | null,
+    // The main conversation's calls now running that read or write, by id.
+    open: new Map<string, 'read' | 'write'>(),
+    // How full the context window is, 0 to 100, as last asked.
+    paper: null as number | null,
   }
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
@@ -706,7 +721,7 @@ export const register: Register = on => {
       if (age < REACTION_SECONDS[passing.kind]) return { kind: passing.kind, age }
     }
     if (waiting?.mode === 'asking') return { kind: 'wave' as const, age: 0 }
-    if (claude.isWorking) return { kind: 'working' as const, age: 0 }
+    if (claude.isWorking) return { kind: workKind(claude.open.values()), age: 0 }
 
     return null
   }
@@ -743,6 +758,7 @@ export const register: Register = on => {
       // Clear where a wallpaper or Ghostty's sky shows through the band.
       isClear: iterm !== null || (ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''),
       reaction: reactionAt(now),
+      paper: claude.paper,
       track,
       event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
@@ -859,6 +875,11 @@ export const register: Register = on => {
       issOrbit = (await issElements($)) ?? issOrbit
     }
     void fetchIss().catch(() => undefined)
+    const readPaper = async () => {
+      claude.paper = (await contextFill($)) ?? claude.paper
+    }
+    void readPaper()
+    $.clock.every(PAPER_MS, () => void readPaper())
     $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
     $.clock.every(WEATHER_MS, () => void refreshWeather($, where).catch(() => undefined))
     // Away from the computer, or iTerm2 behind other windows: the wallpaper
@@ -988,6 +1009,7 @@ export const register: Register = on => {
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       claude.isWorking = true
+      claude.open.clear()
       if (waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     }
 
@@ -997,6 +1019,8 @@ export const register: Register = on => {
   on('turn.complete', async ($, e, next) => {
     if (e.agentId === undefined) {
       claude.isWorking = false
+      claude.open.clear()
+      claude.paper = (await contextFill($)) ?? claude.paper
       const now = await $.clock.now()
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
@@ -1027,7 +1051,9 @@ export const register: Register = on => {
     const asked = isQuestion ? { mode: 'asking' as const, since: startedAt } : null
     const isOpen = waiting?.mode === 'asking' && askingCalls.size > 0
     if ((isQuestion || (e.agentId === undefined && !isOpen)) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
-    const result = await next(e)
+    const kind = e.agentId === undefined ? toolKind(e.tool) : null
+    if (kind && e.tool_use_id) claude.open.set(e.tool_use_id, kind)
+    const result = await next(e).finally(() => claude.open.delete(e.tool_use_id))
     // Answered: the question's own call, or the last call that asked for a
     // permission, has ended. A notice no call asked for (an MCP server's
     // question) ends with the main call it came up in.
@@ -1039,6 +1065,18 @@ export const register: Register = on => {
     if (waiting?.mode === 'asking' && isAnswered && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     if (result.isError && e.agentId === undefined) {
       claude.passing = { kind: 'facepalm', at: await $.clock.now() }
+    }
+
+    return result
+  })
+
+  // The conversation compacted (not ahead of time, and not skipped): Clawd
+  // sweeps his pile into its box.
+  on('session.compact', async ($, e, next) => {
+    const result = await next(e)
+    if (e.agentId === undefined && e.trigger !== 'precompute' && !('skip' in result)) {
+      claude.passing = { kind: 'tidy', at: await $.clock.now() }
+      claude.paper = (await contextFill($)) ?? claude.paper
     }
 
     return result

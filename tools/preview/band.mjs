@@ -2,7 +2,7 @@
 // stacked, so a sprite's motion reads at a glance.
 //
 //   tools/preview/run.sh band --at 2026-10-24T09:00 --columns 80 --frames 4 --dt 0.5
-//   --weather 61,8,4,90   rain (code,°C,wind,cloud %)   --reaction cheer   --clear
+//   --weather 61,8,4,90   rain (code,°C,wind,cloud %)   --reaction cheer   --clear   --paper 85
 
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
 import { STOCKHOLM } from '../../hooks/astro.ts'
@@ -26,6 +26,8 @@ const view = {
   moonTexture: moonTexture(),
   isClear: !!o.clear,
   track: o.track === undefined || o.track === true ? null : o.track,
+  // --paper 85: the context window's fill, Clawd's pile of paper.
+  paper: o.paper === undefined ? null : Number(o.paper),
 }
 // The event the band names: --event balloon forces one, as /solar event does.
 const context = contextAt(ms, STOCKHOLM, view.weather, null)

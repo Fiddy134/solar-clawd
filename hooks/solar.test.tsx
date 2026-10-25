@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
-import { activityAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained } from './clawd'
+import { activityAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { contextAt, EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import type { DomePoint } from './dome'
@@ -1059,6 +1059,30 @@ test('Clawd looks up when something new comes into the sky, once', () => {
   expect(skyGained(['comet'], ['comet'])).toBe(false)
   expect(skyGained(['comet', 'iss'], ['comet'])).toBe(false)
   expect(skyGained(['comet'], ['comet', 'beacon'])).toBe(true)
+})
+
+test('Clawd reads while every open call reads, and works otherwise', () => {
+  expect(toolKind('Read')).toBe('read')
+  expect(toolKind('Grep')).toBe('read')
+  expect(toolKind('Edit')).toBe('write')
+  expect(toolKind('Bash')).toBe('write')
+  expect(toolKind('Agent')).toBeNull()
+  expect(workKind([])).toBe('working')
+  expect(workKind(['read', 'read'])).toBe('reading')
+  expect(workKind(['read', 'write'])).toBe('working')
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM }
+  expect(drawFrame({ ...view, reaction: { kind: 'reading', age: 0 } })).not.toBe(drawFrame({ ...view, reaction: { kind: 'working', age: 0 } }))
+})
+
+test('the pile of paper grows with the context window, and goes into a box when compacted', () => {
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM }
+  const none = drawFrame({ ...view, paper: null })
+  expect(drawFrame({ ...view, paper: 0 })).toBe(none)
+  const little = drawFrame({ ...view, paper: 10 })
+  const full = drawFrame({ ...view, paper: 90 })
+  expect(little).not.toBe(none)
+  expect(full).not.toBe(little)
+  expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'tidy', age: 2 } })).not.toBe(full)
 })
 
 test('the shader glances at the cursor, and never at iDate', () => {
