@@ -1300,56 +1300,68 @@ vec3 iss(vec3 sky, vec2 p, float u) {
 
 // --- The lighthouse --------------------------------------------------------
 
-// A small striped lighthouse standing on the horizon at the right, lit
-// while Claude waits. Its beam turns as a real one does: seen from the
-// side it reaches out left or right as long as it points across, and
-// flashes in the lantern as it comes round toward you. Any moment of the
-// turn looks right, so iTime's unknown start never shows.
-vec3 beacon(vec3 sky, vec2 p, float u) {
-  if (BEACON == 0) return sky;
-  vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
-  float speed = BEACON_URGENT > 0.5 ? 1.2 : 0.6;
-  float strength = BEACON_URGENT > 0.5 ? 1.0 : 0.75;
-  float foot = 0.62 * iResolution.y;
-  float x = 0.86 * iResolution.x;
-  float h = 4.2 * u;
-  vec2 lantern = vec2(x, foot - h - 0.3 * u);
-
-  // The beam, behind the tower.
-  float phase = iTime * speed;
-  float across = cos(phase);
-  vec2 dir = normalize(vec2(across >= 0.0 ? 1.0 : -1.0, -0.05));
+// A small striped lighthouse far off at the right, on its rock in the
+// haze: always there, its lantern dark until Claude waits, then lit
+// (orange asking, white done) and hurrying once a question has waited.
+// Its beam turns as a real one does: seen from the side it reaches out
+// left or right as long as it points across, and flashes in the lantern
+// as it comes round toward you. Any moment of the turn looks right, so
+// iTime's unknown start never shows.
+vec3 beacon(vec3 sky, vec2 p, float u, float k) {
+  // Its own unit, smaller than the sky's: it stands far off.
+  float s = 0.6 * u;
+  float foot = 0.36 * iResolution.y;
+  float x = 0.88 * iResolution.x;
+  float h = 4.2 * s;
+  vec2 lantern = vec2(x, foot - h - 0.3 * s);
   vec2 v = p - lantern;
-  float along = dot(v, dir);
-  float reach = 0.6 * iResolution.y * abs(across);
-  if (along > 0.0 && along < reach && p.y < foot) {
-    float off = abs(dot(v, vec2(-dir.y, dir.x)));
-    float spread = along * 0.105 + 0.15 * u;
-    float cover = pow(1.0 - along / reach, 1.5) * smoothstep(spread, spread * 0.35, off);
-    sky = mix(sky, light, clamp(cover * 0.5 * strength, 0.0, 1.0));
-  }
-  // The flash as the beam comes round toward you.
-  float toward = max(0.0, sin(phase));
-  float glow = exp(-length(v) / (u * (0.5 + 1.4 * toward * toward)));
-  sky = mix(sky, light, clamp(glow * (0.35 + 0.55 * toward) * (0.6 + 0.4 * strength), 0.0, 1.0));
 
-  // The rock it stands on.
-  vec2 rock = (p - vec2(x, foot + 0.1 * u)) / vec2(1.5 * u, 0.5 * u);
-  if (p.y > foot - 0.3 * u && dot(rock, rock) < 1.0) sky = mix(sky, INK_INDIGO * 0.8, 0.95);
+  if (BEACON != 0) {
+    vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
+    float speed = BEACON_URGENT > 0.5 ? 1.2 : 0.6;
+    float strength = BEACON_URGENT > 0.5 ? 1.0 : 0.75;
+    // The beam, behind the tower.
+    float phase = iTime * speed;
+    float across = cos(phase);
+    vec2 dir = normalize(vec2(across >= 0.0 ? 1.0 : -1.0, -0.05));
+    float along = dot(v, dir);
+    float reach = 0.45 * iResolution.y * abs(across);
+    if (along > 0.0 && along < reach && p.y < foot) {
+      float off = abs(dot(v, vec2(-dir.y, dir.x)));
+      float spread = along * 0.105 + 0.15 * s;
+      float cover = pow(1.0 - along / reach, 1.5) * smoothstep(spread, spread * 0.35, off);
+      sky = mix(sky, light, clamp(cover * 0.5 * strength, 0.0, 1.0));
+    }
+    // The flash as the beam comes round toward you.
+    float toward = max(0.0, sin(phase));
+    float glow = exp(-length(v) / (s * (0.5 + 1.4 * toward * toward)));
+    sky = mix(sky, light, clamp(glow * (0.35 + 0.55 * toward) * (0.6 + 0.4 * strength), 0.0, 1.0));
+  } else if (abs(p.x - x) > 3.0 * s || abs(p.y - (foot - 0.5 * h)) > h) {
+    return sky;
+  }
+
+  // Far off, everything takes some of the sky's colour, and the night's dark.
+  float haze = 0.3;
+  float dark = 1.0 - 0.6 * nightness(sceneNow().elevation);
+  // The rock it stands on, low and wide.
+  vec2 rock = (p - vec2(x, foot + 0.1 * s)) / vec2(2.4 * s, 0.55 * s);
+  if (p.y > foot - 0.3 * s && dot(rock, rock) < 1.0) sky = mix(sky, mix(tone(INK_INDIGO * 0.8, k), sky, haze), 0.95);
   // The tower: narrowing as it rises, banded coral and white.
   float t = (foot - p.y) / h;
-  float halfWidth = mix(0.55, 0.36, clamp(t, 0.0, 1.0)) * u;
+  float halfWidth = mix(0.55, 0.36, clamp(t, 0.0, 1.0)) * s;
   if (t >= 0.0 && t <= 1.0 && abs(p.x - x) < halfWidth) {
     bool coral = int(floor(t * 4.0)) % 2 == 0;
     vec3 tower = coral ? vec3(0.96, 0.36, 0.32) : vec3(0.97, 0.95, 0.9);
-    sky = mix(sky, tower * (0.75 + 0.25 * smoothstep(halfWidth, 0.0, abs(p.x - x))), 0.92);
+    tower = tone(tower * (0.75 + 0.25 * smoothstep(halfWidth, 0.0, abs(p.x - x))), k) * dark;
+    sky = mix(sky, mix(tower, sky, haze), 0.92);
   }
-  // The lantern room, lit, and its roof.
-  vec2 r = abs(p - lantern);
-  if (r.x < 0.42 * u && r.y < 0.3 * u) sky = mix(sky, light, 0.95);
-  float roof = foot - h - 0.6 * u;
-  if (p.y < roof && p.y > roof - 0.45 * u && abs(p.x - x) < 0.45 * u * (p.y - (roof - 0.45 * u)) / (0.45 * u)) {
-    sky = mix(sky, INK_INDIGO, 0.9);
+  // The lantern room, lit or dark, and its roof.
+  vec2 r = abs(v);
+  vec3 glass = BEACON == 1 ? INK_ORANGE : BEACON == 2 ? vec3(1.0, 0.97, 0.9) : mix(tone(INK_INDIGO, k), sky, haze);
+  if (r.x < 0.42 * s && r.y < 0.3 * s) sky = mix(sky, glass, 0.95);
+  float roof = foot - h - 0.6 * s;
+  if (p.y < roof && p.y > roof - 0.45 * s && abs(p.x - x) < 0.45 * s * (p.y - (roof - 0.45 * s)) / (0.45 * s)) {
+    sky = mix(sky, mix(tone(INK_INDIGO, k), sky, haze), 0.9);
   }
   return sky;
 }
@@ -1368,7 +1380,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
   // The person is away and Claude waits: the lighthouse alone.
   if (ONLY_BEACON > 0.5) {
-    fragColor = vec4(mix(beacon(term.rgb, fragCoord, unit), term.rgb, mask), 1.0);
+    fragColor = vec4(mix(beacon(term.rgb, fragCoord, unit, 1.0), term.rgb, mask), 1.0);
     return;
   }
 
@@ -1397,7 +1409,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
-  sky = beacon(sky, p, unit);
+  sky = beacon(sky, p, unit, k);
 
   fragColor = vec4(mix(sky, term.rgb, mask), 1.0);
 }
