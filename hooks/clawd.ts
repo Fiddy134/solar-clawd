@@ -19,9 +19,10 @@ export type Activity = 'sleep' | 'coffee' | 'code' | 'gta'
 export type Mode = 'live' | 'demo' | 'pinned'
 
 // What Claude is up to, as Clawd shows it: `working` while it writes or
-// runs things, `reading` while it only reads, `tidy` once the conversation
-// is compacted.
-export type Reaction = 'working' | 'reading' | 'cheer' | 'facepalm' | 'wave' | 'lookUp' | 'tidy'
+// runs things, `reading` while it only reads; `toss` as the context window
+// fills another tenth, `burn` while the conversation is compacted and
+// `embers` just after.
+export type Reaction = 'working' | 'reading' | 'cheer' | 'facepalm' | 'wave' | 'lookUp' | 'toss' | 'burn' | 'embers'
 
 // What a tool does, as Clawd shows it: reads, writes (or runs), or neither
 // as far as he can tell.
@@ -51,8 +52,8 @@ export type View = SkyInput & {
   track?: string | null
   // The word for what is happening in the sky, if anything.
   event?: string | null
-  // How full Claude's context window is, 0 to 100: the pile of paper by
-  // his side.
+  // How full Claude's context window is, 0 to 100: the paper in the
+  // wastebasket behind him.
   paper?: number | null
 }
 
@@ -434,7 +435,9 @@ function paintFireworks(c: Canvas, right: number, t: number): void {
 export const REACTION_SECONDS: Record<Reaction, number> = {
   working: Infinity,
   reading: Infinity,
-  tidy: 3,
+  toss: 1.2,
+  burn: Infinity,
+  embers: 3,
   cheer: 2.5,
   facepalm: 3,
   wave: Infinity,
@@ -484,12 +487,11 @@ function reactionOverrides(
 
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
-  // The conversation compacted: the pile swept into its box, a happy face.
-  if (kind === 'tidy') {
-    const sparkle = Math.floor(age * 6) % 2 === 0 ? '*' : '+'
-
-    return { eyes: 'closed', arms: age < 1.5 ? 'up' : 'down', glyphs: [{ x: x - 3, y: 0, text: sparkle, fg: INKS.yellow }] }
-  }
+  // A ball of paper over his shoulder into the basket.
+  if (kind === 'toss') return { eyes: 'left', arms: age < 0.35 ? 'up' : 'down', glyphs: [] }
+  // A match thrown in, then watching the context burn away, and the smoke.
+  if (kind === 'burn') return { eyes: 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
+  if (kind === 'embers') return { eyes: 'closed', glyphs: [] }
   // Something in the sky: eyes up, a claw pointing at it.
   if (kind === 'lookUp') {
     c.set(x + 6, y, CLAWD.O)
@@ -513,26 +515,47 @@ function paintWork(c: Canvas, reaction: View['reaction'], x: number, y: number, 
   if (reaction?.kind === 'working') print(c, x + 6, y + 3, ['kkk'], { k: PALE }, light, { shaded: 'k' })
 }
 
-// The pile of paper at his left, a sheet for each fifth of the context
-// window, the top one wobbling and Clawd sweating once it is nearly full.
-// While he tidies, the pile goes into a box.
-function paintPaper(c: Canvas, x: number, y: number, paper: number | null | undefined, light: number, t: number, tidyAge: number | null): void {
-  const bottom = y + 3
-  if (tidyAge !== null) {
-    const left = paper ? Math.min(5, Math.floor(paper / 20) + 1) : 0
-    const sheets = Math.max(0, Math.round(left * (1 - tidyAge / 1.5)))
-    for (let i = 0; i < sheets; i++) print(c, x - 3, bottom - 2 - i, ['SS'], { S: i % 2 === 0 ? CREAM : deeper(CREAM) }, light)
-    print(c, x - 4, bottom - 1, ['b..b', 'bbbb'], { b: mix(WOOD, CREAM, 0.35) }, light, { shaded: 'b' })
-    return
+const STEEL = mix(PALE, INKS.indigo, 0.35)
+const FLAME = [mix(INKS.pink, INKS.orange, 0.45), INKS.orange, INKS.yellow]
+
+// The wastebasket behind him: a wire-mesh bin, the context window's paper
+// showing through it as it fills (the last of it heaped over the rim).
+// While the conversation compacts the paper burns, flames licking up and
+// the paper going; then smoke from an empty bin.
+function paintBasket(c: Canvas, x: number, y: number, paper: number | null | undefined, light: number, t: number, reaction: View['reaction']): void {
+  const left = x - 5
+  const burning = reaction?.kind === 'burn' ? reaction.age : null
+  const isEmpty = reaction?.kind === 'embers' || (burning !== null && burning > 4)
+  // The bin: a rim, a mesh over its dark inside, a narrower base.
+  print(c, left, y, ['RRRR', 'MiMi', 'iMiM', '.RR.'], { R: STEEL, M: deeper(STEEL), i: mix(KEY_DARK, STEEL, 0.25) }, light)
+  // The paper in the mesh's gaps, bottom up, the last of it heaped over the rim.
+  const cells = [[0, 2], [2, 2], [1, 1], [3, 1], [1, -1], [2, -1]]
+  const shown = isEmpty ? 0 : Math.round((Math.min(100, paper ?? 0) / 100) * cells.length) - (burning === null ? 0 : Math.floor(burning * 1.5))
+  cells.slice(0, Math.max(0, shown)).forEach(([dx, dy], k) => print(c, left + dx!, y + dy!, ['P'], { P: k % 2 === 0 ? CREAM : deeper(CREAM) }, light))
+  if (burning !== null && burning > 0.6) {
+    for (let k = 0; k < 4; k++) {
+      const tall = 1 + Math.floor(rand(Math.floor(t * 9) * 4 + k) * (isEmpty ? 1.5 : 3))
+      for (let j = 0; j < tall; j++) c.set(left + k, y - j, FLAME[Math.min(2, j + (k === 1 || k === 2 ? 1 : 0))]!)
+    }
   }
-  if (paper === null || paper === undefined || paper <= 0) return
-  const sheets = Math.min(5, Math.floor(paper / 20) + 1)
-  const isFull = paper >= 80
-  for (let i = 0; i < sheets; i++) {
-    const wobble = isFull && i === sheets - 1 ? Math.round(Math.sin(t * 5)) : 0
-    print(c, x - 3 + wobble, bottom - i, ['SS'], { S: i % 2 === 0 ? CREAM : deeper(CREAM) }, light)
+  if (burning !== null || reaction?.kind === 'embers') {
+    for (let k = 0; k < 3; k++) {
+      const age = (t * 0.8 + k / 3) % 1
+      c.blend(left + 1 + k % 2 + Math.round(Math.sin(t * 2 + k) * 0.7), y - 2 - Math.floor(age * 3), 0xb8b8c0, 0.6 * (1 - age))
+    }
   }
-  if (isFull) c.blend(x - 1, y + (Math.floor(t * 2) % 2), SKY_INK, 0.9)
+}
+
+// What flies to the basket: a ball of paper, or a lit match, arcing back
+// over his shoulder.
+function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction']): void {
+  const age = reaction?.kind === 'toss' ? reaction.age : reaction?.kind === 'burn' ? reaction.age : null
+  if (age === null || age > 0.8) return
+  const f = age / 0.8
+  const px = Math.round(x - 4 * f)
+  const py = Math.round(y + 1 - 3 * f * (1 - f) * 2 - f)
+  c.set(px, py, reaction!.kind === 'toss' ? CREAM : INKS.yellow)
+  if (reaction!.kind === 'burn') c.set(px + 1, py + 1, WOOD)
 }
 
 // --- Frame ----------------------------------------------------------------
@@ -557,9 +580,9 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   const seated = scene.pose(stage)
   const override = reactionOverrides(c, chase ? null : reaction, x, y, t, isAwake)
 
-  paintOccasion(c, occasion, x - 6, y, t, light)
+  paintOccasion(c, occasion, x - 8, y, t, light)
   scene.behind(stage)
-  paintPaper(c, x, y, view.paper, light, t, reaction?.kind === 'tidy' ? reaction.age : null)
+  paintBasket(c, x, y, view.paper, light, t, chase ? null : reaction)
 
   const cx = x + Math.round(chase?.dx ?? 0)
   const cy = y + Math.round(chase?.dy ?? override.dy ?? 0)
@@ -568,6 +591,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   paintClawd(c, cx, cy, eyes, arms, chase?.legs ?? 'stand', light)
   scene.front(stage)
   if (isAwake && !chase) paintWork(c, reaction, x, y, t, light)
+  if (!chase) paintThrow(c, x, y, reaction)
 
   const hat = state.hat && HATS[state.hat]
   if (hat) {

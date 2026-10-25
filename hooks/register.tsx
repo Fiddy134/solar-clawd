@@ -665,6 +665,8 @@ export const register: Register = on => {
     open: new Map<string, 'read' | 'write'>(),
     // How full the context window is, 0 to 100, as last asked.
     paper: null as number | null,
+    // When the conversation began compacting, while it does.
+    compactingSince: null as number | null,
   }
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
@@ -712,7 +714,18 @@ export const register: Register = on => {
     return pinnedAt === null ? { ms: now, mode: 'live' } : { ms: pinnedAt, mode: 'pinned' }
   }
 
+  // How full the context window is now: another tenth filled, Clawd
+  // throws a ball of paper in the basket.
+  const takePaper = (fill: number | null, now: number) => {
+    const before = claude.paper
+    claude.paper = fill ?? before
+    if (before !== null && fill !== null && claude.compactingSince === null && Math.floor(fill / 10) > Math.floor(before / 10)) {
+      claude.passing = { kind: 'toss', at: now }
+    }
+  }
+
   const reactionAt = (now: number) => {
+    if (claude.compactingSince !== null) return { kind: 'burn' as const, age: (now - claude.compactingSince) / 1000 }
     const { passing } = claude
     // Looking up at the sky gives way to a question and to work.
     const isBusy = waiting?.mode === 'asking' || claude.isWorking
@@ -875,9 +888,7 @@ export const register: Register = on => {
       issOrbit = (await issElements($)) ?? issOrbit
     }
     void fetchIss().catch(() => undefined)
-    const readPaper = async () => {
-      claude.paper = (await contextFill($)) ?? claude.paper
-    }
+    const readPaper = async () => takePaper(await contextFill($), await $.clock.now())
     void readPaper()
     $.clock.every(PAPER_MS, () => void readPaper())
     $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
@@ -1020,8 +1031,8 @@ export const register: Register = on => {
     if (e.agentId === undefined) {
       claude.isWorking = false
       claude.open.clear()
-      claude.paper = (await contextFill($)) ?? claude.paper
       const now = await $.clock.now()
+      takePaper(await contextFill($), now)
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
@@ -1070,16 +1081,26 @@ export const register: Register = on => {
     return result
   })
 
-  // The conversation compacted (not ahead of time, and not skipped): Clawd
-  // sweeps his pile into its box.
+  // The conversation compacting (not ahead of time): Clawd throws a match
+  // in the basket and the context burns while it runs; smoke after, unless
+  // it was skipped.
   on('session.compact', async ($, e, next) => {
-    const result = await next(e)
-    if (e.agentId === undefined && e.trigger !== 'precompute' && !('skip' in result)) {
-      claude.passing = { kind: 'tidy', at: await $.clock.now() }
-      claude.paper = (await contextFill($)) ?? claude.paper
-    }
+    if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
+    claude.compactingSince = await $.clock.now()
+    try {
+      const result = await next(e)
+      if (!('skip' in result)) {
+        const now = await $.clock.now()
+        claude.passing = { kind: 'embers', at: now }
+        claude.compactingSince = null
+        claude.paper = null
+        takePaper(await contextFill($), now)
+      }
 
-    return result
+      return result
+    } finally {
+      claude.compactingSince = null
+    }
   })
 
   // A permission or a question for the person; Claude Code's reminder that
