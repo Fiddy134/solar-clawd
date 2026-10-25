@@ -12,11 +12,13 @@ import {
   ghosttyConfigs,
   ghosttyKnowsReloadSignal,
   hasOurInclude,
+  hasOurStage,
   includeInGhostty,
   isIncluded,
   reloadGhostty,
   runtimeFolder,
   shareWaiting,
+  STAGE_PT,
   tidy,
   updateGhosttySky,
 } from './ghostty'
@@ -24,7 +26,7 @@ import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
 import { issVisible } from './iss'
 import type { Elements } from './iss'
-import { ITERM_FRONTMOST, NOW_PLAYING, SET_BACKGROUND } from './mac'
+import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
 import { fromBase64 } from './paint'
@@ -75,6 +77,17 @@ const BATTERY_MS = 60_000
 const MILESTONE_MS = 3 * 60_000
 // While the ISS passes, the sky follows it this often.
 const ISS_TICK_MS = 2_000
+
+// The stage strip's width in pixels: its points times the screen's scale
+// (asked once, on macOS; Linux has the points as they are). An answer that
+// is no positive number counts as 1.
+async function stagePxOf($: EngineInterface, isOnLinux: boolean): Promise<number> {
+  if (isOnLinux) return STAGE_PT
+  const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
+  const scale = Number(answer?.stdout.trim())
+
+  return STAGE_PT * (Number.isFinite(scale) && scale > 0 ? scale : 1)
+}
 
 // How full the context window is, 0 to 100, for Clawd's pile of paper;
 // null when it could not say.
@@ -317,6 +330,7 @@ export const register: Register = on => {
         home,
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
+        stagePx: await stagePxOf($, isOnLinux),
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
         written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
@@ -331,6 +345,8 @@ export const register: Register = on => {
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
+      // An include without the stage padding (from before there was one).
+      if ((await hasOurInclude($, ghostty)) && !(await hasOurStage($, ghostty))) await includeInGhostty($, ghostty)
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 

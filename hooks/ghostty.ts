@@ -51,6 +51,8 @@ export type Ghostty = {
   home: string
   configs: string[]
   isLinux: boolean
+  // The stage strip's width in device pixels: STAGE_PT times the screen scale.
+  stagePx: number
   // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
@@ -162,7 +164,7 @@ export type SkyState = {
 }
 
 // What the session's shader is asked to draw beyond the scene.
-export type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean }
+export type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // sky is not hidden, nothing otherwise, and Ghostty animating it as the
@@ -271,7 +273,7 @@ async function writeGhosttySky(
   let include = ''
   if (isWanted) {
     // Ghostty draws with OpenGL on Linux, where fragCoord has y up.
-    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, isYUp: ghostty.isLinux }
+    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, isYUp: ghostty.isLinux, stagePx: ghostty.stagePx }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).
     const shader = shaderAt(now, extras)
@@ -313,9 +315,28 @@ export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason
   }
 }
 
+// The width in points of the stage strip: the window padding on the right
+// that terminal text never reaches, where the lighthouse stands.
+export const STAGE_PT = 240
+
 // The lines the mod itself added to a Ghostty config, from any folder it was
-// loaded from: its comment, and the include of its runtime file.
-const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??\S*\/runtime\/solar-clawd\.ghostty$/]
+// loaded from: its comment, the include of its runtime file, and the
+// padding that makes the stage strip.
+const OUR_LINES = [
+  /^# Solar Clawd: /,
+  /^config-file\s*=\s*\??.*\/runtime\/solar-clawd\.ghostty$/,
+  new RegExp(`^window-padding-x\\s*=\\s*\\d+\\s*,\\s*${STAGE_PT}$`),
+]
+
+// Whether a config has the padding line the mod added.
+export async function hasOurStage($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
+  for (const path of ghostty.configs) {
+    const text = await $.fs.read(path).catch(() => '')
+    if (text.split('\n').some(line => OUR_LINES[2]!.test(line.trim()))) return true
+  }
+
+  return false
+}
 
 // Whether a config has an include line the mod added, wherever it points.
 export async function hasOurInclude($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
@@ -337,9 +358,10 @@ export function runtimeFolder(home: string, isOnLinux: boolean, xdgState: string
   return `${home}/Library/Application Support/solar-clawd/runtime`
 }
 
-// Adds the one include line to the config Ghostty reads first, in place of
-// any the mod added before; `?` keeps Ghostty quiet should the file ever be
-// missing. Answers the line and file, or null when the config is there but
+// Adds the one include line, and the stage padding after it, to the config
+// Ghostty reads first, in place of any the mod added before. The padding
+// keeps the left number of the person's own window-padding-x (else 2); `?`
+// keeps Ghostty quiet should the file ever be missing. Answers the line and file, or null when the config is there but
 // cannot be read: never written over.
 export async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
   let config = ghostty.configs[0]!
@@ -356,13 +378,13 @@ export async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Pr
   const isThere = await $.fs.exists(config).catch(() => true)
   const read = isThere ? await $.fs.read(config).catch(() => null) : ''
   if (read === null) return null
-  const text = read
-    .split('\n')
-    .filter(row => !OUR_LINES.some(pattern => pattern.test(row.trim())))
-    .join('\n')
+  const rows = read.split('\n').filter(row => !OUR_LINES.some(pattern => pattern.test(row.trim())))
+  const text = rows.join('\n')
+  const own = rows.map(row => /^window-padding-x\s*=\s*(\d+)/.exec(row.trim())).find(found => found !== null)
+  const left = own ? own[1] : '2'
   const line = `config-file = ?${ghostty.include}`
   const gap = text === '' || text.endsWith('\n') ? '' : '\n'
-  await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\n`)
+  await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\nwindow-padding-x = ${left},${STAGE_PT}\n`)
 
   return { line, config }
 }

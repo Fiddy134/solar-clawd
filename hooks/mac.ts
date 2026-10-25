@@ -42,3 +42,7 @@ export const NOW_PLAYING = [
   'end try',
   'return out',
 ].flatMap(line => ['-e', line])
+
+// The scale of the main screen (2 on a Retina display), for
+// `osascript -l JavaScript`: the pixels in a point.
+export const SCREEN_SCALE = ['-e', 'ObjC.import("AppKit"); $.NSScreen.mainScreen.backingScaleFactor']

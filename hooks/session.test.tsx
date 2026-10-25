@@ -272,7 +272,7 @@ test('/solar ghostty on Linux adds the include to the XDG config that is there',
   const runtime = await startGhostty($, on, clock, world)
 
   await $.command.run({ command: 'solar', args: 'ghostty', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
-  expect(world.files.get(config)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`)
+  expect(world.files.get(config)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`)
   expect([...world.files.keys()].some(path => path.includes('Library/Application Support'))).toBe(false)
 })
 
@@ -284,7 +284,7 @@ test('an include the mod added to its own folder before is moved to the stable o
   world.files.set(CONFIG, { text: 'font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?/old/plugin/runtime/solar-clawd.ghostty\n', mtimeMs: start })
   const runtime = await startGhostty($, on, clock, world)
   expect(runtime).toBe('/Users/test/Library/Application Support/solar-clawd/runtime')
-  expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`)
+  expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`)
 })
 
 test('a sky another session took down comes back while this one wants it', async ($, on) => {
@@ -378,6 +378,74 @@ test('/solar ghostty puts its line in place of one the mod left from another fol
   expect(text.match(/^config-file = /gm)?.length).toBe(1)
   expect(text).toContain(`config-file = ?${runtime}/solar-clawd.ghostty`)
   expect(text).toContain('font-size = 14\ntheme = Dracula\n')
+  expect(text.endsWith('window-padding-x = 2,240\n')).toBe(true)
+})
+
+test('/solar ghostty adds the stage margin, keeping the person\'s own left padding', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.files.set(CONFIG, { text: 'font-size = 14\nwindow-padding-x = 10\n', mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+
+  await $.command.run({ command: 'solar', args: 'ghostty', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const expected = `font-size = 14\nwindow-padding-x = 10\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 10,240\n`
+  expect(world.files.get(CONFIG)?.text).toBe(expected)
+})
+
+test('a second start on a config with the stage leaves it exactly as it is', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  const runtime = '/Users/test/Library/Application Support/solar-clawd/runtime'
+  const text = `font-size = 14\nwindow-padding-x = 10\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 10,240\n`
+  world.files.set(CONFIG, { text, mtimeMs: start })
+  await startGhostty($, on, clock, world)
+  expect(world.files.get(CONFIG)?.text).toBe(text)
+})
+
+test('a config with our include but no stage gets the margin at the next start', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  const runtime = '/Users/test/Library/Application Support/solar-clawd/runtime'
+  world.files.set(CONFIG, { text: `font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`, mtimeMs: start })
+  await startGhostty($, on, clock, world)
+  expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`)
+})
+
+test('the shader is told the stage strip in pixels: points times the screen scale', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.answers.set('/usr/bin/osascript', '2\n')
+  const runtime = await startGhostty($, on, clock, world)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 480.0;')
+})
+
+test('a scale answer that is no number counts as 1', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.answers.set('/usr/bin/osascript', 'garbage\n')
+  const runtime = await startGhostty($, on, clock, world)
+  const text = world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  expect(text).toContain('const float STAGE_PX = 240.0;')
+  expect(text).not.toContain('NaN')
+})
+
+test('on Linux the stage strip is the points as they are, and the scale is never asked', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  const runtime = await startGhostty($, on, clock, world)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 240.0;')
+  expect(world.runs.some(argv => argv.includes('JavaScript'))).toBe(false)
 })
 
 test('the shader and the include are written whole: a file of their own, moved into place', async ($, on) => {
