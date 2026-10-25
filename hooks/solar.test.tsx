@@ -205,20 +205,33 @@ test('in Ghostty the sky is a shader, rewritten as the scene moves, still while 
   await clock.advance(120_000)
   expect(RELOADS(world.runs)).toBe(2)
 
-  // Away five minutes: the sky stands still, and moves again with the person.
+  // Nothing lively up there: still (drawn as the terminal changes), and
+  // away five minutes, still as it was: no reload.
+  expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = false')
   idle.value = 400
   await clock.advance(11_000)
   expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = false')
-  expect(RELOADS(world.runs)).toBe(3)
-  idle.value = 1
-  await clock.advance(11_000)
-  expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = true')
-  expect(RELOADS(world.runs)).toBe(4)
+  expect(RELOADS(world.runs)).toBe(2)
 
   // The last session ending takes the sky with it.
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(include?.[0] && world.files.get(include[0])?.text).toBe('')
-  expect(RELOADS(world.runs)).toBe(5)
+  expect(RELOADS(world.runs)).toBe(3)
+})
+
+test('a lively sky animates while the person is there, and stands still while away', async ($, on) => {
+  const idle = { value: 1 }
+  const { clock, include } = await waitingWorld($, on, idle)
+  // A storm played: the hat flies, the sky is lively.
+  await $.command.run({ command: 'solar', args: 'blåst', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  await clock.advance(11_000)
+  expect(include()).toContain('custom-shader-animation = true')
+  idle.value = 400
+  await clock.advance(11_000)
+  expect(include()).toContain('custom-shader-animation = false')
+  idle.value = 1
+  await clock.advance(11_000)
+  expect(include()).toContain('custom-shader-animation = true')
 })
 
 test('another live session keeps the sky up when this one ends', async ($, on) => {
@@ -789,13 +802,16 @@ test('the lighthouse state: a question beats done, hurries after two minutes, is
 
 test('Ghostty animates always while the lighthouse sweeps, stands still after it and on battery', () => {
   const beacon = { mode: 'asking' as const, since: 0 }
-  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: false })).toBe('always')
-  expect(animationOf({ beacon, now: BEACON_SWEEP_MS, isAway: false, isOnBattery: false })).toBe('false')
-  expect(animationOf({ beacon, now: 1000, isAway: true, isOnBattery: false })).toBe('false')
-  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: true })).toBe('always')
-  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: true })).toBe('false')
-  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false })).toBe('true')
-  expect(animationOf({ beacon: null, now: 0, isAway: true, isOnBattery: false })).toBe('false')
+  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: false, isLively: true })).toBe('always')
+  expect(animationOf({ beacon, now: BEACON_SWEEP_MS, isAway: false, isOnBattery: false, isLively: true })).toBe('false')
+  expect(animationOf({ beacon, now: 1000, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
+  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: true, isLively: true })).toBe('always')
+  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: true, isLively: true })).toBe('false')
+  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false, isLively: true })).toBe('true')
+  expect(animationOf({ beacon: null, now: 0, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
+  // Nothing lively up there: still, drawn as the terminal changes.
+  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false, isLively: false })).toBe('false')
+  expect(animationOf({ beacon: { mode: 'asking', since: 0 }, now: 1000, isAway: false, isOnBattery: false, isLively: false })).toBe('always')
 })
 
 // A Ghostty session to wait in: its shader and include as text.
@@ -835,7 +851,7 @@ test('a question lights the orange lighthouse at once, an answer puts it out', a
   await $.prompt.submit({ text: 'ja', wait: false, origin: { kind: 'composer' } })
   await clock.advance(100)
   expect(shader()).toContain('const int BEACON = 0;')
-  expect(include()).toContain('custom-shader-animation = true')
+  expect(include()).toContain('custom-shader-animation = false')
 })
 
 test('idle_prompt lights nothing', async ($, on) => {
@@ -868,7 +884,7 @@ test('the lighthouse sweeps five minutes, then stands still, and is out after th
   expect(include()).toContain('custom-shader-animation = false')
   await pass(BEACON_MS - BEACON_SWEEP_MS)
   expect(shader()).toContain('const int BEACON = 0;')
-  expect(include()).toContain('custom-shader-animation = true')
+  expect(include()).toContain('custom-shader-animation = false')
 })
 
 test('away, the sky and the lit lighthouse stand still', async ($, on) => {
@@ -944,6 +960,7 @@ test('on battery the sky stands still; a question still sweeps', async ($, on) =
 test('a pmset that fails counts as mains power', async ($, on) => {
   const { clock, world, include } = await waitingWorld($, on)
   world.failing.add('/usr/bin/pmset')
+  await $.command.run({ command: 'solar', args: 'blåst', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   await clock.advance(61_000)
   expect(include()).toContain('custom-shader-animation = true')
 })

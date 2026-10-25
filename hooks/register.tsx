@@ -482,7 +482,13 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
 // What the Ghostty sky depends on besides the time: whether the person is
 // away, whether the Mac runs on battery, and what this session waits on the
 // person for.
-type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null; basketAt: (now: number) => ShaderParams['basket'] }
+type SkyState = {
+  isAway: boolean
+  isOnBattery: boolean
+  waiting: Waiting | null
+  basketAt: (now: number) => ShaderParams['basket']
+  livelyAt: (now: number) => boolean
+}
 
 // What the session's shader is asked to draw beyond the scene.
 type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean }
@@ -605,7 +611,7 @@ async function writeGhosttySky(
       written.isReloadOwed = true
     }
     written.shader = shader
-    const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery })
+    const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery, isLively: state.livelyAt(now) })
     include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
   }
   const onDisk = await $.fs.read(ghostty.include).catch(() => null)
@@ -851,7 +857,15 @@ export const register: Register = on => {
   // The ISS on a visible pass now; never in a demo or at a pinned time.
   const issNow = (now: number, mode: Mode) => (mode === 'live' ? issVisible(issOrbit, now, where.place) : null)
 
-  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, basketAt })
+  // Whether anything in the sky moves enough to be worth Ghostty's frame
+  // loop: an event, rain or snow, a fire, a time-lapse, a storm played.
+  const livelyAt = (now: number): boolean => {
+    const sky = where.weather ? skyOf(where.weather.code) : 'clear'
+    const isWet = sky === 'drizzle' || sky === 'rain' || sky === 'thunder' || sky === 'snow'
+
+    return momentAt(now).mode === 'demo' || eventsNow(now).events.length > 0 || isWet || isWindForced || basketAt(now)?.fire != null
+  }
+  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, basketAt, livelyAt })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   // What was in the Ghostty sky last time it was drawn; null before the first.

@@ -28,9 +28,14 @@ export function beaconAt(waits: readonly Waiting[], now: number): (Waiting & { i
 // still sky (the lighthouse lit but no longer sweeping, the person away,
 // or on battery),
 // `true` (animate while focused) otherwise.
-export function animationOf(o: { beacon: Waiting | null; now: number; isAway: boolean; isOnBattery: boolean }): 'true' | 'false' | 'always' {
+//
+// A sky with nothing lively in it (no event, rain, fire or time-lapse)
+// stands still too: the clouds drift a pixel a second, and Ghostty draws
+// it anyway whenever the terminal changes, so it moves while Claude works,
+// at no cost when nothing happens.
+export function animationOf(o: { beacon: Waiting | null; now: number; isAway: boolean; isOnBattery: boolean; isLively: boolean }): 'true' | 'false' | 'always' {
   if (o.beacon && !o.isAway && o.now - o.beacon.since < BEACON_SWEEP_MS) return 'always'
-  if (o.beacon || o.isAway || o.isOnBattery) return 'false'
+  if (o.beacon || o.isAway || o.isOnBattery || !o.isLively) return 'false'
 
   return 'true'
 }
