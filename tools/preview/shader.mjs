@@ -5,6 +5,7 @@
 //
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
+//   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ import { cellsSvg, dumpDom, options, OUT, screenshot, timeOf, weatherOf } from '
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
 const [width, height] = [Number(o.width), Number(o.height)]
+const stage = o.stage ? Number(o.stage) : 0
 const ms = timeOf(o.at)
 const background = parseInt(o.background, 16)
 const cursor = o.cursor ? String(o.cursor).split(',').map(Number) : [-10000, -10000]
@@ -38,6 +40,7 @@ const params = shaderParams(
     // --basket 6 or 9,burn or 0,embers: the wastebasket in the corner.
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
     isYUp: !!o['y-up'],
+    stagePx: o.stage ? Number(o.stage) : 0,
     basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )
@@ -112,7 +115,7 @@ const t = term.getContext('2d')
 t.fillStyle = '#${o.background}'; t.fillRect(0, 0, w, h)
 t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
 const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 file, ran 2 shell commands', '', '❯ how does it read?', '', '  ⎿  tools/preview/run.sh shader --at 22:00']
-lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20))
+lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20, w - ${stage} - 32))
 t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
 t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
 const render = () => {

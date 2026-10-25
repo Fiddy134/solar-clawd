@@ -385,3 +385,10 @@ test("Midsummer's Eve has blossom drifting by its maypole", () => {
   const ms = swedish(2026, 6, 19, 12)
   expect(eventsAt(ms, contextFor(ms)).map(e => e.kind)).toContain('blossom')
 })
+
+test('the lighthouse stands on the stage strip when its width is known', () => {
+  const at = Date.UTC(2026, 9, 25, 20, 0)
+  const text = (stagePx?: number) => skyShader(shaderParams({ ms: at, t: 0, place: STOCKHOLM, weather: null }, { stagePx }))
+  expect(text()).toContain('const float STAGE_PX = 0.0;')
+  expect(text(480)).toContain('const float STAGE_PX = 480.0;')
+})

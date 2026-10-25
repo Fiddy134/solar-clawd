@@ -3,6 +3,22 @@
 export const SEA = `
 // --- The lighthouse --------------------------------------------------------
 
+// Where the lighthouse stands: in the middle of the stage strip at the
+// right when its width is known, else near the right edge. Its own unit
+// \`s\`, three times what it was, as it stands close; the tower is five of
+// them tall, from \`foot\` on the horizon up to \`deck\`.
+struct Lighthouse { float x; float s; float foot; float deck; float h; };
+
+Lighthouse lighthouse(float u) {
+  Lighthouse l;
+  l.x = STAGE_PX > 0.0 ? iResolution.x - 0.5 * STAGE_PX : 0.88 * iResolution.x;
+  l.s = 3.0 * 0.65 * u;
+  l.foot = ARC.w * iResolution.y;
+  l.h = 5.0 * l.s;
+  l.deck = l.foot - l.h;
+  return l;
+}
+
 // The sea on the horizon at the right, fading out toward the middle and
 // down into the sky: halftone ripples drifting, the low sun glittering in
 // it and a lit lighthouse's lantern too. \`glow\` is the lantern's light.
@@ -30,7 +46,7 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
   }
   // A lit lantern's light on the water below it.
   if (glowStrength > 0.0) {
-    float column = exp(-abs(p.x - 0.88 * iResolution.x) / (0.5 * u * (1.0 + depth * 10.0)));
+    float column = exp(-abs(p.x - lighthouse(u).x) / (0.5 * u * (1.0 + depth * 10.0)));
     water = mix(water, glow, screen(p, column * onRow * glowStrength, pitch, 15.0) * 0.9);
   }
   return mix(sky, water, cover);
@@ -44,12 +60,12 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
 // as it comes round toward you. Any moment of the turn looks right, so
 // iTime's unknown start never shows.
 vec3 beacon(vec3 sky, vec2 p, float u, float k) {
-  // Its own unit, smaller than the sky's: it stands far off.
-  float s = 0.65 * u;
-  float foot = ARC.w * iResolution.y;
-  float x = 0.88 * iResolution.x;
-  float h = 5.0 * s;
-  float deck = foot - h;
+  Lighthouse tower = lighthouse(u);
+  float s = tower.s;
+  float foot = tower.foot;
+  float x = tower.x;
+  float h = tower.h;
+  float deck = tower.deck;
   vec2 lantern = vec2(x, deck - 0.35 * s);
   vec2 v = p - lantern;
   vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);

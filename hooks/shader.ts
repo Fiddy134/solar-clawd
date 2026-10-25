@@ -67,6 +67,9 @@ export type ShaderParams = {
   fireworks: number
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
+  // The width of the strip at the right where the lighthouse stands, in
+  // pixels; 0 while it is not known.
+  stagePx: number
 }
 
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
@@ -151,6 +154,7 @@ export function shaderParams(
     iss?: ShaderParams['iss']
     basket?: ShaderParams['basket']
     isYUp?: boolean
+    stagePx?: number
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -180,6 +184,7 @@ export function shaderParams(
     beacon: options.beacon ?? null,
     basket: options.basket ?? null,
     isYUp: !!options.isYUp,
+    stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -310,6 +315,7 @@ export function skyShader(params: ShaderParams): string {
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
     `const int BASKET = ${params.basket ? 1 : 0};`,
+    `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
