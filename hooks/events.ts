@@ -25,6 +25,7 @@ export type EventKind =
   | 'blossom'
   | 'comet'
   | 'constellation'
+  | 'dolphin'
   | 'milestone'
   | 'shootingStar'
   // The Swedish days.
@@ -103,6 +104,7 @@ export const EVENTS: readonly Spec[] = [
   },
   { kind: 'blossom', word: 'körsbärsblad', slotMs: HOUR, chance: 0.8, durationMs: 3 * MINUTE, when: ctx => inMonths(ctx, 5) && ctx.elevation > -6 },
   { kind: 'comet', word: 'komet', slotMs: 60 * DAY, chance: 1, durationMs: 3 * DAY, when: ctx => isNight(ctx) && isClear(ctx, 0.6) },
+  { kind: 'dolphin', word: 'delfin', slotMs: 30 * MINUTE, chance: 1, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
   { kind: 'constellation', word: 'clawd-stjärnbild', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5) },
 ]
 

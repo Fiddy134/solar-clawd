@@ -9,9 +9,9 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 ## What's in the sky
 
 - **The real sky** — sun and moon positions and phases, bright stars and constellations, the ISS on its actual visible passes, aurora from NOAA's Kp index, and the weather from Open-Meteo (clouds, rain, snow, wind).
-- **Small, rare events** — hot-air balloons, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, rainbows after rain, shooting stars (more during the Perseids and Geminids).
+- **Small, rare events** — hot-air balloons, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse, rainbows after rain, shooting stars (more during the Perseids and Geminids).
 - **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and the tomte's sleigh, New Year's fireworks.
-- **Claude's state** — a lighthouse lights up and sweeps when Claude is waiting for you, and confetti falls after a long piece of work.
+- **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work.
 
 Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
 
