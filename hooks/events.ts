@@ -8,7 +8,7 @@
 // are too quick to schedule from here (Ghostty's shader has no clock but
 // its own): they have a rate instead, and the shader places them.
 
-import { localTime, sunAt } from './astro'
+import { easter, localTime, sunAt } from './astro'
 import type { LocalTime, Place } from './astro'
 import { hash, rand } from './paint'
 import { greyness, skyOf } from './sky'
@@ -27,6 +27,15 @@ export type EventKind =
   | 'constellation'
   | 'milestone'
   | 'shootingStar'
+  // The Swedish days.
+  | 'witch'
+  | 'feathers'
+  | 'flag'
+  | 'maypole'
+  | 'luciaTrain'
+  | 'christmasStar'
+  | 'sleigh'
+  | 'fireworks'
 
 // What an event's condition may look at.
 export type EventContext = {
@@ -104,9 +113,23 @@ const MILESTONE = { kind: 'milestone', word: 'milstolpe', durationMs: 20_000 } a
 const SHOOTING_STAR = { kind: 'shootingStar', word: 'stjärnfall' } as const
 const SATELLITE = { kind: 'satellite', word: 'satellit' } as const
 
+// The Swedish days' words, as the band and /solar say them.
+const DAY_WORDS = {
+  witch: 'påskkärring',
+  feathers: 'påskfjädrar',
+  flag: 'nationaldagen',
+  maypole: 'midsommarstång',
+  luciaTrain: 'luciatåg',
+  christmasStar: 'julstjärna',
+  sleigh: 'tomten',
+  fireworks: 'fyrverkeri',
+} as const
+type DayKind = keyof typeof DAY_WORDS
+
 // Every event the band and /solar can name, its word first.
 export const EVENT_WORDS: Record<EventKind, string> = {
-  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'satellite'>, string>),
+  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'satellite' | DayKind>, string>),
+  ...DAY_WORDS,
   satellite: SATELLITE.word,
   rainbow: RAINBOW.word,
   milestone: MILESTONE.word,
@@ -152,6 +175,75 @@ function isRainbow(ctx: EventContext): boolean {
   return isRecent && !isWet(ctx.sky) && ctx.elevation > 0 && ctx.elevation < 42
 }
 
+// --- The Swedish days ---------------------------------------------------------
+
+const DAY_MS = 24 * HOUR
+
+// Days from Easter Sunday to this local date.
+function fromEaster(time: LocalTime): number {
+  const { month, day } = easter(time.year)
+
+  return Math.round((Date.UTC(time.year, time.month - 1, time.day) - Date.UTC(time.year, month - 1, day)) / DAY_MS)
+}
+
+// One pass of `passMs` in each `slotMinutes` slot from local minute
+// `from` to `to`, each at a moment its seed picks.
+function passes(kind: EventKind, ms: number, time: LocalTime, from: number, to: number, slotMinutes: number, passMs: number): ActiveEvent | null {
+  const minutes = time.hour * 60 + time.minute
+  if (minutes < from || minutes >= to) return null
+  const slot = Math.floor((minutes - from) / slotMinutes)
+  const seed = hash(time.year * 10_000 + time.month * 400 + time.day * 12 + slot)
+  const slotStart = ms - (minutes - from - slot * slotMinutes) * MINUTE - (ms % MINUTE)
+  const start = slotStart + Math.floor(rand(seed) * (slotMinutes * MINUTE - passMs))
+  if (ms < start || ms >= start + passMs) return null
+
+  return { kind, seed: seed % 1000, start, durationMs: passMs, progress: (ms - start) / passMs }
+}
+
+// Up all through the local day (or from `from` to `to`, local minutes),
+// `progress` how far through.
+function lasting(kind: EventKind, ms: number, time: LocalTime, from = 0, to = 1440): ActiveEvent {
+  const minutes = time.hour * 60 + time.minute
+  const start = ms - (minutes - from) * MINUTE - (ms % MINUTE)
+  const durationMs = (to - from) * MINUTE
+
+  return { kind, seed: time.year % 1000, start, durationMs, progress: (ms - start) / durationMs }
+}
+
+// The fireworks' strength: a rocket now and then through the evening, the
+// whole sky from ten to midnight to a quarter past, dying out by half past.
+function fireworksAt(time: LocalTime): number | null {
+  const minutes = time.hour * 60 + time.minute
+  if (time.month === 12 && time.day === 31 && minutes >= 18 * 60) return minutes >= 23 * 60 + 50 ? 1 : 0.15
+  if (time.month === 1 && time.day === 1 && minutes < 30) return minutes < 15 ? 1 : 1 - (minutes - 15) / 15
+
+  return null
+}
+
+// The Swedish days up at `ms`, in Swedish local time: Easter, the national
+// day, Midsummer's Eve, Lucia, Christmas Eve and New Year.
+export function dayEventsAt(ms: number, ctx: EventContext): ActiveEvent[] {
+  const { time } = ctx
+  const days: (ActiveEvent | null)[] = []
+  const easterDay = fromEaster(time)
+  if (easterDay === -3) days.push(passes('witch', ms, time, 19 * 60, 23 * 60, 40, 3 * MINUTE))
+  if (easterDay >= -3 && easterDay <= 1) days.push(lasting('feathers', ms, time))
+  if (time.month === 6 && time.day === 6) days.push(lasting('flag', ms, time))
+  if (time.month === 6 && time.day >= 19 && time.day <= 25 && time.weekday === 5) days.push(lasting('maypole', ms, time))
+  if (time.month === 12 && time.day === 13 && time.hour >= 5 && time.hour < 8 && ctx.elevation < -3) {
+    const start = Math.floor(ms / (3 * MINUTE)) * 3 * MINUTE
+    days.push({ kind: 'luciaTrain', seed: 13, start, durationMs: 3 * MINUTE, progress: (ms - start) / (3 * MINUTE) })
+  }
+  if (time.month === 12 && time.day === 24) {
+    days.push(lasting('christmasStar', ms, time))
+    days.push(passes('sleigh', ms, time, 15 * 60, 15 * 60 + 2, 2, 2 * MINUTE) ?? passes('sleigh', ms, time, 17 * 60, 22 * 60, 30, 2 * MINUTE))
+  }
+  const fireworks = fireworksAt(time)
+  if (fireworks !== null) days.push({ ...lasting('fireworks', ms, time), progress: fireworks })
+
+  return days.filter((day): day is ActiveEvent => day !== null)
+}
+
 export type Forced = { kind: EventKind; at: number }
 
 // The events up at `ms`: scheduled ones whose condition holds, a rainbow if
@@ -169,6 +261,8 @@ export function eventsAt(ms: number, ctx: EventContext, forced: readonly Forced[
     active.push({ kind: spec.kind, seed: seed % 1000, start, durationMs: spec.durationMs, progress: (ms - start) / spec.durationMs })
   })
 
+  active.push(...dayEventsAt(ms, ctx))
+
   if (isRainbow(ctx)) {
     active.push({ kind: 'rainbow', seed: 0, start: ctx.lastRainAt ?? ms, durationMs: 30 * MINUTE, progress: 0 })
   }
@@ -176,7 +270,9 @@ export function eventsAt(ms: number, ctx: EventContext, forced: readonly Forced[
   for (const { kind, at } of forced) {
     const durationMs = kind === 'milestone' ? MILESTONE.durationMs : PREVIEW_MS
     if (ms < at || ms >= at + durationMs || active.some(event => event.kind === kind)) continue
-    active.push({ kind, seed: hash(at) % 1000, start: at, durationMs, progress: (ms - at) / durationMs })
+    // A preview of the fireworks is the full display.
+    const progress = kind === 'fireworks' ? 1 : (ms - at) / durationMs
+    active.push({ kind, seed: hash(at) % 1000, start: at, durationMs, progress })
   }
 
   return active

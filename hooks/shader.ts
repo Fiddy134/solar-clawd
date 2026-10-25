@@ -54,6 +54,8 @@ export type ShaderParams = {
   // when one began), and shooting stars an hour.
   events: { kind: EventKind; seed: number; seconds: number }[]
   shootingRate: number
+  // New Year's fireworks: how much of the sky they fill, 0 to 1.
+  fireworks: number
 }
 
 // The shader's number for each event.
@@ -70,6 +72,14 @@ const EVENT_INDEX: Record<EventKind, number> = {
   constellation: 10,
   milestone: 11,
   shootingStar: 12,
+  witch: 13,
+  feathers: 14,
+  flag: 15,
+  maypole: 16,
+  luciaTrain: 17,
+  christmasStar: 18,
+  sleigh: 19,
+  fireworks: 20,
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -164,6 +174,7 @@ export function shaderParams(
       .slice(0, 4)
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
+    fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
 
@@ -276,6 +287,8 @@ export function skyShader(params: ShaderParams): string {
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
+    `const float FIREWORKS = ${f(params.fireworks)};`,
+    `const float FLAG_DAY = ${params.events.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
     `const int EVENT_COUNT = ${params.events.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
     `const float EVENT_SEED[${events.length}] = ${floats(events.map(e => e.seed))};`,
@@ -772,6 +785,11 @@ vec3 satellite(vec3 sky, vec2 p, float u, float seed, float t) {
   return ink(sky, vec3(1.0, 0.97, 0.9), length(p - at) - 0.14 * u, 0.9);
 }
 
+// The Swedish flag's blue and yellow, and the ink of night silhouettes.
+const vec3 SWEDISH_BLUE = vec3(0.0, 0.42, 0.66);
+const vec3 SWEDISH_YELLOW = vec3(1.0, 0.8, 0.0);
+const vec3 NIGHT_INK = vec3(0.09, 0.08, 0.2);
+
 vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   float r = 2.2 * u;
   vec2 c = vec2(mix(-0.1, 1.1, t) * iResolution.x, iResolution.y * (0.22 + 0.2 * seeded(seed, 1)) - t * 3.0 * u + sin(iTime * 0.5) * 0.3 * u);
@@ -791,7 +809,12 @@ vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   // Gores in three inks, the seed choosing their order; shaded to the right.
   // Never below 0: % of a negative int is undefined in GLSL.
   int gore = max(int(floor((q.x / max(across, 0.01) + 2.0) * 3.0)), 0) + int(seed);
+  // Blue and yellow on the national day.
   vec3 gores[3] = vec3[3](INK_PINK, INK_YELLOW, INK_ORANGE);
+  if (FLAG_DAY > 0.5) {
+    gores[0] = SWEDISH_BLUE;
+    gores[2] = SWEDISH_BLUE;
+  }
   vec3 color = gores[gore % 3];
   color = mix(color, mix(color, INK_INDIGO, 0.35), screen(p, clamp(q.x / r * 0.6 + 0.2, 0.0, 1.0), max(3.0, u * 0.24), 45.0));
   sky = ink(sky, lift(color, k), envelope, 1.0);
@@ -984,6 +1007,169 @@ vec3 confetti(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   return sky;
 }
 
+// --- The Swedish days -------------------------------------------------------
+
+float box(vec2 q, vec2 b) { vec2 d = abs(q) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
+// Maundy Thursday night: a påskkärring on her broom, a coffee pot hanging
+// from it, on her way past the moon to Blåkulla.
+vec3 witch(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+  vec2 c = vec2(mix(1.1, -0.1, t) * iResolution.x, iResolution.y * (0.16 + 0.12 * seeded(seed, 1)) + sin(t * 18.0) * 0.4 * u);
+  vec2 q = (p - c) / (2.2 * u);
+  if (dot(q, q) > 9.0) return sky;
+  // The broom, tilted, its bristles fanning out behind.
+  float stick = segment(q, vec2(-1.4, -0.15), vec2(1.3, 0.25)) - 0.05;
+  vec2 b = q - vec2(1.3, 0.25);
+  float bristles = b.x > 0.0 && b.x < 0.9 && abs(b.y) < 0.12 + b.x * 0.35 ? -0.01 : 1.0;
+  sky = ink(sky, NIGHT_INK, min(stick, bristles) * 2.2 * u, 0.95);
+  // Her skirt, shawl and kerchief.
+  // The skirt widens to its hem; corners rounded.
+  vec2 hem = q - vec2(0.2, -0.25);
+  hem.x /= 1.0 + 0.6 * clamp(hem.y / 0.28, -1.0, 1.0) * 0.5;
+  sky = ink(sky, lift(INK_ORANGE, k), (box(hem, vec2(0.36, 0.24)) - 0.06) * 2.2 * u, 0.95);
+  sky = ink(sky, lift(INK_PINK, k), (box(q - vec2(0.12, -0.7), vec2(0.24, 0.16)) - 0.08) * 2.2 * u, 0.95);
+  sky = ink(sky, lift(INK_YELLOW, k), (length(q - vec2(-0.02, -1.08)) - 0.2) * 2.2 * u, 0.95);
+  // The coffee pot, swinging.
+  vec2 pot = q - vec2(-0.9 + 0.08 * sin(iTime * 3.0), 0.35);
+  return ink(sky, NIGHT_INK, (length(pot / vec2(1.0, 1.2)) - 0.17) * 2.2 * u, 0.95);
+}
+
+// Feathers drifting down, dyed as for the påskris.
+vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
+  vec3 dye[5] = vec3[5](INK_PINK, INK_YELLOW, INK_GREEN, INK_ORANGE, INK_VIOLET);
+  for (int i = 0; i < 14; i++) {
+    float a = seeded(seed, i * 4 + 50);
+    float b = seeded(seed, i * 4 + 51);
+    float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
+    float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
+    vec2 q = p - vec2(x, y);
+    if (dot(q, q) > 1.5 * u * u) continue;
+    float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
+    q = mat2(cos(sway), -sin(sway), sin(sway), cos(sway)) * q;
+    sky = ink(sky, lift(dye[i % 5], k), (length(q / vec2(0.18 * u, 0.55 * u)) - 1.0) * 0.18 * u, 0.9);
+    sky = ink(sky, vec3(0.97, 0.95, 0.9), abs(q.x) - 0.03 * u + max(0.0, abs(q.y) - 0.6 * u), 0.8);
+  }
+  return sky;
+}
+
+// The national day: a Swedish flag on a pole at the horizon, waving.
+vec3 flag(vec3 sky, vec2 p, float u) {
+  float foot = 0.62 * iResolution.y;
+  float x = 0.72 * iResolution.x;
+  float h = 5.0 * u;
+  sky = ink(sky, vec3(0.95, 0.94, 0.9), box(p - vec2(x, foot - h * 0.5), vec2(0.07 * u, h * 0.5)), 0.95);
+  vec2 q = p - vec2(x + 0.07 * u, foot - h + 0.1 * u);
+  float w = 2.6 * u;
+  float fly = clamp(q.x / w, 0.0, 1.0);
+  float wave = sin(fly * 5.0 - iTime * 3.0);
+  q.y -= wave * 0.16 * u * fly;
+  if (q.x < 0.0 || q.x > w || q.y < 0.0 || q.y > 1.62 * u) return sky;
+  // The cross at 5:2:9 across and 4:2:4 down.
+  bool isCross = abs(q.x / w - 0.3125) < 0.0625 || abs(q.y / (1.62 * u) - 0.5) < 0.1;
+  return mix(sky, (isCross ? SWEDISH_YELLOW : SWEDISH_BLUE) * (0.85 + 0.15 * wave), 0.95);
+}
+
+// Midsummer's Eve: a maypole dressed in green with its two rings.
+vec3 maypole(vec3 sky, vec2 p, float u, float k) {
+  float foot = 0.62 * iResolution.y;
+  float x = 0.72 * iResolution.x;
+  float h = 5.5 * u;
+  vec3 green = lift(INK_GREEN, k);
+  sky = ink(sky, green, box(p - vec2(x, foot - h * 0.5), vec2(0.12 * u, h * 0.5)), 0.95);
+  sky = ink(sky, green, box(p - vec2(x, foot - h * 0.78), vec2(1.3 * u, 0.1 * u)), 0.95);
+  for (int side = -1; side <= 1; side += 2) {
+    vec2 ring = p - vec2(x + float(side) * 1.1 * u, foot - h * 0.78 + 0.75 * u + sin(iTime * 1.2 + float(side)) * 0.08 * u);
+    sky = ink(sky, green, abs(length(ring) - 0.55 * u) - 0.09 * u, 0.95);
+    float a = atan(ring.y, ring.x) * 1.6;
+    if (fract(a) < 0.3) {
+      vec3 flower = mod(floor(a), 2.0) < 1.0 ? INK_PINK : INK_YELLOW;
+      sky = ink(sky, lift(flower, k), length(ring - normalize(ring) * 0.55 * u) - 0.12 * u, 0.95);
+    }
+  }
+  return sky;
+}
+
+// Lucia morning: a procession in white with candles, walking slowly along
+// the horizon, the flames flickering; Lucia first, a crown of light.
+vec3 luciaTrain(vec3 sky, vec2 p, float u, float t) {
+  float foot = 0.62 * iResolution.y;
+  for (int i = 0; i < 9; i++) {
+    float x = (mix(-0.15, 1.15, t) - float(i) * 0.022) * iResolution.x;
+    vec2 q = p - vec2(x, foot);
+    if (abs(q.x) > u || q.y < -2.4 * u || q.y > 0.2 * u) continue;
+    sky = ink(sky, vec3(0.96, 0.95, 0.92), box(q - vec2(0.0, -0.6 * u), vec2(0.22 * u, 0.6 * u)), 0.95);
+    sky = ink(sky, vec3(0.98, 0.86, 0.72), length(q - vec2(0.0, -1.38 * u)) - 0.18 * u, 0.95);
+    float flicker = 0.75 + 0.25 * sin(iTime * (9.0 + float(i)) + float(i) * 2.0);
+    vec2 flame = i == 0 ? vec2(0.0, -1.75 * u) : vec2(0.25 * u, -0.95 * u);
+    sky = mix(sky, vec3(1.0, 0.82, 0.45), 0.6 * flicker * exp(-length(q - flame) / (0.35 * u)));
+    sky = ink(sky, vec3(1.0, 0.93, 0.7), length((q - flame) / vec2(1.0, 1.6)) - 0.08 * u, flicker);
+  }
+  return sky;
+}
+
+// Christmas Eve: a bright star, four long points and a soft glow.
+vec3 christmasStar(vec3 sky, vec2 p, float u) {
+  vec2 q = p - vec2(0.3 * iResolution.x, 0.14 * iResolution.y);
+  float d = length(q);
+  if (d > 6.0 * u) return sky;
+  float rays = exp(-abs(q.x) / (0.05 * u)) * exp(-abs(q.y) / (2.4 * u)) + exp(-abs(q.y) / (0.05 * u)) * exp(-abs(q.x) / (1.6 * u));
+  float glow = exp(-d / (0.5 * u)) * (0.9 + 0.1 * sin(iTime * 1.3));
+  return mix(sky, vec3(1.0, 0.97, 0.85), clamp(glow + rays * 0.8, 0.0, 1.0));
+}
+
+// Christmas Eve: the tomte in his sleigh behind a reindeer, crossing.
+vec3 sleigh(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+  vec2 c = vec2(mix(-0.12, 1.12, t) * iResolution.x, iResolution.y * (0.2 + 0.1 * seeded(seed, 2)) - sin(t * 3.14159) * 2.0 * u);
+  vec2 q = (p - c) / (1.7 * u);
+  if (abs(q.x) > 4.5 || abs(q.y) > 2.0) return sky;
+  // The reindeer ahead, legs running, antlers up; the reins.
+  float run = sin(iTime * 9.0) * 0.15;
+  float deer = min(box(q - vec2(2.6, -0.2), vec2(0.55, 0.22)), length(q - vec2(3.25, -0.55)) - 0.18);
+  deer = min(deer, min(segment(q, vec2(2.2, 0.0), vec2(2.1 - run, 0.55)) - 0.06, segment(q, vec2(3.0, 0.0), vec2(3.1 + run, 0.55)) - 0.06));
+  deer = min(deer, segment(q, vec2(3.3, -0.7), vec2(3.5, -1.1)) - 0.04);
+  vec3 brown = lift(vec3(0.62, 0.42, 0.26), k);
+  sky = ink(sky, brown, deer * 1.7 * u, 0.95);
+  sky = ink(sky, NIGHT_INK, (segment(q, vec2(0.9, -0.1), vec2(2.1, -0.2)) - 0.03) * 1.7 * u, 0.9);
+  // The sleigh, and its runner.
+  sky = ink(sky, lift(INK_PINK, k) * 0.9, box(q, vec2(0.85, 0.3)) * 1.7 * u, 0.95);
+  sky = ink(sky, NIGHT_INK, (segment(q, vec2(-0.9, 0.45), vec2(0.9, 0.45)) - 0.05) * 1.7 * u, 0.95);
+  // The tomte: red coat and cap, white beard.
+  vec3 red = vec3(0.95, 0.3, 0.28);
+  sky = ink(sky, red, (length(q - vec2(-0.2, -0.55)) - 0.32) * 1.7 * u, 0.95);
+  sky = ink(sky, vec3(0.97, 0.95, 0.92), (length(q - vec2(0.0, -0.45)) - 0.16) * 1.7 * u, 0.95);
+  float cap = segment(q, vec2(-0.25, -0.8), vec2(-0.55, -1.3)) - 0.12;
+  return ink(sky, red, cap * 1.7 * u, 0.95);
+}
+
+// New Year: rockets bursting into rings of sparks and falling away, as
+// many as the hour calls for. Each burst lives two seconds in a slot of its
+// own, so the display has no start to show.
+vec3 fireworks(vec3 sky, vec2 p, float u, float k) {
+  vec3 colors[4] = vec3[4](INK_PINK, INK_YELLOW, INK_GREEN, INK_BLUE);
+  for (int i = 0; i < 8; i++) {
+    float clock = iTime / 2.0 + float(i) * 0.37;
+    float slot = floor(clock);
+    int n = int(slot) * 31 + i * 977;
+    if (rand(n) > FIREWORKS) continue;
+    float age = fract(clock);
+    vec2 c = vec2((0.1 + 0.8 * rand(n + 1)) * iResolution.x, (0.08 + 0.35 * rand(n + 2)) * iResolution.y + age * age * 1.5 * u);
+    vec2 q = p - c;
+    float reach = (3.0 + 3.0 * rand(n + 3)) * u * sqrt(age);
+    float d = length(q);
+    if (d > reach + u) continue;
+    vec3 color = lift(colors[(i + int(slot)) % 4], k);
+    float fade = (1.0 - age) * (1.0 - age);
+    // A glow over the burst, then the sparks: an outer ring and a trailing inner one.
+    sky = mix(sky, color, 0.18 * fade * exp(-d / reach));
+    float a = atan(q.y, q.x) / 6.28318 * 16.0;
+    float spark = length(vec2((fract(a) - 0.5) * 6.28318 / 16.0 * d, d - reach));
+    float trail = length(vec2((fract(a + 0.5) - 0.5) * 6.28318 / 16.0 * d, d - reach * 0.62));
+    sky = ink(sky, color, spark - 0.2 * u, fade);
+    sky = ink(sky, color, trail - 0.12 * u, fade * 0.6);
+  }
+  return sky;
+}
+
 // Every event up now; \`isBehind\` draws only what sits behind the clouds.
 vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
   if (isBehind) {
@@ -998,6 +1184,7 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
       if (kind == 5) sky = rainbow(sky, p, k);
       if (kind == 9) sky = comet(sky, p, u, seed);
       if (kind == 10) sky = constellation(sky, p, u, seed);
+      if (kind == 18) sky = christmasStar(sky, p, u);
       continue;
     }
     if (kind == 2) sky = balloon(sky, p, u, seed, t, k);
@@ -1006,6 +1193,13 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
     if (kind == 6) sky = kite(sky, p, u, seed, k);
     if (kind == 7 || kind == 8) sky = drift(sky, p, u, seed, kind == 8, k);
     if (kind == 11) sky = confetti(sky, p, u, seed, t, k);
+    if (kind == 13) sky = witch(sky, p, u, seed, t, k);
+    if (kind == 14) sky = feathers(sky, p, u, seed, k);
+    if (kind == 15) sky = flag(sky, p, u);
+    if (kind == 16) sky = maypole(sky, p, u, k);
+    if (kind == 17) sky = luciaTrain(sky, p, u, t);
+    if (kind == 19) sky = sleigh(sky, p, u, seed, t, k);
+    if (kind == 20) sky = fireworks(sky, p, u, k);
   }
   return sky;
 }

@@ -2,9 +2,9 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
+import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
-import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
+import { contextAt, EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } from './beacon'
@@ -926,4 +926,46 @@ test('the real ISS replaces the scheduled satellite; a preview still shows one',
     expect(eventsAt(ms, contextFor(ms, clear)).some(e => e.kind === 'satellite')).toBe(false)
   }
   expect(eventsAt(start, contextFor(start, clear), [{ kind: 'satellite', at: start }]).some(e => e.kind === 'satellite')).toBe(true)
+})
+
+// A Swedish local time as a moment.
+const swedish = (year: number, month: number, day: number, hour: number, minute = 0) => {
+  const guess = Date.UTC(year, month - 1, day, hour, minute)
+  return guess - swedishOffsetMs(guess - swedishOffsetMs(guess))
+}
+const DAY_KINDS = ['witch', 'feathers', 'flag', 'maypole', 'luciaTrain', 'christmasStar', 'sleigh', 'fireworks'] as const
+const daysAt = (ms: number) => eventsAt(ms, contextFor(ms)).filter(e => (DAY_KINDS as readonly string[]).includes(e.kind))
+const kindsAt = (ms: number) => daysAt(ms).map(e => e.kind as string)
+const someMinute = (from: number, to: number, kind: string) => {
+  for (let ms = from; ms < to; ms += 60_000) if (kindsAt(ms).includes(kind)) return true
+  return false
+}
+
+test('the Swedish days come on their days, in Swedish time', () => {
+  // Easter 2026 is 5 April: Maundy Thursday the 2nd.
+  expect(someMinute(swedish(2026, 4, 2, 19), swedish(2026, 4, 2, 23), 'witch')).toBe(true)
+  expect(kindsAt(swedish(2026, 4, 4, 12))).toContain('feathers')
+  expect(kindsAt(swedish(2026, 6, 6, 12))).toContain('flag')
+  expect(kindsAt(swedish(2026, 6, 7, 12))).toEqual([])
+  expect(kindsAt(swedish(2026, 6, 19, 12))).toContain('maypole')
+  expect(kindsAt(swedish(2026, 12, 13, 6))).toContain('luciaTrain')
+  expect(kindsAt(swedish(2026, 12, 24, 15, 1))).toContain('sleigh')
+  expect(kindsAt(swedish(2026, 12, 24, 12))).toContain('christmasStar')
+  expect(daysAt(swedish(2026, 12, 31, 23, 59)).find(e => e.kind === 'fireworks')?.progress).toBe(1)
+  expect(kindsAt(swedish(2027, 1, 1, 0, 40))).toEqual([])
+})
+
+test('Easter 2027 keeps to Swedish time across the night the clocks change', () => {
+  // Easter Sunday 28 March 2027, summer time from 02:00 local (01:00 UTC).
+  expect(kindsAt(Date.UTC(2027, 2, 28, 0, 30))).toContain('feathers')
+  expect(kindsAt(Date.UTC(2027, 2, 28, 2, 30))).toContain('feathers')
+  expect(someMinute(swedish(2027, 3, 25, 19), swedish(2027, 3, 25, 23), 'witch')).toBe(true)
+  expect(kindsAt(swedish(2027, 3, 29, 23, 59) + 2 * 60_000)).toEqual([])
+})
+
+test('every Swedish day has a word, and /solar event can play it', () => {
+  for (const kind of DAY_KINDS) expect(EVENT_WORDS[kind]).toBeTruthy()
+  expect(EVENT_WORDS.witch).toBe('påskkärring')
+  const ms = swedish(2026, 8, 10, 12)
+  expect(eventsAt(ms, contextFor(ms), [{ kind: 'witch', at: ms }]).some(e => e.kind === 'witch')).toBe(true)
 })
