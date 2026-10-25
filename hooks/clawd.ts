@@ -438,7 +438,7 @@ function paintFireworks(c: Canvas, right: number, t: number): void {
 export const REACTION_SECONDS: Record<Reaction, number> = {
   working: Infinity,
   reading: Infinity,
-  toss: 1.2,
+  toss: 1.8,
   burn: Infinity,
   embers: 3,
   cheer: 2.5,
@@ -492,7 +492,7 @@ function reactionOverrides(
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
   // A ball of paper over his shoulder into the basket.
-  if (kind === 'toss') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.35 ? 'up' : 'down', glyphs: [] }
+  if (kind === 'toss') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.5 ? 'up' : 'down', glyphs: [] }
   // A match thrown in, then watching the context burn away, and the smoke.
   if (kind === 'burn') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
   if (kind === 'embers') return { eyes: 'closed', glyphs: [] }
@@ -550,15 +550,20 @@ function paintBasket(c: Canvas, x: number, y: number, paper: number | null | und
   }
 }
 
+// How long a ball (or a match) takes to reach the basket.
+export const THROW_SECONDS = 1.4
+
 // What flies to the basket: a ball of paper, or a lit match, arcing back
 // over his shoulder to the one behind him, or out and down toward the one
 // in the sky's corner.
 function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'], isInSky: boolean): void {
   const age = reaction?.kind === 'toss' ? reaction.age : reaction?.kind === 'burn' ? reaction.age : null
-  if (age === null || age > 0.8) return
-  const f = age / 0.8
-  const px = Math.round(isInSky ? x + 5 + 12 * f : x - 4 * f)
-  const py = Math.round(isInSky ? y + 1 - 4 * f * (1 - f) + 4 * f : y + 1 - 3 * f * (1 - f) * 2 - f)
+  if (age === null || age > THROW_SECONDS) return
+  const f = age / THROW_SECONDS
+  // Into the sky's basket: up a little, then down past the band's last
+  // columns, above where it stands.
+  const px = Math.round(isInSky ? x + 5 + 8 * f : x - 4 * f)
+  const py = Math.round(isInSky ? y + 1 - 6 * f * (1 - f) + 4 * f : y + 1 - 3 * f * (1 - f) * 2 - f)
   c.set(px, py, reaction!.kind === 'toss' ? CREAM : INKS.yellow)
   if (reaction!.kind === 'burn') c.set(px + (isInSky ? -1 : 1), py + 1, WOOD)
 }

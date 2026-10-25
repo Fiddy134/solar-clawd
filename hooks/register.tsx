@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
-import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
+import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained, THROW_SECONDS, toolKind, workKind } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
@@ -927,7 +927,7 @@ export const register: Register = on => {
     void fetchIss().catch(() => undefined)
     // A ball thrown lands in the sky's basket as it gets there.
     const readPaper = async () => {
-      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
     }
     void readPaper()
     $.clock.every(PAPER_MS, () => void readPaper())
@@ -1072,7 +1072,7 @@ export const register: Register = on => {
       claude.isWorking = false
       claude.open.clear()
       const now = await $.clock.now()
-      if (takePaper(await contextFill($), now)) void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      if (takePaper(await contextFill($), now)) void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
@@ -1128,7 +1128,7 @@ export const register: Register = on => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
     claude.compactingSince = await $.clock.now()
     // The match lands, and the sky's basket catches fire.
-    void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+    void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
     try {
       const result = await next(e)
       if (!('skip' in result)) {
@@ -1228,7 +1228,7 @@ export const register: Register = on => {
     if (word === 'kasta') {
       claude.passing = { kind: 'toss', at: now }
       claude.ballShownUntil = now + PREVIEW_MS
-      void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
       void $.clock.sleep(PREVIEW_MS + 100).then(() => refreshSky?.()).catch(() => undefined)
 
       return { text: 'Solar: Clawd kastar en pappersboll i papperskorgen.' }
@@ -1236,7 +1236,7 @@ export const register: Register = on => {
 
     if (word === 'bränn') {
       claude.burnShownUntil = now + BURN_SHOWN_MS
-      void $.clock.sleep(800).then(() => refreshSky?.()).catch(() => undefined)
+      void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
       void $.clock
         .sleep(BURN_SHOWN_MS)
         .then(() => {

@@ -1539,10 +1539,10 @@ const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0
 vec3 basket(vec3 sky, vec2 p, float u, float k) {
   if (BASKET == 0) return sky;
   float pitch = max(3.0, u * 0.24);
-  // Its own unit, a little larger than the sky's.
-  u *= 1.25;
+  // Its own unit, a little smaller than the sky's.
+  u *= 0.85;
   float hgt = 2.6 * u;
-  vec2 base = vec2(iResolution.x - 2.2 * u, iResolution.y - 0.9 * u);
+  vec2 base = vec2(iResolution.x - 2.2 * u, iResolution.y - 0.35 * u);
   vec2 v = p - base;
   if (abs(v.x) > 3.0 * u || v.y > 0.5 * u || v.y < -hgt - 6.0 * u) return sky;
   float rise = clamp(-v.y / hgt, 0.0, 1.0);
