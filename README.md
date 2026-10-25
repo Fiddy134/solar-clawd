@@ -14,6 +14,7 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 - **Small, rare events** — hot-air balloons, now and then a flying saucer among the clouds, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).
 - **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and Santa's sleigh, New Year's fireworks.
 - **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. In the bottom right corner stands a wire wastebasket (in the band behind Clawd when there is no shader): he tosses a ball of paper into it for each tenth of the context window, and when the conversation is compacted he throws in a match and the context burns away; he reads a book while Claude only reads, and types while it edits or runs commands.
+- **The keeper** — in Ghostty the lighthouse is three times larger, and a small Clawd lives there: he fishes on the rocks, walks round the gallery, surfs a wave now and then, stargazes at night, and sleeps in a hammock from 03 to 06. When Claude waits for you he stands by the lit lantern, and every so often a UFO beams him up in a green light and kicks him out again a quarter of a minute later (`/solar event ufo abduction` and `/solar event surf` preview them).
 
 Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
 
@@ -33,7 +34,7 @@ At the prompt of a Claude Code session:
 
 Answer `y` to add the marketplace and pick a scope (user, so it runs in every session). From a shell, the same is `claude plugin install solar-clawd --marketplace Fiddy134/solar-clawd`.
 
-Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds one optional include line to Ghostty's config (the only change it makes there); the included file names the shader while a Claude session runs and is empty otherwise. The sky shows only in the tabs where Claude runs.
+Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds one optional include line to Ghostty's config; the included file names the shader while a Claude session runs and is empty otherwise. It also adds a right-hand margin of 240 points, where the lighthouse stands clear of the text; that is added once and kept when the sky is hidden. The sky shows only in the tabs where Claude runs.
 
 ### Developing
 
