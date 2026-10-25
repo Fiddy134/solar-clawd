@@ -9,6 +9,7 @@ import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
+import { staleFiles } from './tidy'
 import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 
@@ -25,10 +26,14 @@ const TICK_MS = 125
 const DEMO_MS = 48_000
 // Narrower than this and the scene goes away rather than squeezing.
 const MIN_COLUMNS = 34
-// How often iTerm2's wallpaper moves its clouds on (the still sky behind
-// them is painted once a minute); faster in the time-lapse.
-const WALLPAPER_MS = 2_500
+// How often iTerm2's wallpaper moves its clouds on while the person is at
+// it (the still sky behind them is painted once a minute), faster in the
+// time-lapse; and how often the still sky is brought up to date otherwise.
+const WALLPAPER_MS = 3_000
 const DEMO_WALLPAPER_MS = 1_500
+const IDLE_WALLPAPER_MS = 5 * 60_000
+// How often the person's idleness (and iTerm2 being in front) is asked.
+const ACTIVITY_MS = 3_000
 // Weather and aurora are asked for this often, music this often; a place
 // guessed from the IP address is trusted this long before it is guessed again.
 const WEATHER_MS = 15 * 60_000
@@ -76,7 +81,7 @@ const SET_BACKGROUND = [
   'if (id of s) is targetId then',
   'set background image of s to imagePath',
   'set b to bounds of w',
-  'return "ok " & ((item 3 of b) - (item 1 of b)) & " " & ((item 4 of b) - (item 2 of b))',
+  'return "ok " & ((item 3 of b) - (item 1 of b)) & " " & ((item 4 of b) - (item 2 of b)) & " " & (frontmost as text)',
   'end if',
   'end repeat',
   'end repeat',
@@ -85,6 +90,9 @@ const SET_BACKGROUND = [
   'return "missing"',
   'end run',
 ].flatMap(line => ['-e', line])
+
+// Whether iTerm2 is the app in front.
+const ITERM_FRONTMOST = ['-e', 'tell application id "com.googlecode.iterm2" to return frontmost as text']
 
 // "title - artist" of what Spotify or Music plays, or nothing. Neither app is
 // started: each is asked only while it already runs, through `run script`
@@ -302,6 +310,14 @@ async function isIncluded($: EngineInterface, ghostty: Ghostty): Promise<boolean
   return false
 }
 
+// Removes what crashed sessions left in `folder`; `keep` is this session's.
+async function tidy($: EngineInterface, folder: string, keep: string[]): Promise<void> {
+  const now = await $.clock.now()
+  const entries = await $.fs.list(folder).catch(() => [])
+  const paths = staleFiles(entries, folder, now, keep)
+  if (paths.length > 0) await $.process.run(['/bin/rm', '-f', ...paths]).catch(() => undefined)
+}
+
 async function reloadGhostty($: EngineInterface): Promise<void> {
   await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 }).catch(() => undefined)
 }
@@ -401,7 +417,9 @@ export const register: Register = on => {
   // Set when this session runs in iTerm2: its session id and where the
   // wallpaper files go.
   let iterm: { sessionId: string; folder: string } | null = null
-  const wallpaper = { at: 0, count: 0, isBusy: false, isShown: false, key: '' }
+  const wallpaper = { at: 0, count: 0, isBusy: false, isShown: false, key: '', last: '' }
+  // Whether the person is at the computer, and iTerm2 in front, as last asked.
+  const activity = { isAway: false, isFrontmost: true }
   // Set when this session runs in Ghostty: where the sky's files go, and
   // the background the terminal draws.
   let ghostty: Ghostty | null = null
@@ -494,6 +512,7 @@ export const register: Register = on => {
     if (sessionId && home) {
       iterm = { sessionId, folder: `${home}/Library/Caches/solar-clawd` }
       await $.process.run(['/bin/mkdir', '-p', iterm.folder])
+      void tidy($, iterm.folder, [sessionId]).catch(() => undefined)
     }
 
     try {
@@ -517,6 +536,7 @@ export const register: Register = on => {
         background: await ghosttyBackground($, bin),
         written: { shader: '', include: '', heartbeatAt: -Infinity, isBusy: false },
       }
+      void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.
       if (!(await isIncluded($, ghostty))) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
     }
@@ -531,7 +551,20 @@ export const register: Register = on => {
     // The network is not waited on: the sky starts in Stockholm.
     void settlePlace($, where).catch(() => undefined)
     $.clock.every(WEATHER_MS, () => void refreshWeather($, where).catch(() => undefined))
+    // Away from the computer, or iTerm2 behind other windows: the wallpaper
+    // stands still and the music is not asked after.
+    $.clock.every(ACTIVITY_MS, () => {
+      void (async () => {
+        const wasIdle = activity.isAway || !activity.isFrontmost
+        activity.isAway = (await idleMs($)) >= AWAY_MS
+        if (iterm !== null && !activity.isAway && (wasIdle || !activity.isFrontmost)) {
+          const { stdout } = await $.process.run(['/usr/bin/osascript', ...ITERM_FRONTMOST], { timeoutMs: 5_000 })
+          activity.isFrontmost = stdout.trim() === 'true'
+        }
+      })().catch(() => undefined)
+    })
     $.clock.every(MUSIC_MS, () => {
+      if (activity.isAway) return
       void $.process
         .run(['/usr/bin/osascript', ...NOW_PLAYING], { timeoutMs: 5_000 })
         .then(({ stdout }) => {
@@ -555,11 +588,15 @@ export const register: Register = on => {
         const points = windowSize ?? guess
         const width = Math.round(Math.min(3200, Math.max(240, points.width * scale)))
         const height = Math.round((width * points.height) / points.width)
+        const png = await wallpaperPng(view, width, height, () => $.clock.sleep(1), wallpaperCache)
+        // The same picture again (a still sky): nothing to write or send.
+        if (png === wallpaper.last && wallpaper.isShown) return
+        wallpaper.last = png
         wallpaper.count += 1
         path = `${iterm.folder}/${iterm.sessionId}-${wallpaper.count % 2}.png`
-        await $.process.run(['/usr/bin/base64', '-D', '-o', path], {
-          stdin: await wallpaperPng(view, width, height, () => $.clock.sleep(1), wallpaperCache),
-        })
+        await $.process.run(['/usr/bin/base64', '-D', '-o', path], { stdin: png })
+      } else {
+        wallpaper.last = ''
       }
       const { stdout } = await $.process.run([
         '/usr/bin/osascript',
@@ -567,8 +604,9 @@ export const register: Register = on => {
         iterm.sessionId,
         path,
       ])
-      const [answer, w, h] = stdout.trim().split(' ')
+      const [answer, w, h, frontmost] = stdout.trim().split(' ')
       wallpaper.isShown = now !== null && answer === 'ok'
+      if (frontmost) activity.isFrontmost = frontmost === 'true'
       if (Number(w) > 0 && Number(h) > 0) windowSize = { width: Number(w), height: Number(h) }
     }
 
@@ -582,7 +620,8 @@ export const register: Register = on => {
           // A new place, weather, size or preview repaints at once.
           const weather = where.weather
           const key = `${mode}|${where.place.name}|${weather?.code}|${weather?.cloudCover}|${where.kp}|${isAuroraForced}|${viewport.columns}x${viewport.rows}|${windowSize?.width}x${windowSize?.height}`
-          const every = mode === 'demo' ? DEMO_WALLPAPER_MS : WALLPAPER_MS
+          const isActive = !activity.isAway && activity.isFrontmost
+          const every = mode === 'demo' ? DEMO_WALLPAPER_MS : isActive ? WALLPAPER_MS : IDLE_WALLPAPER_MS
           const isDue = now - wallpaper.at >= every || key !== wallpaper.key
           if (hidden ? wallpaper.isShown : isDue) {
             wallpaper.isBusy = true

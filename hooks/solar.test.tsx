@@ -5,6 +5,7 @@ import { localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from '.
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
 import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
 import { fromBase64 } from './paint'
+import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
 import { wallpaperPng } from './sky'
 
@@ -310,4 +311,72 @@ test('/solar event plays an event in the sky, and a long turn earns confetti', a
   await $.turn.complete({ answer: 'done', durationMs: 4 * 60_000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(10_000)
   expect(shader()).toContain('int[1](11)')
+})
+
+test('tidying takes only our own old files, never those of this session', () => {
+  const now = Date.UTC(2026, 9, 25, 12)
+  const old = now - 2 * 3_600_000
+  const fresh = now - 10 * 60_000
+  const id = '0F8E2C1A-1111-4A4A-9B9B-123456789ABC'
+  const entry = (name: string, mtimeMs: number, kind: 'file' | 'dir' = 'file') => ({ name, kind, size: 1, mtimeMs, isLink: false })
+  const entries = [
+    entry(`${id}-0.png`, old),
+    entry(`${id}-1.png`, old),
+    entry('7A1B2C3D-2222-4B4B-8C8C-ABCDEF012345-0.png', old),
+    entry('7A1B2C3D-2222-4B4B-8C8C-ABCDEF012345-1.png', fresh),
+    entry('sky-1234.png', old),
+    entry('alive-old-session', old),
+    entry('alive-live-session', fresh),
+    entry('photo.png', old),
+    entry('notes-0.png', old),
+    entry('sky.glsl', old),
+    entry('solar-clawd.ghostty', old),
+    entry('sky-dir.png', old, 'dir'),
+  ]
+  expect(staleFiles(entries, '/cache', now, [id, 'alive-live-session']).sort()).toEqual([
+    '/cache/7A1B2C3D-2222-4B4B-8C8C-ABCDEF012345-0.png',
+    '/cache/alive-old-session',
+    '/cache/sky-1234.png',
+  ])
+})
+
+test('in iTerm2 the clouds move only while the person is at it, in front', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 12, 0)
+  const clock = mock.clock(on, { now: start })
+  const state = { idleSeconds: 1, frontmost: 'true' }
+  let pictures = 0
+  mock.env(on, { ITERM_SESSION_ID: 'w0t0p0:0F8E2C1A-1111-4A4A-9B9B-123456789ABC', HOME: '/Users/test' })
+  mock.store(on)
+  on('fs.read', () => ({ deny: 'ENOENT' }))
+  on('fs.list', () => ({ value: [] }))
+  on('process.run', (_, e) => {
+    const [command] = e.argv
+    let stdout = ''
+    if (command === '/usr/sbin/ioreg') stdout = `"HIDIdleTime" = ${state.idleSeconds * 1e9}\n`
+    if (command === '/usr/bin/base64') pictures += 1
+    if (command === '/usr/bin/osascript') stdout = e.argv.some(arg => arg.includes('background image')) ? `ok 120 80 ${state.frontmost}` : state.frontmost
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(30_000)
+  const active = pictures
+  expect(active).toBeGreaterThan(5)
+
+  // Away: a still sky, brought up to date every five minutes at most.
+  state.idleSeconds = 600
+  await clock.advance(4_000)
+  const away = pictures
+  await clock.advance(120_000)
+  expect(pictures - away).toBeLessThanOrEqual(1)
+
+  // Back, but iTerm2 behind another window: still.
+  state.idleSeconds = 1
+  state.frontmost = 'false'
+  await clock.advance(4_000)
+  const behind = pictures
+  await clock.advance(60_000)
+  expect(pictures - behind).toBeLessThanOrEqual(1)
 })
