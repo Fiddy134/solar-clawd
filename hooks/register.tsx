@@ -415,6 +415,18 @@ async function tidy($: EngineInterface, folder: string, keep: string[]): Promise
   if (paths.length > 0) await $.process.run(['/bin/rm', '-f', ...paths]).catch(() => undefined)
 }
 
+// Ghostty's config, and with it the shader, is one for every tab and
+// window. A session marks its own tab instead: palette colour 16 (black,
+// in the colour cube) one step off, which no one sees and the shader looks
+// for, so the sky shows only where Claude runs. Written to the session's
+// own terminal: the tty of the process the mod's commands run under.
+const MARK_TAB = '\x1b]4;16;rgb:00/00/01\x1b\\'
+const UNMARK_TAB = '\x1b]104;16\x1b\\'
+async function markTab($: EngineInterface, sequence: string): Promise<void> {
+  const script = 'tty=$(ps -o tty= -p $PPID | tr -d " "); case "$tty" in ""|"?"*) exit 1;; esac; printf "%s" "$1" > "/dev/$tty"'
+  await $.process.run(['sh', '-c', script, 'sh', sequence], { timeoutMs: 5_000 }).catch(() => undefined)
+}
+
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
 // through systemd while it runs as its service, else sent to it straight,
 // but only to a Ghostty new enough to know the signal (to an older one it
@@ -555,6 +567,8 @@ async function writeGhosttySky(
   const { written } = ghostty
   const now = await $.clock.now()
   if (now - written.heartbeatAt >= HEARTBEAT_MS) {
+    // Again each minute: a `reset` in the tab would have cleared it.
+    await markTab($, MARK_TAB)
     await $.fs.write(ghostty.heartbeat, String(now))
     written.heartbeatAt = now
     ghostty.isIncluded = await isIncluded($, ghostty)
@@ -592,6 +606,7 @@ async function writeGhosttySky(
 async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
+  await markTab($, UNMARK_TAB)
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty
   await $.process.run(['/bin/rm', '-f', heartbeat, ghostty.waiting]).catch(() => undefined)

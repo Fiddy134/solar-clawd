@@ -1489,6 +1489,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }
+  // Only in a tab where Claude runs: its session marks palette colour 16
+  // one step off black (register.tsx, markTab).
+  if (distance(iPalette[16], vec3(0.0, 0.0, 1.0 / 255.0)) > 0.5 / 255.0) {
+    fragColor = vec4(term.rgb, 1.0);
+    return;
+  }
   float unit = max(4.0, floor(iResolution.y / 60.0 + 0.5));
 
   vec2 p = fragCoord;

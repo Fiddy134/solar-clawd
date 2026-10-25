@@ -51,6 +51,7 @@ uniform vec3 iBackgroundColor;
 uniform vec4 iCurrentCursor;
 uniform float iTimeCursorChange;
 uniform int iFocus;
+uniform vec3 iPalette[256];
 uniform float iTime;
 uniform sampler2D iChannel0;
 out vec4 outColor;
@@ -103,6 +104,8 @@ try {
   gl.uniform4f(gl.getUniformLocation(program, 'iCurrentCursor'), ${cursor[0] - 5}, ${cursor[1] + 10}, 10, 20)
   gl.uniform1f(gl.getUniformLocation(program, 'iTimeCursorChange'), ${Number(o.time) - Number(o.since ?? 100)})
   gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), 1)
+  // A tab Claude has marked (register.tsx, markTab).
+  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), 0, 0, 1 / 255)
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
