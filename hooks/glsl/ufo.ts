@@ -37,7 +37,8 @@ float abductionStart(float slot, float period) {
 
 // The UFO at \`time\`, scheduled by the shader itself as the shooting stars
 // are, so that any moment of iTime shows a visit from its start: one slot
-// a night's half hour, or a day's hour and a half; forced, every 40 s.
+// a night's half hour, or a day's hour and a half; forced, every minute,
+// so that a 90 s preview shows a whole visit, mostly from its start.
 // Before this slot's has come, the one before's may still be on (a visit
 // put off past a surf can run over into the next slot). Gliding in from
 // above the strip's top right (0 to 4 s), its beam on (4 to 5), lifting
@@ -46,7 +47,7 @@ float abductionStart(float slot, float period) {
 // the top left (27.5 to 31.5).
 Abduction abductionAt(float time, Lighthouse l) {
   Abduction a = Abduction(false, -1.0, vec2(0.0), 0.0, 0.0, false);
-  float period = KEEPER_FORCE == 1 ? 40.0 : (nightness(sceneNow().elevation) > 0.6 ? 1800.0 : 5400.0);
+  float period = KEEPER_FORCE == 1 ? 60.0 : (nightness(sceneNow().elevation) > 0.6 ? 1800.0 : 5400.0);
   float slot = floor(time / period);
   float start = -1.0;
   for (int i = 0; i < 2; i++) {

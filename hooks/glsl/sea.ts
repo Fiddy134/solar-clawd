@@ -77,8 +77,9 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
   return mix(sky, water, cover);
 }
 
-// A small striped lighthouse far off on the horizon at the right, on its
-// rocks in the sea: always there, its lantern dark until Claude waits, then
+// The striped lighthouse on its rocks in the sea, standing on the stage
+// strip at the right (or near the right edge where there is none), large
+// enough for the keeper to live in: always there, its lantern dark until Claude waits, then
 // lit (orange asking, white done) and hurrying once a question has waited.
 // Its beam turns as a real one does: seen from the side it reaches out
 // left or right as long as it points across, and flashes in the lantern

@@ -49,6 +49,26 @@ test('the band is one Raster of cells, Clawd among them, and /solar hides it', a
   await hidden.unmount()
 })
 
+test('outside Ghostty, /solar event says the keeper\'s abduction and surf show only in Ghostty\'s sky', async ($, on) => {
+  mock.clock(on, { now: Date.UTC(2026, 9, 24, 17, 30) })
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('env.get', () => ({ value: undefined }))
+  on('fs.read', () => ({ deny: 'no file in a test' }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const run = (args: string) =>
+    $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+
+  for (const name of ['ufo abduction', 'surf']) {
+    const answer = (await run(`event ${name}`)) as { text: string }
+    expect(answer.text).toContain(`only in Ghostty's sky`)
+    expect(answer.text).not.toContain('seconds')
+  }
+  // The band's own events still play here.
+  expect(((await run('event comet')) as { text: string }).text).toContain('90 seconds')
+})
+
 test('in Ghostty the sky is a shader, rewritten as the scene moves, still while the person is away', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })

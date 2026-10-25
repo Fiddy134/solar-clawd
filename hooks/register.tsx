@@ -695,6 +695,10 @@ export const register: Register = on => {
       const name = word.slice('event'.length).trim()
       const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name) ?? OLD_EVENT_WORDS[name]
       if (!kind) return { text: `Solar: no event called "${name}". /solar events lists them.` }
+      // The keeper lives in Ghostty's sky alone: the band has no lighthouse.
+      if ((kind === 'abduction' || kind === 'surf') && ghostty === null) {
+        return { text: `Solar: the ${EVENT_WORDS[kind]} shows only in Ghostty's sky, and this session is not running in Ghostty.` }
+      }
       forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
       await update($, isHidden, () => false)
 
