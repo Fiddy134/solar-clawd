@@ -6,7 +6,7 @@
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
-//   --diff (a diff on dark red and dark green rows, and a dim grey line)
+//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a prompt row, a shell row, and a line of its dimmest text)
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -117,21 +117,29 @@ t.fillStyle = '#${o.background}'; t.fillRect(0, 0, w, h)
 t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
 const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 file, ran 2 shell commands', '', '❯ how does it read?', '', '  ⎿  tools/preview/run.sh shader --at 22:00']
 lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20, w - ${stage} - 32))
-// --diff: a diff as Claude shows one, rows on dark red and dark green with
-// light text on them, and a dim grey line on the plain background.
+// --diff: Claude Code's dark fields in the colours its dark theme gives
+// them (2.1.310): a diff's removed rows on diffRemoved and added rows on
+// diffAdded, a prompt row on userMessageBackground and a shell row on
+// bashMessageBackground, light text on each; and a line of subtle, its
+// dimmest text, on the plain background.
 if (${!!o.diff}) {
+  const removed = 'rgb(122,41,54)', added = 'rgb(34,92,43)', user = 'rgb(55,55,55)', bash = 'rgb(65,60,65)'
   const diff = [
-    ['#3d1418', '  41 -  const days = weekdays(start, end)'],
-    ['#3d1418', '  42 -  return days.length'],
-    ['#14361c', '  41 +  const days = weekdays(start, end).filter(isOpen)'],
-    ['#14361c', '  42 +  if (days.length === 0) return null'],
-    ['#14361c', '  43 +  return days.length'],
+    [removed, '  41 -  const days = weekdays(start, end)'],
+    [removed, '  42 -  return days.length'],
+    [added, '  41 +  const days = weekdays(start, end).filter(isOpen)'],
+    [added, '  42 +  if (days.length === 0) return null'],
+    [added, '  43 +  return days.length'],
+    [null, ''],
+    [user, '> and the weekends?'],
+    [null, ''],
+    [bash, '! git status --short'],
   ]
   diff.forEach(([fill, line], i) => {
-    t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20)
+    if (fill) { t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20) }
     t.fillStyle = '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
   })
-  t.fillStyle = '#5c6370'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 300, w - ${stage} - 32)
+  t.fillStyle = 'rgb(80,80,80)'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 200 + diff.length * 20, w - ${stage} - 32)
   t.fillStyle = '#d7dae0'
 }
 t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
