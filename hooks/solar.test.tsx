@@ -137,6 +137,8 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   const answers = new Map<string, string>()
   // What pmset says powers the Mac.
   const power = { text: "Now drawing from 'AC Power'\n" }
+  // The bundle id of the app in front, as lsappinfo says it.
+  const front = { value: 'com.apple.Safari' }
   let now = 0
   on('env.get', (_, e) => ({ value: ({ TERM_PROGRAM: 'ghostty', HOME: '/Users/test' } as Record<string, string>)[e.name] }))
   on('fs.write', (_, e) => {
@@ -160,6 +162,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
     if (command === '/usr/bin/pmset') stdout = power.text
     if (command && answers.has(command)) stdout = answers.get(command)!
+    if (command === '/usr/bin/lsappinfo') stdout = e.argv[1] === 'front' ? 'ASN:0x0-0x1:\n' : `"ASN:0x0-0x1:" (in front)\n    bundleID="${front.value}"\n`
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
     if (command === '/bin/mv') {
       const [from, to] = e.argv.slice(-2) as [string, string]
@@ -172,7 +175,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', () => ({ value: undefined }))
 
-  return { files, runs, writes, failing, answers, power, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, answers, power, front, unreadable, tick: (ms: number) => (now = ms) }
 }
 
 const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
@@ -477,7 +480,7 @@ test('on Linux Ghostty reloads on SIGUSR2, and nothing of the Mac is asked', asy
   expect(world.runs.some(argv => argv.join(' ') === 'systemctl --user reload app-com.mitchellh.ghostty.service')).toBe(true)
   expect(SIGNALS(world.runs)).toBe(1)
   expect(RELOADS(world.runs)).toBe(0)
-  expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript'].includes(argv[0]!))).toBe(false)
+  expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript', '/usr/bin/lsappinfo'].includes(argv[0]!))).toBe(false)
 })
 
 test('on Linux a Ghostty older than 1.3 is never sent SIGUSR2', async ($, on) => {
@@ -853,6 +856,26 @@ test('away, the sky goes but the lighthouse stays', async ($, on) => {
   expect(include()).toContain('custom-shader = ')
   expect(include()).toContain('custom-shader-animation = false')
   expect(shader()).toContain('const float ONLY_BEACON = 1.0;')
+})
+
+test('the white lighthouse goes out once Ghostty is in front and the person at it; a question waits for its answer', async ($, on) => {
+  const idle = { value: 1 }
+  const { clock, world, shader, ask } = await waitingWorld($, on, idle)
+  await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(4_000)
+  expect(shader()).toContain('const int BEACON = 2;')
+  // Ghostty in front with no one at it: nobody has seen it.
+  world.front.value = 'com.mitchellh.ghostty'
+  idle.value = 400
+  await clock.advance(4_000)
+  expect(shader()).toContain('const int BEACON = 2;')
+  idle.value = 1
+  await clock.advance(4_000)
+  expect(shader()).toContain('const int BEACON = 0;')
+  // A question is not put out by a look: Claude waits for the answer.
+  await ask()
+  await clock.advance(4_000)
+  expect(shader()).toContain('const int BEACON = 1;')
 })
 
 test("another live session's question lights this sky; a dead session's does not", async ($, on) => {

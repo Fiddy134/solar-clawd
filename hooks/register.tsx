@@ -322,6 +322,22 @@ async function idleMs($: EngineInterface, isOnLinux: boolean): Promise<number | 
   }
 }
 
+// Whether Ghostty is the app in front, as lsappinfo says (it needs no
+// permissions); null when it could not say, as on Linux.
+async function isGhosttyInFront($: EngineInterface, isOnLinux: boolean): Promise<boolean | null> {
+  if (isOnLinux) return null
+  try {
+    const { stdout: front } = await $.process.run(['/usr/bin/lsappinfo', 'front'], { timeoutMs: 5_000 })
+    if (front.trim() === '') return null
+    const { stdout } = await $.process.run(['/usr/bin/lsappinfo', 'info', '-only', 'bundleid', front.trim()], { timeoutMs: 5_000 })
+    const id = /bundleID="([^"]+)"/.exec(stdout)?.[1]
+
+    return id ? id === 'com.mitchellh.ghostty' : null
+  } catch {
+    return null
+  }
+}
+
 // Ghostty's config files, the one to add the include to first: on macOS
 // Application Support before ~/.config, on Linux only the XDG folder.
 function ghosttyConfigs(home: string, isOnLinux: boolean, xdgConfig: string | null): string[] {
@@ -857,6 +873,11 @@ export const register: Register = on => {
         if (iterm !== null && !activity.isAway && (wasIdle || !activity.isFrontmost)) {
           const { stdout } = await $.process.run(['/usr/bin/osascript', ...ITERM_FRONTMOST], { timeoutMs: 5_000 })
           activity.isFrontmost = stdout.trim() === 'true'
+        }
+        // The white lighthouse is seen once Ghostty is in front with the
+        // person at it; a question still waits for its answer.
+        if (ghostty !== null && waiting?.mode === 'done' && !activity.isAway && (await isGhosttyInFront($, isOnLinux))) {
+          if (waiting?.mode === 'done' && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
         }
       })().catch(() => undefined)
     })
