@@ -6,7 +6,8 @@
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
-//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a prompt row, a shell row, and a line of its dimmest text)
+//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff, a prompt row, a shell row, and a line of its dimmest text)
+//   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -120,11 +121,14 @@ const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 fil
 lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20, w - ${stage} - 32))
 // --diff: Claude Code's dark fields in the colours its dark theme gives
 // them (2.1.310): a diff's removed rows on diffRemoved and added rows on
-// diffAdded, a prompt row on userMessageBackground and a shell row on
-// bashMessageBackground, light text on each; and a line of subtle, its
-// dimmest text, on the plain background.
+// diffAdded; a tool's diff as color-diff highlights it, its rows and the
+// words changed in them on colours of its own; a prompt row on
+// userMessageBackground and a shell row on bashMessageBackground, light
+// text on each; and a line of subtle, its dimmest text, on the plain
+// background.
 if (${!!o.diff}) {
   const removed = 'rgb(122,41,54)', added = 'rgb(34,92,43)', user = 'rgb(55,55,55)', bash = 'rgb(65,60,65)'
+  const deleteLine = 'rgb(61,1,0)', deleteWord = 'rgb(92,2,0)', addLine = 'rgb(2,40,0)', addWord = 'rgb(4,71,0)'
   const diff = [
     [removed, '  41 -  const days = weekdays(start, end)'],
     [removed, '  42 -  return days.length'],
@@ -132,12 +136,19 @@ if (${!!o.diff}) {
     [added, '  42 +  if (days.length === 0) return null'],
     [added, '  43 +  return days.length'],
     [null, ''],
+    [deleteLine, '  12 -  const GLASS = 0.4;', [deleteWord, '0.4']],
+    [addLine, '  12 +  const GLASS = 0.55;', [addWord, '0.55']],
+    [null, ''],
     [user, '> and the weekends?'],
     [null, ''],
     [bash, '! git status --short'],
   ]
-  diff.forEach(([fill, line], i) => {
+  diff.forEach(([fill, line, word], i) => {
     if (fill) { t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20) }
+    if (word) {
+      const at = line.lastIndexOf(word[1])
+      t.fillStyle = word[0]; t.fillRect(16 + t.measureText(line.slice(0, at)).width, 186 + i * 20, t.measureText(word[1]).width, 20)
+    }
     t.fillStyle = '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
   })
   t.fillStyle = 'rgb(80,80,80)'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 200 + diff.length * 20, w - ${stage} - 32)
@@ -145,6 +156,20 @@ if (${!!o.diff}) {
 }
 t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
 t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
+// --p3: the terminal as a Mac's Ghostty hands it to the shader, its sRGB
+// colours converted to Display P3 (the background as good as unchanged).
+if (${!!o.p3}) {
+  const image = t.getImageData(0, 0, w, h), d = image.data
+  const decode = new Float32Array(256).map((_, v) => (v / 255 <= 0.04045 ? v / 255 / 12.92 : ((v / 255 + 0.055) / 1.055) ** 2.4))
+  const encode = v => Math.round(255 * Math.min(1, Math.max(0, v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)))
+  for (let i = 0; i < d.length; i += 4) {
+    const r = decode[d[i]], g = decode[d[i + 1]], b = decode[d[i + 2]]
+    d[i] = encode(0.8225 * r + 0.1774 * g)
+    d[i + 1] = encode(0.0332 * r + 0.9669 * g)
+    d[i + 2] = encode(0.0171 * r + 0.0724 * g + 0.9108 * b)
+  }
+  t.putImageData(image, 0, 0)
+}
 const render = () => {
 const gl = document.getElementById('c').getContext('webgl2', { preserveDrawingBuffer: true })
 if (!gl) fail('no WebGL2')
