@@ -49,14 +49,14 @@ export function skyOf(code: number): Sky {
 }
 
 export const SKY_WORDS: Record<Sky, string> = {
-  clear: 'klart',
-  partly: 'halvklart',
-  cloudy: 'mulet',
-  fog: 'dimma',
-  drizzle: 'duggregn',
-  rain: 'regn',
-  snow: 'snö',
-  thunder: 'åska',
+  clear: 'clear',
+  partly: 'partly cloudy',
+  cloudy: 'cloudy',
+  fog: 'fog',
+  drizzle: 'drizzle',
+  rain: 'rain',
+  snow: 'snow',
+  thunder: 'thunder',
 }
 
 const SKY_GREY: Record<Sky, number> = {

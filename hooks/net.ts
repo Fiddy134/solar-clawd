@@ -86,7 +86,7 @@ async function guessPlace($: EngineInterface): Promise<Place | null> {
 }
 
 export async function findPlace($: EngineInterface, name: string): Promise<Place | null> {
-  const url = `https://geocoding-api.open-meteo.com/v1/search?count=1&language=sv&format=json&name=${encodeURIComponent(name)}`
+  const url = `https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&format=json&name=${encodeURIComponent(name)}`
   const first = (field(await getJson($, url), 'results') as unknown[] | undefined)?.[0]
 
   return asPlace({
@@ -173,7 +173,7 @@ export async function settlePlace($: EngineInterface, where: Where): Promise<voi
 }
 
 export function placeText({ place, isChosen, weather }: Where): string {
-  const guessed = isChosen ? '' : ' (gissad från din IP-adress)'
+  const guessed = isChosen ? '' : ' (guessed from your IP address)'
   const now = weather ? `, ${Math.round(weather.temperature)}°C ${SKY_WORDS[skyOf(weather.code)]}` : ''
 
   return `${place.name}${guessed}${now}`

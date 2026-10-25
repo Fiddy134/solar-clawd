@@ -336,7 +336,7 @@ test('Easter 2027 keeps to Swedish time across the night the clocks change', () 
 
 test('every Swedish day has a word, and /solar event can play it', () => {
   for (const kind of DAY_KINDS) expect(EVENT_WORDS[kind]).toBeTruthy()
-  expect(EVENT_WORDS.witch).toBe('påskkärring')
+  expect(EVENT_WORDS.witch).toBe('easter witch')
   const ms = swedish(2026, 8, 10, 12)
   expect(eventsAt(ms, contextFor(ms), [{ kind: 'witch', at: ms }]).some(e => e.kind === 'witch')).toBe(true)
 })

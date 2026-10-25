@@ -83,53 +83,61 @@ const inMonths = (ctx: EventContext, ...months: number[]) => months.includes(ctx
 
 // The catalogue, at a pace that leaves the sky mostly quiet.
 export const EVENTS: readonly Spec[] = [
-  { kind: 'balloon', word: 'luftballong', slotMs: 3 * HOUR, chance: 1, durationMs: 4 * MINUTE, when: ctx => isDay(ctx) && ctx.wind < 6 && !isWet(ctx.sky) },
+  { kind: 'balloon', word: 'balloon', slotMs: 3 * HOUR, chance: 1, durationMs: 4 * MINUTE, when: ctx => isDay(ctx) && ctx.wind < 6 && !isWet(ctx.sky) },
   {
     kind: 'birds',
-    word: 'flyttfåglar',
+    word: 'migrating birds',
     slotMs: 40 * MINUTE,
     chance: 1,
     durationMs: 90_000,
     // Spring and autumn, around sunrise and sunset.
     when: ctx => inMonths(ctx, 3, 4, 5, 8, 9, 10) && ctx.elevation > -3 && ctx.elevation < 15 && !isWet(ctx.sky),
   },
-  { kind: 'plane', word: 'flygplan', slotMs: HOUR, chance: 1, durationMs: 2 * MINUTE, when: ctx => isDay(ctx) && isClear(ctx) },
-  { kind: 'kite', word: 'drake', slotMs: HOUR, chance: 1, durationMs: 5 * MINUTE, when: ctx => isDay(ctx) && ctx.wind >= 6 && ctx.wind <= 12 && !isWet(ctx.sky) },
+  { kind: 'plane', word: 'plane', slotMs: HOUR, chance: 1, durationMs: 2 * MINUTE, when: ctx => isDay(ctx) && isClear(ctx) },
+  { kind: 'kite', word: 'kite', slotMs: HOUR, chance: 1, durationMs: 5 * MINUTE, when: ctx => isDay(ctx) && ctx.wind >= 6 && ctx.wind <= 12 && !isWet(ctx.sky) },
   {
     kind: 'leaves',
-    word: 'höstlöv',
+    word: 'autumn leaves',
     slotMs: HOUR,
     chance: 0.8,
     durationMs: 3 * MINUTE,
     when: ctx => inMonths(ctx, 9, 10, 11) && ctx.wind >= 5 && ctx.elevation > -6,
   },
-  { kind: 'blossom', word: 'körsbärsblad', slotMs: HOUR, chance: 0.8, durationMs: 3 * MINUTE, when: ctx => inMonths(ctx, 5) && ctx.elevation > -6 },
-  { kind: 'comet', word: 'komet', slotMs: 60 * DAY, chance: 1, durationMs: 3 * DAY, when: ctx => isNight(ctx) && isClear(ctx, 0.6) },
-  { kind: 'dolphin', word: 'delfin', slotMs: 30 * MINUTE, chance: 1, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
+  { kind: 'blossom', word: 'cherry blossom', slotMs: HOUR, chance: 0.8, durationMs: 3 * MINUTE, when: ctx => inMonths(ctx, 5) && ctx.elevation > -6 },
+  { kind: 'comet', word: 'comet', slotMs: 60 * DAY, chance: 1, durationMs: 3 * DAY, when: ctx => isNight(ctx) && isClear(ctx, 0.6) },
+  { kind: 'dolphin', word: 'dolphin', slotMs: 30 * MINUTE, chance: 1, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
   // Rarer: a pink one, as the Amazon's river dolphins are.
-  { kind: 'pinkDolphin', word: 'rosa delfin', slotMs: 6 * HOUR, chance: 0.5, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
-  { kind: 'constellation', word: 'clawd-stjärnbild', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5) },
+  { kind: 'pinkDolphin', word: 'pink dolphin', slotMs: 6 * HOUR, chance: 0.5, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
+  { kind: 'constellation', word: 'clawd constellation', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5) },
 ]
 
 // Not scheduled: while its condition holds, and when Claude says so. A
 // satellite is the real ISS now (iss.ts), and played only as a preview.
-const RAINBOW = { kind: 'rainbow', word: 'regnbåge' } as const
-const MILESTONE = { kind: 'milestone', word: 'milstolpe', durationMs: 20_000 } as const
-const SHOOTING_STAR = { kind: 'shootingStar', word: 'stjärnfall' } as const
-const SATELLITE = { kind: 'satellite', word: 'satellit' } as const
+const RAINBOW = { kind: 'rainbow', word: 'rainbow' } as const
+const MILESTONE = { kind: 'milestone', word: 'milestone', durationMs: 20_000 } as const
+const SHOOTING_STAR = { kind: 'shootingStar', word: 'shooting star' } as const
+const SATELLITE = { kind: 'satellite', word: 'satellite' } as const
 
 // The Swedish days' words, as the band and /solar say them.
 const DAY_WORDS = {
-  witch: 'påskkärring',
-  feathers: 'påskfjädrar',
-  flag: 'nationaldagen',
-  maypole: 'midsommarstång',
-  luciaTrain: 'luciatåg',
-  christmasStar: 'julstjärna',
-  sleigh: 'tomten',
-  fireworks: 'fyrverkeri',
+  witch: 'easter witch',
+  feathers: 'easter feathers',
+  flag: 'national day',
+  maypole: 'maypole',
+  luciaTrain: 'lucia procession',
+  christmasStar: 'christmas star',
+  sleigh: "santa's sleigh",
+  fireworks: 'fireworks',
 } as const
 type DayKind = keyof typeof DAY_WORDS
+
+// The words the mod once spoke, Swedish, still taken by /solar event.
+export const OLD_EVENT_WORDS: Record<string, EventKind> = {
+  luftballong: 'balloon', flyttfåglar: 'birds', flygplan: 'plane', drake: 'kite', höstlöv: 'leaves', körsbärsblad: 'blossom',
+  komet: 'comet', delfin: 'dolphin', 'rosa delfin': 'pinkDolphin', 'clawd-stjärnbild': 'constellation', regnbåge: 'rainbow',
+  milstolpe: 'milestone', stjärnfall: 'shootingStar', satellit: 'satellite', påskkärring: 'witch', påskfjädrar: 'feathers',
+  nationaldagen: 'flag', midsommarstång: 'maypole', luciatåg: 'luciaTrain', julstjärna: 'christmasStar', tomten: 'sleigh', fyrverkeri: 'fireworks',
+}
 
 // Every event the band and /solar can name, its word first.
 export const EVENT_WORDS: Record<EventKind, string> = {
@@ -159,8 +167,8 @@ export function contextAt(ms: number, place: Place, weather: Weather | null | un
 
 // The meteor showers worth a night up: the Perseids and the Geminids.
 export function showerAt(time: LocalTime): string | null {
-  if (time.month === 8 && time.day >= 11 && time.day <= 13) return 'Perseiderna'
-  if (time.month === 12 && time.day >= 13 && time.day <= 14) return 'Geminiderna'
+  if (time.month === 8 && time.day >= 11 && time.day <= 13) return 'Perseids'
+  if (time.month === 12 && time.day >= 13 && time.day <= 14) return 'Geminids'
 
   return null
 }

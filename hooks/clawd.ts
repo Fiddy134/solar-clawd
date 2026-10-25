@@ -14,7 +14,7 @@ import type { SkyInput } from './sky'
 // Terminal rows the band takes; every sprite below is laid out for it.
 export const ROWS = 3
 
-export type Activity = 'sleep' | 'coffee' | 'code' | 'gta'
+export type Activity = 'earlyBird' | 'coffee' | 'work' | 'vibe' | 'nightOwl' | 'sleep'
 
 export type Mode = 'live' | 'demo' | 'pinned'
 
@@ -61,25 +61,27 @@ export type View = SkyInput & {
 }
 
 const LABELS: Record<Activity, string> = {
-  sleep: 'sover',
-  coffee: 'dricker morgonkaffe',
-  code: 'skriver kod',
-  gta: 'spelar GTA VI',
+  earlyBird: "early birdin'",
+  coffee: 'coffee sesh',
+  work: "workin'",
+  vibe: "vibin'",
+  nightOwl: 'night owl',
+  sleep: 'sleep sesh',
 }
 
 // Wind from which his hat goes, in metres per second.
 export const WINDY = 9
 
-// Weekdays up at six and in bed at ten; Friday and Saturday nights run to
-// midnight, and the weekend sleeps in until nine.
-export function activityAt({ hour, weekday }: Pick<LocalTime, 'hour' | 'weekday'>): Activity {
-  const bedtime = weekday === 5 || weekday === 6 ? 24 : 22
-  const wake = weekday === 0 || weekday === 6 ? 9 : 6
-  if (hour < wake || hour >= bedtime) return 'sleep'
-  if (hour < 12) return 'coffee'
-  if (hour < 18) return 'code'
+// The same day every day: up with the birds at six, coffee till noon, work
+// till four, then vibing, a night owl from ten, and asleep from three.
+export function activityAt({ hour }: Pick<LocalTime, 'hour'>): Activity {
+  if (hour >= 3 && hour < 6) return 'sleep'
+  if (hour >= 6 && hour < 8) return 'earlyBird'
+  if (hour >= 8 && hour < 12) return 'coffee'
+  if (hour >= 12 && hour < 16) return 'work'
+  if (hour >= 16 && hour < 22) return 'vibe'
 
-  return 'gta'
+  return 'nightOwl'
 }
 
 // --- Riso ------------------------------------------------------------------
@@ -371,7 +373,7 @@ const code: Scene = {
   pose: ({ t }) => ({ eyes: 'right', arms: Math.floor(t * 6) % 2 === 0 ? 'down' : 'typing' }),
 }
 
-const gta: Scene = {
+const vibe: Scene = {
   behind: ({ c, x, y, t, light, isFridayNight }) => {
     const tx = x + 8
     print(c, tx, y - 1, ['TTTTTT', 'T....T', 'T....T', 'TTTTTT'], { T: KEY_DARK }, light)
@@ -395,7 +397,8 @@ const gta: Scene = {
   pose: () => ({ eyes: 'right', arms: 'down' }),
 }
 
-const SCENES: Record<Activity, Scene> = { sleep, coffee, code, gta }
+// Early birds and night owls share the coffee and the screen.
+const SCENES: Record<Activity, Scene> = { earlyBird: coffee, coffee, work: code, vibe, nightOwl: code, sleep }
 
 // Seasonal things standing to the left of the scene.
 function paintOccasion(c: Canvas, occasion: Occasion | null, x: number, y: number, t: number, light: number): void {
@@ -668,12 +671,9 @@ export function sceneOf(view: View): SceneState {
   const sun = sunAt(ms, place.lat, place.lon)
   const time = localTime(ms, offsetMs)
   const occasion = occasionAt(time)
-  // Up for the fireworks at New Year, and with the Lucia train at six.
+  // Up all New Year's night, and early for the Lucia train.
   const usual = activityAt(time)
-  const isUpEarly = occasion === 'lucia' && time.hour >= 6 && time.hour < 12
-  const activity = usual === 'sleep' && (occasion === 'newYear' || isUpEarly)
-    ? (occasion === 'newYear' ? 'gta' : 'coffee')
-    : usual
+  const activity = usual !== 'sleep' ? usual : occasion === 'newYear' ? 'nightOwl' : occasion === 'lucia' && time.hour >= 5 ? 'earlyBird' : usual
   const isAwake = activity !== 'sleep'
   const wind = weather?.wind ?? 0
 
@@ -686,7 +686,7 @@ export function sceneOf(view: View): SceneState {
     wind,
     isWindy: isAwake && wind >= WINDY,
     isCool: isAwake && !!weather && weather.temperature >= 25 && sun.elevation > 0,
-    isFridayNight: time.weekday === 5 && activity === 'gta',
+    isFridayNight: time.weekday === 5 && activity === 'vibe',
     hat: hatFor(occasion, weather?.temperature, wind, isAwake),
   }
 }
@@ -714,9 +714,9 @@ export function drawFrame(view: View): string {
   const room = labelRight - 1
   const aurora = auroraStrength(view, sun) > 0.15
   const moon = moonAt(ms, place.lat, place.lon)
-  const status = mode === 'demo' ? 'tidsförlopp · /solar now' : mode === 'pinned' ? 'låst tid · /solar now' : null
+  const status = mode === 'demo' ? 'time-lapse · /solar now' : mode === 'pinned' ? 'pinned time · /solar now' : null
   const lines = [
-    fit([`${pad(time.hour)}:${pad(time.minute)}  Clawd ${LABELS[activity]}`, occasion && OCCASION_WORDS[occasion], state.isFridayNight && 'fredagsmys'], room),
+    fit([`${pad(time.hour)}:${pad(time.minute)}  ${LABELS[activity]}`, occasion && OCCASION_WORDS[occasion], state.isFridayNight && 'friday night'], room),
     fit([
       place.name,
       weather && `${Math.round(weather.temperature)}°C ${SKY_WORDS[skyOf(weather.code)]}`,
@@ -724,11 +724,11 @@ export function drawFrame(view: View): string {
     ], room),
     fit([
       view.event && `* ${view.event}`,
-      `sol ${Math.round(sun.elevation)}°`,
-      moon.elevation > 0 && `måne ${Math.round(moon.illumination * 100)}%`,
-      aurora && 'norrsken',
+      `sun ${Math.round(sun.elevation)}°`,
+      moon.elevation > 0 && `moon ${Math.round(moon.illumination * 100)}%`,
+      aurora && 'aurora',
       status,
-      track && isAwake && `lyssnar: ${track.length > 28 ? `${track.slice(0, 27)}~` : track}`,
+      track && isAwake && `listening: ${track.length > 28 ? `${track.slice(0, 27)}~` : track}`,
     ], room),
   ]
   lines.forEach((text, row) => {

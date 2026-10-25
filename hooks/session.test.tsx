@@ -134,7 +134,9 @@ test('/solar event plays an event in the sky, and a long turn earns confetti', a
   await clock.advance(11_000)
   expect(shader()).toContain('const int EVENT_COUNT = 0;')
 
-  expect(await run('event komet')).toEqual(expect.objectContaining({ text: expect.stringContaining('komet') }))
+  expect(await run('event comet')).toEqual(expect.objectContaining({ text: expect.stringContaining('comet') }))
+  // The Swedish name it once took still plays it.
+  expect(await run('event komet')).toEqual(expect.objectContaining({ text: expect.stringContaining('comet') }))
   await clock.advance(10_000)
   expect(shader()).toContain('const int EVENT_COUNT = 1;')
   expect(shader()).toContain('const int EVENT_KIND[1] = int[1](9);')
@@ -591,15 +593,16 @@ test("a question is put out by the end of the call that asked, not by another ca
   expect(shader()).toContain('const int BEACON = 0;')
 })
 
-test('/solar kasta throws a ball in the sky\'s basket, /solar bränn burns it for a while', async ($, on) => {
+test('/solar toss throws a ball in the sky\'s basket, /solar burn burns it for a while', async ($, on) => {
   const { clock, world } = await waitingWorld($, on)
   const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   // The tab's mark as last written to its terminal.
   const mark = () => world.runs.filter(argv => argv[0] === 'sh' && argv[4]?.includes(']4;16;')).at(-1)?.[4]
   expect(mark()).toContain('rgb:00/00/01')
-  await solar('kasta')
+  await solar('toss')
   await clock.advance(1_500)
   expect(mark()).toContain('rgb:00/01/01')
+  // The Swedish word it once took still works.
   await solar('bränn')
   await clock.advance(1_500)
   expect(mark()).toContain('rgb:01/01/01')

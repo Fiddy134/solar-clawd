@@ -5,7 +5,7 @@ import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './beacon'
 import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, THROW_SECONDS, toolKind, workKind } from './clawd'
 import type { Mode, Reaction } from './clawd'
-import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
+import { contextAt, EVENT_WORDS, eventsAt, OLD_EVENT_WORDS, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
 import {
   endGhosttySky,
@@ -279,7 +279,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | ÅÅÅÅ-MM-DD HH:MM | plats <stad> | norrsken | blåst | events | event <namn> | kasta | bränn | ghostty]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | toss | burn | ghostty]',
       immediate: true,
     })
 
@@ -331,7 +331,7 @@ export const register: Register = on => {
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
-      if (!ghostty.isIncluded) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
+      if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
     if (ghostty !== null) {
@@ -611,7 +611,11 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'solar' }, async ($, e) => {
-    const arg = e.args.trim()
+    // The Swedish words it once took still work.
+    const said = e.args.trim()
+    const [first = '', ...rest] = said.split(/\s+/)
+    const english = ({ plats: 'place', norrsken: 'aurora', blåst: 'storm', kasta: 'toss', bränn: 'burn' } as Record<string, string>)[first.toLowerCase()]
+    const arg = english ? [english, ...rest].join(' ') : said
     const word = arg.toLowerCase()
     const now = await $.clock.now()
 
@@ -624,63 +628,63 @@ export const register: Register = on => {
         else await $.fs.write(ghostty.hidden, '')
       }
 
-      return { text: wasHidden ? 'Solar-himlen är tillbaka.' : 'Solar-himlen är gömd.' }
+      return { text: wasHidden ? 'Solar: the sky is back.' : 'Solar: the sky is hidden.' }
     }
 
     if (word === 'demo') {
       demoFrom = now
       await update($, isHidden, () => false)
 
-      return { text: 'Solar: ett helt dygn på 48 sekunder.' }
+      return { text: 'Solar: a whole day in 48 seconds.' }
     }
 
     if (word === 'now') {
       demoFrom = null
       pinnedAt = null
 
-      return { text: 'Solar: följer solen igen.' }
+      return { text: 'Solar: following the sun again.' }
     }
 
     if (word === 'ghostty') {
-      if (ghostty === null) return { text: 'Solar: den här sessionen körs inte i Ghostty.' }
-      if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty visar redan himlen.' }
+      if (ghostty === null) return { text: 'Solar: this session is not running in Ghostty.' }
+      if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty already shows the sky.' }
       const added = await includeInGhostty($, ghostty)
-      if (added === null) return { text: `Solar: kunde inte läsa Ghosttys config, så den lämnas orörd.` }
+      if (added === null) return { text: `Solar: could not read Ghostty's config, so it is left as it is.` }
       const { line, config } = added
       ghostty.isIncluded = true
       await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($, ghostty)
 
-      return { text: `Solar: lade till "${line}" i ${config}.` }
+      return { text: `Solar: added "${line}" to ${config}.` }
     }
 
     if (word === 'events') {
       const words = Object.values(EVENT_WORDS).join(', ')
 
-      return { text: `Solar: ${words}. Visa ett med /solar event <namn>.` }
+      return { text: `Solar: ${words}. Play one with /solar event <name>.` }
     }
 
     if (word.startsWith('event')) {
       const name = word.slice('event'.length).trim()
-      const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name)
-      if (!kind) return { text: `Solar: inget event som heter "${name}". /solar events listar dem.` }
+      const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name) ?? OLD_EVENT_WORDS[name]
+      if (!kind) return { text: `Solar: no event called "${name}". /solar events lists them.` }
       forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
       await update($, isHidden, () => false)
 
-      return { text: `Solar: ${EVENT_WORDS[kind]} i ${PREVIEW_MS / 1000} sekunder.` }
+      return { text: `Solar: ${EVENT_WORDS[kind]} for ${PREVIEW_MS / 1000} seconds.` }
     }
 
     // Clawd's wastebasket, played: a ball thrown in, or the context burnt.
-    if (word === 'kasta') {
+    if (word === 'toss') {
       claude.passing = { kind: 'toss', at: now }
       claude.ballShownUntil = now + PREVIEW_MS
       void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
       void $.clock.sleep(PREVIEW_MS + 100).then(() => refreshSky?.()).catch(() => undefined)
 
-      return { text: 'Solar: Clawd kastar en pappersboll i papperskorgen.' }
+      return { text: 'Solar: Clawd tosses a ball of paper into the wastebasket.' }
     }
 
-    if (word === 'bränn') {
+    if (word === 'burn') {
       claude.burnShownUntil = now + BURN_SHOWN_MS
       void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
       void $.clock
@@ -692,23 +696,23 @@ export const register: Register = on => {
         .catch(() => undefined)
       void $.clock.sleep(BURN_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
 
-      return { text: `Solar: papperskorgen brinner i ${BURN_SHOWN_MS / 1000} sekunder, som vid /compact (konversationen rörs inte).` }
+      return { text: `Solar: the wastebasket burns for ${BURN_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
     }
 
-    if (word === 'norrsken') {
+    if (word === 'aurora') {
       isAuroraForced = !isAuroraForced
 
-      return { text: isAuroraForced ? 'Solar: norrsken på, för att se hur det ser ut.' : 'Solar: norrsken bara när det finns på riktigt.' }
+      return { text: isAuroraForced ? 'Solar: aurora on, to see how it looks.' : 'Solar: aurora only when there is one.' }
     }
 
-    if (word === 'blåst') {
+    if (word === 'storm') {
       isWindForced = !isWindForced
 
-      return { text: isWindForced ? 'Solar: storm, för att se Clawd jaga sin mössa.' : 'Solar: vinden som den är på riktigt.' }
+      return { text: isWindForced ? 'Solar: a storm, to see Clawd chase his hat.' : 'Solar: the wind as it really is.' }
     }
 
-    if (word === 'plats' || word.startsWith('plats ')) {
-      const name = arg.slice('plats'.length).trim()
+    if (word === 'place' || word.startsWith('place ')) {
+      const name = arg.slice('place'.length).trim()
       if (name === '') return { text: `Solar: ${placeText(where)}.` }
 
       if (name.toLowerCase() === 'auto') {
@@ -716,17 +720,17 @@ export const register: Register = on => {
         await $.store.delete(GUESSED_PLACE)
         await settlePlace($, where)
 
-        return { text: `Solar: följer din plats igen, ${placeText(where)}.` }
+        return { text: `Solar: following where you are again, ${placeText(where)}.` }
       }
 
       const found = await findPlace($, name)
-      if (!found) return { text: `Solar: hittade ingen plats som heter "${name}".` }
+      if (!found) return { text: `Solar: found no place called "${name}".` }
       await $.store.set(CHOSEN_PLACE, found)
       where.place = found
       where.isChosen = true
       await refreshWeather($, where)
 
-      return { text: `Solar: himlen är nu ${placeText(where)}.` }
+      return { text: `Solar: the sky is now over ${placeText(where)}.` }
     }
 
     // HH:MM pins a time today; YYYY-MM-DD, with a time or at noon, pins a day.
@@ -742,11 +746,11 @@ export const register: Register = on => {
         pinnedAt = day + (hour * 60 + minute) * 60_000
         await update($, isHidden, () => false)
 
-        return { text: `Solar: låst på ${at[1] ? `${at[1]}-${at[2]}-${at[3]} ` : ''}${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}.` }
+        return { text: `Solar: pinned at ${at[1] ? `${at[1]}-${at[2]}-${at[3]} ` : ''}${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}.` }
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar ÅÅÅÅ-MM-DD HH:MM, /solar plats <stad>, /solar norrsken, /solar blåst, /solar kasta eller /solar bränn.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar toss or /solar burn.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

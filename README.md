@@ -1,6 +1,6 @@
 # Solar Clawd
 
-A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a pixel Clawd lives in a band above the prompt — sleeping, drinking coffee, coding, cheering when Claude finishes and facepalming when a tool fails.
+A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a pixel Clawd lives in a band above the prompt through his day — early birdin', coffee sesh, workin', vibin', night owl, sleep sesh — cheering when Claude finishes and facepalming when a tool fails.
 
 ![A low sun over the sea, the lighthouse lit, a dolphin, and Clawd at work above the prompt](assets/demo.gif)
 
@@ -12,7 +12,7 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 
 - **The real sky** — sun and moon positions and phases, bright stars and constellations, the ISS on its actual visible passes, aurora from NOAA's Kp index, and the weather from Open-Meteo (clouds, rain, snow, wind).
 - **Small, rare events** — hot-air balloons, now and then a flying saucer among the clouds, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).
-- **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and the tomte's sleigh, New Year's fireworks.
+- **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and Santa's sleigh, New Year's fireworks.
 - **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. In the bottom right corner stands a wire wastebasket (in the band behind Clawd when there is no shader): he tosses a ball of paper into it for each tenth of the context window, and when the conversation is compacted he throws in a match and the context burns away; he reads a book while Claude only reads, and types while it edits or runs commands.
 
 Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
@@ -78,16 +78,16 @@ What differs from macOS:
 | `/solar HH:MM` | Pin a time today |
 | `/solar YYYY-MM-DD HH:MM` | Pin a day, e.g. `/solar 2026-12-24 15:01` |
 | `/solar now` | Follow the real sun again |
-| `/solar plats <city>` | Set the place (otherwise guessed from your IP, starting in Stockholm) |
+| `/solar place <city>` | Set the place (otherwise guessed from your IP, starting in Stockholm); `auto` goes back to guessing |
 | `/solar events` | List the events |
 | `/solar event <name>` | Play an event for 90 seconds |
-| `/solar norrsken` | Toggle a forced aurora |
-| `/solar blåst` | Toggle a storm |
-| `/solar kasta` | Clawd throws a ball of paper in the wastebasket |
-| `/solar bränn` | The wastebasket burns for a while, as on `/compact` (the conversation is not touched) |
+| `/solar aurora` | Toggle a forced aurora |
+| `/solar storm` | Toggle a storm |
+| `/solar toss` | Clawd throws a ball of paper in the wastebasket |
+| `/solar burn` | The wastebasket burns for a while, as on `/compact` (the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
 
-The mod's own messages are in Swedish.
+The Swedish words it took before (`plats`, `norrsken`, `blåst`, `kasta`, `bränn`, and the events' Swedish names) still work.
 
 ## Data sources
 

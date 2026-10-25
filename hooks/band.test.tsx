@@ -8,11 +8,9 @@ import { fromBase64 } from './paint'
 import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
 
-test('the hours map to what Clawd does, weekends sleeping in', () => {
-  const tuesday = [3, 6, 11, 12, 17, 18, 21, 22].map(hour => activityAt({ hour, weekday: 2 }))
-  expect(tuesday).toEqual(['sleep', 'coffee', 'coffee', 'code', 'code', 'gta', 'gta', 'sleep'])
-  expect(activityAt({ hour: 8, weekday: 6 })).toBe('sleep')
-  expect(activityAt({ hour: 23, weekday: 5 })).toBe('gta')
+test('the hours map to what Clawd does, the same every day', () => {
+  const day = [2, 3, 5, 6, 7, 8, 11, 12, 15, 16, 21, 22, 23].map(hour => activityAt({ hour }))
+  expect(day).toEqual(['nightOwl', 'sleep', 'sleep', 'earlyBird', 'earlyBird', 'coffee', 'coffee', 'work', 'work', 'vibe', 'vibe', 'nightOwl', 'nightOwl'])
 })
 
 test('a frame packs one cell per column and row, the wallpaper is a PNG', async () => {

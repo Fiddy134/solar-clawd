@@ -185,12 +185,12 @@ export type Occasion =
 
 export const OCCASION_WORDS: Record<Occasion, string> = {
   lucia: 'Lucia',
-  christmas: 'God jul',
-  newYear: 'Gott nytt år',
-  midsummer: 'Glad midsommar',
+  christmas: 'Merry Christmas',
+  newYear: 'Happy New Year',
+  midsummer: 'Happy Midsummer',
   halloween: 'Halloween',
-  cinnamonBun: 'Kanelbullens dag',
-  semla: 'Fettisdagen',
+  cinnamonBun: 'Cinnamon Bun Day',
+  semla: 'Semla Day',
 }
 
 function dayOfYear(year: number, month: number, day: number): number {
