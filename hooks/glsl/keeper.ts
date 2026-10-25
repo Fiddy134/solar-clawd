@@ -30,8 +30,12 @@ vec3 keeperInk(vec3 c, float k) {
 
 // The keeper at one moment: \`at\` his feet in pixels, \`facing\` 1 right and
 // -1 left, \`door\` the tower's door from 0 shut to 1 open. \`isOutside\` says
-// a UFO may take him; \`isShown\` is false while he is inside the tower.
+// a UFO may take him; \`isShown\` is false while the tower hides him, inside
+// it or behind the lantern.
 struct Keeper { vec2 at; int pose; float facing; float door; bool isOutside; bool isShown; };
+
+// The size of one cell of him, in whole pixels, for the lighthouse's unit.
+float keeperCell(float s) { return max(1.0, floor(0.13 * s)); }
 
 // His day goes round in this many seconds.
 const float DAY_LOOP = 90.0;
@@ -40,10 +44,10 @@ const float DAY_LOOP = 90.0;
 vec2 fishingSpot(Lighthouse l) { return vec2(l.x - 1.6 * l.s, l.foot); }
 
 // Where he stands on the gallery, \`a\` radians round the lantern from the
-// front. On the far half he stands a little higher, as far things do, and
-// the lantern hides him.
+// front: at the sides his outer edge is at the deck's end. Wherever cos(a)
+// is below 0 he is on the far half, behind the lantern.
 vec2 galleryAt(Lighthouse l, float a) {
-  return vec2(l.x + 0.4 * l.s * sin(a), l.deck - 0.12 * l.s - 0.06 * l.s * (1.0 - cos(a)) * 0.5);
+  return vec2(l.x + (0.62 * l.s - 3.0 * keeperCell(l.s)) * sin(a), l.deck - 0.12 * l.s);
 }
 
 // The day: fishing on the rocks, in through the door, a lap of the gallery
@@ -86,6 +90,7 @@ Keeper keeperDay(float time, Lighthouse l) {
     kp.at = galleryAt(l, a);
     kp.pose = lap >= 4.0 && lap < 8.0 ? POSE_LOOK : lap < 13.0 ? POSE_WALK : POSE_STAND;
     kp.facing = lap >= 4.0 && lap < 8.0 ? (lap < 6.0 ? -1.0 : 1.0) : cos(a) >= 0.0 ? 1.0 : -1.0;
+    kp.isShown = cos(a) >= 0.0;
     return kp;
   }
   // Out of the door, the door shutting behind him.
@@ -105,10 +110,10 @@ Keeper keeperDay(float time, Lighthouse l) {
 }
 
 // The keeper by precedence: at the lantern while it is lit, then asleep,
-// then the night, else his day. For now he stands beside the lit lantern,
-// and asleep and the night take the day.
+// then the night, else his day. For now he stands at the deck's end beside
+// the lit lantern, and asleep and the night take the day.
 Keeper keeperAt(float time, Lighthouse l) {
-  if (BEACON != 0) return Keeper(galleryAt(l, -0.5 * PI), POSE_STAND, 1.0, 0.0, true, true);
+  if (BEACON != 0) return Keeper(galleryAt(l, -0.5 * PI), POSE_LANTERN, -1.0, 0.0, true, true);
   if (KEEPER_ASLEEP > 0.5) return keeperDay(time, l);
   if (nightness(sceneNow().elevation) > 0.6) return keeperDay(time, l);
   return keeperDay(time, l);
@@ -117,7 +122,7 @@ Keeper keeperAt(float time, Lighthouse l) {
 // His cell \`c\` of the band's grid, counted facing right from his top left
 // (clawdRows in hooks/clawd.ts: head, face, arms, legs): 0 nothing, 1 his
 // body, 2 an eye, 3 a leg.
-int keeperCell(ivec2 c, int pose, int stride) {
+int keeperGrid(ivec2 c, int pose, int stride) {
   if (c.x < 0 || c.x > 5 || c.y < 0 || c.y > 3) return 0;
   bool isLooking = pose == POSE_LOOK;
   // Head, and a hand up to his brow as he looks out.
@@ -137,10 +142,10 @@ int keeperCell(ivec2 c, int pose, int stride) {
 
 // Him at p: the cell's kind, the grid's origin at his top left, mirrored
 // when he faces left.
-int keeperCellAt(vec2 p, vec2 origin, float c, Keeper kp, int stride) {
+int keeperGridAt(vec2 p, vec2 origin, float c, Keeper kp, int stride) {
   ivec2 cell = ivec2(floor((p - origin) / c));
   if (kp.facing < 0.0) cell.x = 5 - cell.x;
-  return keeperCell(cell, kp.pose, stride);
+  return keeperGrid(cell, kp.pose, stride);
 }
 
 // A coloured line \`w\` wide from a to b.
@@ -154,12 +159,13 @@ vec3 keeperLine(vec3 sky, vec2 p, vec2 a, vec2 b, vec3 color, float w, float alp
 vec3 keeperSprite(vec3 sky, vec2 p, Keeper kp, vec2 rise, float k) {
   Lighthouse l = lighthouse(max(4.0, floor(iResolution.y / 60.0 + 0.5)));
   float s = l.s;
-  float c = max(1.0, floor(0.09 * s));
-  // Behind the lantern on the gallery's far half.
-  if (kp.at.y < l.deck - 0.155 * s && abs(p.x - l.x) < 0.36 * s && p.y > l.deck - 0.63 * s) return sky;
+  float c = keeperCell(s);
+  // On lantern duty he stands half behind the lantern, its light uncovered.
+  if (kp.pose == POSE_LANTERN && abs(p.x - l.x) < 0.36 * s && abs(p.y - (l.deck - 0.35 * s)) < 0.28 * s) return sky;
   vec2 at = kp.at + rise;
   vec3 body = keeperInk(CORAL, k);
-  vec3 legs = keeperInk(mix(CORAL, INK_INDIGO, 0.22), k);
+  // His legs in a deeper tone, screened as the band dithers them.
+  vec3 legs = mix(body, keeperInk(mix(CORAL, INK_INDIGO, 0.22), k), screen(p, 0.6, max(2.0, 0.5 * c), 45.0));
   vec3 eye = lift(INK_INDIGO, k);
 
   if (kp.pose == POSE_FISH) {
@@ -182,19 +188,19 @@ vec3 keeperSprite(vec3 sky, vec2 p, Keeper kp, vec2 rise, float k) {
   vec2 origin = floor(at - vec2(3.0 * c, 4.0 * c) + 0.5);
   if (p.x < origin.x - 2.0 * c || p.x > origin.x + 8.0 * c || p.y < origin.y - c || p.y > origin.y + 5.0 * c) return sky;
   int stride = int(floor(iTime * 3.0)) % 2;
-  int cell = keeperCellAt(p, origin, c, kp, stride);
+  int cell = keeperGridAt(p, origin, c, kp, stride);
   if (cell != 0) return mix(sky, cell == 2 ? eye : cell == 3 ? legs : body, 0.97);
   // The key plate, off register.
   float off = max(1.0, floor(0.4 * c));
-  if (keeperCellAt(p - vec2(off), origin, c, kp, stride) != 0) sky = mix(sky, lift(INK_INDIGO, k), 0.55);
+  if (keeperGridAt(p - vec2(off), origin, c, kp, stride) != 0) sky = mix(sky, lift(INK_INDIGO, k), 0.55);
   return sky;
 }
 
-// The door in the tower's foot, arched: shut in the tower's indigo, and
+// The door in the tower's foot, arched and wide enough for him: shut in the tower's indigo, and
 // open the dark inside, its leaf swung out toward you on hinges at the left.
 vec3 keeperDoor(vec3 sky, vec2 p, Lighthouse l, float open, float k) {
   float s = l.s;
-  float w = 0.3 * s;
+  float w = 0.425 * s;
   vec2 v = p - vec2(l.x, l.foot);
   float spring = 0.9 * s - w;
   float d = max(v.y < -spring ? length(v + vec2(0.0, spring)) - w : abs(v.x) - w, v.y);
@@ -219,7 +225,7 @@ vec3 keeper(vec3 sky, vec2 p, float u, float k) {
   sky = keeperDoor(sky, p, l, kp.door, k);
   if (kp.pose != POSE_FISH) {
     vec2 spot = fishingSpot(l);
-    sky = keeperLine(sky, p, spot - vec2(0.45 * s, 0.0), spot - vec2(1.0 * s, 0.95 * s), keeperInk(WOOD, k), max(1.5, 0.3 * floor(0.09 * s)), 1.0);
+    sky = keeperLine(sky, p, spot - vec2(0.45 * s, 0.0), spot - vec2(1.0 * s, 0.95 * s), keeperInk(WOOD, k), max(1.5, 0.3 * keeperCell(s)), 1.0);
   }
   if (kp.isShown) sky = keeperSprite(sky, p, kp, vec2(0.0), k);
   return sky;
