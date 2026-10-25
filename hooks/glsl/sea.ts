@@ -19,9 +19,18 @@ Lighthouse lighthouse(float u) {
   return l;
 }
 
+// Which of the sea's rows of ripples p is on, counting down from the
+// horizon, where they crowd together; its fraction says how near the
+// middle of one.
+float seaRow(vec2 p, float u) { return sqrt((p.y - ARC.w * iResolution.y + 1.0) / (0.05 * u)); }
+
+// The lantern room: its middle, and half its width and height.
+vec4 lanternRoom(Lighthouse l) { return vec4(l.x, l.deck - 0.35 * l.s, 0.36 * l.s, 0.28 * l.s); }
+
 // The sea on the horizon at the right, fading out toward the middle and
-// down into the sky: halftone ripples drifting, the low sun glittering in
-// it and a lit lighthouse's lantern too. \`glow\` is the lantern's light.
+// down into the sky: halftone ripples drifting, the low sun or the moon
+// glittering in it and a lit lighthouse's lantern too. \`glow\` is the
+// lantern's light.
 vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
   float level = ARC.w * iResolution.y;
   if (p.y < level) return sky;
@@ -31,7 +40,7 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
   float pitch = max(3.0, u * 0.24);
   vec3 water = mix(sky * 0.8, tone(mix(INK_BLUE, INK_INDIGO, 0.5), k) * (1.0 - 0.7 * nightness(sceneNow().elevation)), 0.45);
   // Ripples: short dashes on rows that crowd together toward the horizon.
-  float row = sqrt((p.y - level + 1.0) / (0.05 * u));
+  float row = seaRow(p, u);
   float onRow = smoothstep(0.2, 0.0, abs(fract(row) - 0.5));
   float dash = smoothstep(0.35, 0.9, sin(p.x / (0.7 * u) + floor(row) * 2.3 + iTime * 0.7) * sin(p.x / (2.9 * u) - floor(row) * 1.1 + iTime * 0.3));
   water = mix(water, mix(water, sky * 1.25 + 0.05, 0.6), screen(p, onRow * dash * 0.8, pitch, 0.0));
@@ -43,6 +52,12 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
     float glint = column * onRow * smoothstep(0.2, 0.7, sin(p.x / (0.6 * u) + floor(row) * 1.7 - iTime * 1.3));
     vec3 gold = mix(INK_YELLOW, INK_ORANGE, smoothstep(12.0, 2.0, sc.elevation));
     water = mix(water, gold, screen(p, glint, pitch, 0.0) * 0.9);
+  }
+  // The moon glitters in it too, pale cream, as brightly as it is full.
+  if (sc.isDay < 0.5 && MOON_UP > 0.5) {
+    float column = exp(-abs(p.x - domeToPixel(MOON_AT).x) / (0.8 * u * (1.0 + depth * 12.0)));
+    float glint = column * onRow * smoothstep(0.2, 0.7, sin(p.x / (0.6 * u) + floor(row) * 1.7 - iTime * 1.3));
+    water = mix(water, CREAM, screen(p, glint, pitch, 0.0) * 0.9 * MOON_ILLUMINATION);
   }
   // A lit lantern's light on the water below it.
   if (glowStrength > 0.0) {
@@ -66,7 +81,8 @@ vec3 beacon(vec3 sky, vec2 p, float u, float k) {
   float x = tower.x;
   float h = tower.h;
   float deck = tower.deck;
-  vec2 lantern = vec2(x, deck - 0.35 * s);
+  vec4 room = lanternRoom(tower);
+  vec2 lantern = room.xy;
   vec2 v = p - lantern;
   vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
   float speed = BEACON_URGENT > 0.5 ? 1.2 : 0.6;
@@ -127,12 +143,12 @@ vec3 beacon(vec3 sky, vec2 p, float u, float k) {
   // The lantern room, lit or dark, its glazing bars, the dome and its finial.
   vec2 r = abs(v);
   vec3 glass = BEACON == 1 ? INK_ORANGE : BEACON == 2 ? vec3(1.0, 0.97, 0.9) : indigo;
-  if (r.x < 0.36 * s && r.y < 0.28 * s) {
+  if (r.x < room.z && r.y < room.w) {
     sky = mix(sky, glass, 0.95);
     if (abs(abs(p.x - x) - 0.12 * s) < 0.035 * s) sky = mix(sky, indigo, 0.7);
   }
-  vec2 dome = (p - vec2(x, lantern.y - 0.28 * s)) / vec2(0.44 * s, 0.34 * s);
-  if (p.y < lantern.y - 0.28 * s && dot(dome, dome) < 1.0) sky = mix(sky, indigo, 0.92);
+  vec2 dome = (p - vec2(x, lantern.y - room.w)) / vec2(0.44 * s, 0.34 * s);
+  if (p.y < lantern.y - room.w && dot(dome, dome) < 1.0) sky = mix(sky, indigo, 0.92);
   if (abs(p.x - x) < 0.04 * s && p.y < lantern.y - 0.6 * s && p.y > lantern.y - 0.85 * s) sky = mix(sky, indigo, 0.9);
   return sky;
 }

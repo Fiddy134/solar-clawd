@@ -3,14 +3,30 @@
 export const EVENTS = `
 // --- Events ------------------------------------------------------------------
 
-vec3 shootingStars(vec3 sky, vec2 p, float u) {
+// The shooting stars' own schedule, one in each slot of the period at a
+// random moment: how long ago the latest of them started at \`time\`, and
+// where it starts from. Before this slot's has started, the one before
+// (its 0.9 s long over).
+float shootingStarAge(float time, out vec2 from) {
   float period = 3600.0 / SHOOTING_RATE;
-  float slot = floor(iTime / period);
-  int n = int(mod(slot, 100000.0));
-  float start = slot * period + rand(n * 3 + 1) * max(0.1, period - 1.2);
-  float age = iTime - start;
+  float slot = floor(time / period);
+  float start = 0.0;
+  int n = 0;
+  for (int i = 0; i < 2; i++) {
+    n = int(mod(slot, 100000.0));
+    start = slot * period + rand(n * 3 + 1) * max(0.1, period - 1.2);
+    if (start <= time) break;
+    slot -= 1.0;
+  }
+  from = iResolution.xy * vec2(0.1 + 0.8 * rand(n * 3 + 2), 0.05 + 0.35 * rand(n * 3 + 3));
+  return time - start;
+}
+
+vec3 shootingStars(vec3 sky, vec2 p, float u) {
+  vec2 from;
+  float age = shootingStarAge(iTime, from);
   if (age < 0.0 || age > 0.9) return sky;
-  vec2 from = iResolution.xy * vec2(0.1 + 0.8 * rand(n * 3 + 2), 0.05 + 0.35 * rand(n * 3 + 3));
+  int n = int(mod(floor(iTime / (3600.0 / SHOOTING_RATE)), 100000.0));
   vec2 dir = normalize(vec2(rand(n) < 0.5 ? -1.0 : 1.0, 0.45));
   vec2 head = from + dir * age * 24.0 * u;
   float tail = 9.0 * u * min(1.0, age / 0.15);

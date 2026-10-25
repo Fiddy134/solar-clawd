@@ -101,6 +101,9 @@ float nightness(float elevation) { return smoothstep(-5.0, -13.0, elevation); }
 
 // --- Drawing -------------------------------------------------------------
 
+// The paper under the inks.
+const vec3 CREAM = vec3(0.9608, 0.9373, 0.8784);
+
 vec3 tone(vec3 c, float k) { return vivid(c * k, SATURATION); }
 
 // An ink laid down by distance: solid inside, antialiased at the edge.

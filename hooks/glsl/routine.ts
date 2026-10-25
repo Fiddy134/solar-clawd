@@ -9,7 +9,7 @@ Keeper keeperDay(float time, Lighthouse l) {
   float t = time - floor(time / DAY_LOOP) * DAY_LOOP;
   vec2 spot = fishingSpot(l);
   vec2 door = vec2(l.x, l.foot);
-  Keeper kp = Keeper(spot, POSE_FISH, -1.0, 0.0, true, true);
+  Keeper kp = Keeper(spot, POSE_FISH, -1.0, 0.0, true, true, 0.0);
   if (t < 40.0) return kp;
   // Over to the door.
   if (t < 44.0) {
@@ -36,14 +36,17 @@ Keeper keeperDay(float time, Lighthouse l) {
     return kp;
   }
   // Out from behind the lantern, round to the front, a look out to sea one
-  // way and the other, and on round behind it again.
+  // way and the other, and on round behind it again: stepping round the
+  // lantern room at the deck's ends, and out of sight only while it hides
+  // all but half a cell of him.
   if (t < 68.0) {
     float lap = t - 52.0;
     float a = lap < 4.0 ? PI * (1.0 + lap / 4.0) : lap < 8.0 ? 2.0 * PI : PI * (2.0 + min(1.0, (lap - 8.0) / 5.0));
     kp.at = galleryAt(l, a);
     kp.pose = lap >= 4.0 && lap < 8.0 ? POSE_LOOK : lap < 13.0 ? POSE_WALK : POSE_STAND;
     kp.facing = lap >= 4.0 && lap < 8.0 ? (lap < 6.0 ? -1.0 : 1.0) : cos(a) >= 0.0 ? 1.0 : -1.0;
-    kp.isShown = cos(a) >= 0.0;
+    kp.behind = smoothstep(0.3, -0.3, cos(a));
+    kp.isShown = cos(a) >= 0.0 || abs(kp.at.x - l.x) >= 0.5 * keeperCell(l.s);
     return kp;
   }
   // Out of the door, the door shutting behind him.
@@ -62,24 +65,37 @@ Keeper keeperDay(float time, Lighthouse l) {
   return kp;
 }
 
-// The keeper by precedence: at the lantern while it is lit, then a surf,
-// then asleep, then the night, else his day. For now he stands at the
-// deck's end beside the lit lantern, and asleep and the night take the day.
+// What he is about at \`time\`, by precedence: at the lantern while it is
+// lit, then a surf, then asleep, then the night (an aurora before a full
+// moon before the stars), else his day.
+int keeperMode(float time) {
+  if (BEACON != 0) return MODE_LANTERN;
+  if (surfTime(time) >= 0.0) return MODE_SURF;
+  if (KEEPER_ASLEEP > 0.5) return MODE_HAMMOCK;
+  float night = nightness(sceneNow().elevation);
+  if (night <= 0.6) return MODE_DAY;
+  if (AURORA * night > 0.3) return MODE_AURORA;
+  return MOON_UP > 0.5 && MOON_ILLUMINATION > 0.95 ? MODE_MOON : MODE_STARS;
+}
+
+// The keeper at \`time\`, as his mode says.
 Keeper keeperAt(float time, Lighthouse l) {
-  if (BEACON != 0) return Keeper(galleryAt(l, -0.5 * PI), POSE_LANTERN, -1.0, 0.0, true, true);
-  float surfing = surfTime(time);
-  if (surfing >= 0.0) return keeperSurf(surfing, l);
-  if (KEEPER_ASLEEP > 0.5) return keeperDay(time, l);
-  if (nightness(sceneNow().elevation) > 0.6) return keeperDay(time, l);
-  return keeperDay(time, l);
+  int mode = keeperMode(time);
+  if (mode == MODE_LANTERN) return keeperLantern(l);
+  if (mode == MODE_SURF) return keeperSurf(surfTime(time), l);
+  if (mode == MODE_HAMMOCK) return keeperHammock(l);
+  if (mode == MODE_DAY) return keeperDay(time, l);
+  return keeperNight(time, l, mode);
 }
 
 // The keeper and his door, near the lighthouse only: his rod propped on the
-// rocks while he is away from it.
+// rocks while he is away from it, his lantern by him fishing at night,
+// his binoculars, and his hammock over him asleep.
 vec3 keeper(vec3 sky, vec2 p, float u, float k) {
   Lighthouse l = lighthouse(u);
   float s = l.s;
   if (abs(p.x - l.x) > 4.0 * s || p.y < l.deck - 3.0 * s || p.y > l.foot + 1.0 * s) return sky;
+  int mode = keeperMode(iTime);
   Keeper kp = keeperAt(iTime, l);
   sky = keeperDoor(sky, p, l, kp.door, k);
   if (kp.pose != POSE_FISH) {
@@ -87,7 +103,10 @@ vec3 keeper(vec3 sky, vec2 p, float u, float k) {
     sky = keeperLine(sky, p, spot - vec2(0.45 * s, 0.0), spot - vec2(1.0 * s, 0.95 * s), keeperInk(WOOD, k), max(1.5, 0.3 * keeperCell(s)), 1.0);
   }
   sky = surf(sky, p, l, u, k);
-  if (kp.isShown) sky = keeperSprite(sky, p, kp, vec2(0.0), k);
+  if (mode == MODE_MOON) sky = fishingLantern(sky, p, l, u, k);
+  if (kp.isShown && !keeperIsHidden(p, kp, l)) sky = keeperSprite(sky, p, kp, vec2(0.0), k);
+  if (kp.pose == POSE_GAZE) sky = binoculars(sky, p, kp, l, k);
+  if (mode == MODE_HAMMOCK) sky = snore(hammock(sky, p, l, k), p, l, k);
   return sky;
 }
 `

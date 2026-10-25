@@ -5,9 +5,11 @@ export const SURF = `
 
 // Now and then, about one round in ten and never in rain or snow, his
 // fishing gives way to a surf; forced (/solar event surf), every round is one.
+// The salt gives none in the first eight rounds, so a Ghostty just started
+// doesn't open on him surfing round after round.
 bool isSurfLoop(float n) {
   if (KEEPER_FORCE == 2) return true;
-  return PRECIPITATION == 0 && rand(int(n) * 7 + 11) < 0.1;
+  return PRECIPITATION == 0 && rand(int(n) * 19 + 41) < 0.1;
 }
 
 // The surf takes the fishing's 40 seconds; forced, it is all there is.
@@ -76,7 +78,7 @@ vec2 surfRider(float t, Lighthouse l) {
 // it riding in toward the rocks, and off onto them to stand by his rod.
 Keeper keeperSurf(float t, Lighthouse l) {
   vec2 spot = fishingSpot(l);
-  Keeper kp = Keeper(spot, POSE_STAND, 1.0, 0.0, true, true);
+  Keeper kp = Keeper(spot, POSE_STAND, 1.0, 0.0, true, true, 0.0);
   if (t < 2.0) {
     kp.at = mix(spot, surfRider(2.0, l), t / 2.0);
     kp.pose = POSE_WALK;
