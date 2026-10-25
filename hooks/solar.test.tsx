@@ -992,3 +992,11 @@ test('the shader glances at the cursor, and never at iDate', () => {
   expect(text).toContain('iTimeCursorChange')
   expect(text).not.toContain('iDate')
 })
+
+test('confetti is an even rain: it ignores where its loop is', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const body = /vec3 confetti\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  expect(body).not.toBe('')
+  expect(body).not.toMatch(/float t\b/)
+  expect(body).not.toMatch(/[^\w.]t \*|\(t\b|, t\)/)
+})

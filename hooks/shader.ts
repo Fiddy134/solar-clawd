@@ -1011,22 +1011,24 @@ vec3 constellation(vec3 sky, vec2 p, float u, float seed) {
   return sky;
 }
 
-// A milestone: risograph confetti over the whole window.
-vec3 confetti(vec3 sky, vec2 p, float u, float seed, float t, float k) {
+// A milestone: risograph confetti raining over the whole window for its
+// twenty seconds. Each piece falls down its own column round and round,
+// so the rain is as thick at any moment: Ghostty's unknown start of iTime
+// never shows as a burst missed or half over.
+vec3 confetti(vec3 sky, vec2 p, float u, float seed, float k) {
   vec3 inks[5] = vec3[5](INK_PINK, INK_YELLOW, INK_BLUE, INK_GREEN, INK_ORANGE);
-  float fade = 1.0 - smoothstep(0.85, 1.0, t);
-  float seconds = t * 20.0;
+  float fall = iResolution.y + 4.0 * u;
   for (int i = 0; i < 48; i++) {
     float a = seeded(seed, i * 3);
     float b = seeded(seed, i * 3 + 1);
-    float x = a * iResolution.x + sin(seconds * (1.0 + b) + a * 7.0) * 1.2 * u;
-    float y = -2.0 * u - b * iResolution.y * 0.6 + seconds * (2.5 + 3.0 * a) * u;
+    float x = a * iResolution.x + sin(iTime * (1.0 + b) + a * 7.0) * 1.2 * u;
+    float y = mod(b * fall + iTime * (2.5 + 3.0 * a) * u, fall) - 2.0 * u;
     vec2 q = p - vec2(x, y);
     if (dot(q, q) > u * u) continue;
-    float spin = seconds * (2.0 + 3.0 * b) + a * 6.0;
+    float spin = iTime * (2.0 + 3.0 * b) + a * 6.0;
     q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
     vec2 e = abs(q) - vec2(0.45, 0.2) * u;
-    sky = ink(sky, lift(inks[i % 5], k), max(e.x, e.y), fade);
+    sky = ink(sky, lift(inks[i % 5], k), max(e.x, e.y), 1.0);
   }
   return sky;
 }
@@ -1216,7 +1218,7 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
     if (kind == 4) sky = plane(sky, p, u, seed, t, k);
     if (kind == 6) sky = kite(sky, p, u, seed, k);
     if (kind == 7 || kind == 8) sky = drift(sky, p, u, seed, kind == 8, k);
-    if (kind == 11) sky = confetti(sky, p, u, seed, t, k);
+    if (kind == 11) sky = confetti(sky, p, u, seed, k);
     if (kind == 13) sky = witch(sky, p, u, seed, t, k);
     if (kind == 14) sky = feathers(sky, p, u, seed, k);
     if (kind == 15) sky = flag(sky, p, u);
