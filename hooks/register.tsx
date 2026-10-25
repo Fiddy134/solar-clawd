@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
-import { drawFrame, isPrintable, REACTION_SECONDS, ROWS } from './clawd'
+import { drawFrame, isPrintable, REACTION_SECONDS, ROWS, skyGained } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
@@ -625,7 +625,9 @@ export const register: Register = on => {
 
   const reactionAt = (now: number) => {
     const { passing } = claude
-    if (passing) {
+    // Looking up at the sky gives way to a question and to work.
+    const isBusy = waiting?.mode === 'asking' || claude.isWorking
+    if (passing && !(passing.kind === 'lookUp' && isBusy)) {
       const age = (now - passing.at) / 1000
       if (age < REACTION_SECONDS[passing.kind]) return { kind: passing.kind, age }
     }
@@ -678,6 +680,9 @@ export const register: Register = on => {
   const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
+  // What was in the Ghostty sky last time it was drawn; null before the first.
+  let lastSky: string[] | null = null
+
   const shaderAt = (now: number, extras: SkyExtras) => {
     const { ms, mode } = momentAt(now)
     const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
@@ -685,6 +690,10 @@ export const register: Register = on => {
     const { events, context } = eventsNow(now)
 
     const iss = issNow(now, mode)
+    // Something new up there: Clawd looks up at it.
+    const sky = [...events.map(event => event.kind as string), ...(iss ? ['iss'] : []), ...(extras.beacon ? ['beacon'] : [])]
+    if (lastSky !== null && skyGained(lastSky, sky)) claude.passing = { kind: 'lookUp', at: now }
+    lastSky = sky
 
     return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras }))
   }

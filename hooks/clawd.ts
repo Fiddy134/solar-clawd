@@ -19,7 +19,7 @@ export type Activity = 'sleep' | 'coffee' | 'code' | 'gta'
 export type Mode = 'live' | 'demo' | 'pinned'
 
 // What Claude is up to, as Clawd shows it.
-export type Reaction = 'working' | 'cheer' | 'facepalm' | 'wave'
+export type Reaction = 'working' | 'cheer' | 'facepalm' | 'wave' | 'lookUp'
 
 export type View = SkyInput & {
   columns: number
@@ -113,7 +113,7 @@ function clamp01(v: number): number {
 
 const CLAWD = { O: CORAL, K: INKS.indigo, k: deeper(CORAL), G: KEY_DARK, h: deeper(deeper(CORAL)) }
 
-export type Eyes = 'open' | 'closed' | 'right' | 'left' | 'shades'
+export type Eyes = 'open' | 'closed' | 'right' | 'left' | 'shades' | 'up'
 export type Arms = 'down' | 'typing' | 'up' | 'right-up' | 'none'
 export type Legs = 'stand' | 'stepA' | 'stepB'
 
@@ -123,6 +123,8 @@ const FACES: Record<Eyes, string> = {
   right: '.OKOK.',
   left: '.KOKO.',
   shades: '.GGGG.',
+  // Looking up: the eyes move to the top row of his head (clawdRows).
+  up: '.OOOO.',
 }
 
 const ARMS: Record<Arms, string> = {
@@ -139,6 +141,11 @@ const LEGS: Record<Legs, string> = {
   stepB: '.O...O',
 }
 
+// Clawd's four rows for a pose: head, face, arms, legs.
+export function clawdRows(eyes: Eyes, arms: Arms, legs: Legs): string[] {
+  return [eyes === 'up' ? '.KOOK.' : '.OOOO.', FACES[eyes], ARMS[arms], LEGS[legs]]
+}
+
 // Six wide, four tall: the logo's shape at the band's scale.
 function paintClawd(
   c: Canvas,
@@ -150,7 +157,7 @@ function paintClawd(
   light: number,
 ): void {
   // Shaded in his legs, the halftone darker below.
-  print(c, x, y, ['.OOOO.', FACES[eyes], ARMS[arms], LEGS[legs]], CLAWD, light, { shaded: 'O', shadeFrom: 3 })
+  print(c, x, y, clawdRows(eyes, arms, legs), CLAWD, light, { shaded: 'O', shadeFrom: 3 })
   if (arms === 'typing') print(c, x + 5, y + 3, ['O'], CLAWD, light)
   if (arms === 'up') print(c, x, y - 1, ['O....O'], CLAWD, light)
   // The key plate a pixel off register, just past his right side.
@@ -408,6 +415,12 @@ export const REACTION_SECONDS: Record<Reaction, number> = {
   cheer: 2.5,
   facepalm: 3,
   wave: Infinity,
+  lookUp: 10,
+}
+
+// Whether the sky has something it did not have before: Clawd looks up.
+export function skyGained(before: readonly string[], after: readonly string[]): boolean {
+  return after.some(thing => !before.includes(thing))
 }
 
 type Overrides = { eyes?: Eyes; arms?: Arms; dy?: number; glyphs: Glyph[] }
@@ -426,7 +439,7 @@ function reactionOverrides(
 
   if (kind === 'working') return { glyphs: [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: PALE }] }
   if (!isAwake) {
-    const mark = kind === 'cheer' ? '!' : '?'
+    const mark = kind === 'cheer' ? '!' : kind === 'lookUp' ? '*' : '?'
 
     return { glyphs: [{ x: x - 2, y: 0, text: mark, fg: INKS.yellow }] }
   }
@@ -441,6 +454,12 @@ function reactionOverrides(
     c.blend(x + 6, y, SKY_INK, 0.9)
 
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
+  }
+  // Something in the sky: eyes up, a claw pointing at it.
+  if (kind === 'lookUp') {
+    c.set(x + 6, y, CLAWD.O)
+
+    return { eyes: 'up', arms: 'right-up', glyphs: [{ x: x + 7, y: 0, text: '*', fg: INKS.yellow }] }
   }
   // Waving for attention, a question over his head.
   const isHigh = Math.floor(t * 4) % 2 === 0

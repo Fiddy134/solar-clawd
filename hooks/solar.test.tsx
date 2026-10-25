@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
-import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
+import { activityAt, clawdRows, drawFrame, isPrintable, ROWS, skyGained } from './clawd'
 import { contextAt, EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
@@ -968,4 +968,20 @@ test('every Swedish day has a word, and /solar event can play it', () => {
   expect(EVENT_WORDS.witch).toBe('påskkärring')
   const ms = swedish(2026, 8, 10, 12)
   expect(eventsAt(ms, contextFor(ms), [{ kind: 'witch', at: ms }]).some(e => e.kind === 'witch')).toBe(true)
+})
+
+test("looking up, Clawd's eyes sit in the top row of his head", () => {
+  expect(clawdRows('up', 'right-up', 'stand')[0]).toContain('K')
+  expect(clawdRows('up', 'right-up', 'stand')[1]).not.toContain('K')
+  expect(clawdRows('open', 'down', 'stand')[0]).not.toContain('K')
+  expect(clawdRows('open', 'down', 'stand')[1]).toContain('K')
+})
+
+test('Clawd looks up when something new comes into the sky, once', () => {
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 10), t: 3, mode: 'live' as const, place: STOCKHOLM }
+  expect(drawFrame({ ...view, reaction: { kind: 'lookUp', age: 1 } })).not.toBe(drawFrame({ ...view, reaction: null }))
+  expect(skyGained([], ['comet'])).toBe(true)
+  expect(skyGained(['comet'], ['comet'])).toBe(false)
+  expect(skyGained(['comet', 'iss'], ['comet'])).toBe(false)
+  expect(skyGained(['comet'], ['comet', 'beacon'])).toBe(true)
 })
