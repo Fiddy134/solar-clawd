@@ -560,10 +560,10 @@ function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'],
   const age = reaction?.kind === 'toss' ? reaction.age : reaction?.kind === 'burn' ? reaction.age : null
   if (age === null || age > THROW_SECONDS) return
   const f = age / THROW_SECONDS
-  // Into the sky's basket: up a little, then down past the band's last
-  // columns, above where it stands.
-  const px = Math.round(isInSky ? x + 5 + 8 * f : x - 4 * f)
-  const py = Math.round(isInSky ? y + 1 - 6 * f * (1 - f) + 4 * f : y + 1 - 3 * f * (1 - f) * 2 - f)
+  // Into the sky's basket: high over his screen to the band's last
+  // columns, and only there down out of it, above where it stands.
+  const px = Math.round(isInSky ? x + 5 + 9 * f : x - 4 * f)
+  const py = Math.round(isInSky ? y + 1 - 12 * f * (1 - f) + 5 * f * f * f : y + 1 - 3 * f * (1 - f) * 2 - f)
   c.set(px, py, reaction!.kind === 'toss' ? CREAM : INKS.yellow)
   if (reaction!.kind === 'burn') c.set(px + (isInSky ? -1 : 1), py + 1, WOOD)
 }
