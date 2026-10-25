@@ -4,7 +4,7 @@
 // reload), so the scene is baked in as constants and the shader is written
 // again, and Ghostty told to reload, when they change.
 
-import { localMidnight, moonAt, sunAt } from './astro'
+import { horizontalAt, localMidnight, moonAt, sunAt } from './astro'
 import { chartAt, tileLines, tileStars } from './chart'
 import type { ChartStar } from './chart'
 import { domePoint } from './dome'
@@ -12,7 +12,7 @@ import type { DomePoint } from './dome'
 import type { ActiveEvent, EventKind } from './events'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
-import { clamp, INKS } from './paint'
+import { clamp, INKS, rand } from './paint'
 
 // Where the sky stands at one moment.
 export type Scene = {
@@ -27,6 +27,9 @@ export type ShaderParams = {
   scene: Scene
   // The real stars and constellation lines on the dome; empty by day.
   chart: { stars: ChartStar[]; lines: [DomePoint, DomePoint][] }
+  // Where a comet up now hangs on the dome, and the angle its tails point
+  // (away from the sun, in the window's own axes); null with no comet.
+  comet: { at: DomePoint; away: number } | null
   // Where the moon is on the dome, null while it is below the horizon.
   moon: { illumination: number; isWaxing: boolean; at: DomePoint | null }
   // A whole day for /solar demo: scenes evenly through it, played in `seconds`.
@@ -72,6 +75,17 @@ function round(v: number, step: number): number {
   return Math.round(v / step) * step
 }
 
+// A comet's place among the stars, from its seed: high in a northern sky.
+// Below the horizon it is held just above it, so a preview always shows it.
+function cometAt(seed: number, ms: number, place: SkyInput['place']): { at: DomePoint; away: number } {
+  const sky = horizontalAt(rand(seed) * 360, 45 + 30 * rand(seed + 1), ms, place.lat, place.lon)
+  const raw = domePoint({ elevation: Math.max(sky.elevation, 4), azimuth: sky.azimuth })
+  const at = { x: raw.x, y: Math.max(raw.y, 0.05) }
+  const sun = domePoint(sunAt(ms, place.lat, place.lon))
+
+  return { at: dome(at), away: round(Math.atan2(at.y - sun.y, at.x - sun.x), 0.01) }
+}
+
 // A dome point as the shader takes it: fine enough that nothing jumps.
 function dome(at: DomePoint): DomePoint {
   return { x: round(at.x, 0.0005), y: round(at.y, 0.0005) }
@@ -112,11 +126,13 @@ export function shaderParams(
   // by day there are none to show, and the shader stays short.
   const scene = demo ? demo.scenes[0]! : sceneAt(ms, place)
   const chart = demo || scene.elevation < -4 ? chartAt(ms, place) : { stars: [], lines: [] }
+  const comet = options.events?.find(event => event.kind === 'comet')
 
   return {
     // In a demo the day plays from its table: a fixed scene keeps the text,
     // and with it Ghostty, still for the demo's length.
     scene,
+    comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
       stars: chart.stars.map(star => ({ ...dome(star), mag: star.mag, bv: star.bv })),
       lines: chart.lines.map(([a, b]) => [dome(a), dome(b)] as [DomePoint, DomePoint]),
@@ -238,6 +254,8 @@ export function skyShader(params: ShaderParams): string {
     `const vec3 STOP_HORIZON[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[3])).join(', ')});`,
     ...Object.entries(INKS).map(([name, c]) => `const vec3 INK_${name.toUpperCase()} = ${rgb(c)};`),
     ...chartConstants(params.chart),
+    `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
+    `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const int EVENT_COUNT = ${params.events.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
@@ -860,25 +878,47 @@ vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
 }
 
 vec3 comet(vec3 sky, vec2 p, float u, float seed) {
-  vec2 head = iResolution.xy * vec2(0.14 + 0.25 * seeded(seed, 1), 0.14 + 0.14 * seeded(seed, 2));
-  vec2 dir = normalize(vec2(1.0, -0.38));
-  vec2 ion = normalize(vec2(1.0, -0.2));
+  vec2 head = domeToPixel(COMET_AT);
+  // The ion tail points straight away from the sun; the dust tail lags a
+  // little behind, curving.
+  vec2 ion = vec2(cos(COMET_AWAY), sin(COMET_AWAY));
+  vec2 dir = normalize(ion - vec2(-ion.y, ion.x) * 0.18);
+  vec2 side = vec2(-dir.y, dir.x);
   float pitch = max(3.0, u * 0.24);
+  float pulse = 0.85 + 0.15 * sin(iTime * 1.6);
   vec2 q = p - head;
   float along = dot(q, dir);
   if (along > 0.0) {
-    // The dust tail: broad, curving a little, yellow; the ion tail straight and blue.
+    // The dust tail: broad, yellow, light flowing outward along it.
     float bend = along * along * 0.0006 / u;
     float width = 0.3 * u + along * 0.13;
-    float d = abs(dot(q, vec2(-dir.y, dir.x)) - bend);
-    float cover = exp(-along / (11.0 * u)) * smoothstep(width, 0.0, d);
+    float across = dot(q, side) - bend;
+    float d = abs(across);
+    float flow = 0.7 + 0.3 * sin(along / (2.5 * u) - iTime * 1.4);
+    float cover = exp(-along / (11.0 * u)) * smoothstep(width, 0.0, d) * flow;
     sky = mix(sky, INK_YELLOW, screen(p, cover * 0.8, pitch, 0.0) * 0.7);
-    float ionAlong = dot(q, ion);
-    float ionD = abs(dot(q, vec2(-ion.y, ion.x)));
-    float ionCover = exp(-ionAlong / (16.0 * u)) * smoothstep(0.25 * u + ionAlong * 0.02, 0.0, ionD);
+    // Grains carried out down the tail, an even stream with no start.
+    vec2 g = vec2(along / (1.6 * u) - iTime * 0.9, across / (0.9 * u));
+    vec2 cell = floor(g);
+    int n = int(cell.x) * 7919 + int(cell.y) * 104729 + int(seed);
+    if (rand(n) < 0.3) {
+      vec2 f = fract(g) - 0.2 - vec2(rand(n + 1), rand(n + 2)) * 0.6;
+      float grain = smoothstep(0.24, 0.0, length(f)) * exp(-along / (14.0 * u)) * smoothstep(width * 1.2, 0.0, d);
+      sky = mix(sky, vec3(1.0, 0.95, 0.75), grain);
+    }
+  }
+  // The ion tail: straight, blue, fluttering a little.
+  float ionAlong = dot(q, ion);
+  if (ionAlong > 0.0) {
+    vec2 ionSide = vec2(-ion.y, ion.x);
+    float flutter = sin(iTime * 0.7 + ionAlong * 0.05) * ionAlong * 0.012;
+    float ionD = abs(dot(q, ionSide) - flutter);
+    float ionFlow = 0.75 + 0.25 * sin(ionAlong / (1.8 * u) - iTime * 2.0);
+    float ionCover = exp(-ionAlong / (16.0 * u)) * smoothstep(0.25 * u + ionAlong * 0.02, 0.0, ionD) * ionFlow;
     sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.3), screen(p, ionCover * 0.7, pitch, 15.0) * 0.7);
   }
-  sky = mix(sky, vec3(1.0, 0.97, 0.88), 0.35 * exp(-length(q) / (0.6 * u)));
+  // The head breathes.
+  sky = mix(sky, vec3(1.0, 0.97, 0.88), 0.35 * pulse * exp(-length(q) / (0.6 * u * pulse)));
   return ink(sky, vec3(1.0, 0.98, 0.92), length(q) - 0.22 * u, 1.0);
 }
 

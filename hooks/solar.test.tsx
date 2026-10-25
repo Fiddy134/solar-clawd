@@ -670,3 +670,15 @@ test('a night shader carries the real stars, a day shader none', () => {
   const day = skyShader(shaderParams({ ms: Date.UTC(2026, 5, 15, 10), t: 0, place: STOCKHOLM, weather: null }, {}))
   expect(day).toContain('const int STAR_COUNT = 0;')
 })
+
+test('the comet hangs at its place among the stars and turns with them', () => {
+  const ms = Date.UTC(2026, 9, 24, 20)
+  const ctx = contextFor(ms)
+  const params = (at: number) => shaderParams({ ms: at, t: 0, place: STOCKHOLM, weather: null }, { events: eventsAt(at, ctx, [{ kind: 'comet', at: ms }]) })
+  const now = params(ms).comet!
+  const later = params(ms + 80_000).comet! // the same preview, a scene later
+  expect(now).not.toBeNull()
+  expect(Math.hypot(later.at.x - now.at.x, later.at.y - now.at.y)).toBeGreaterThan(0)
+  expect(skyShader(params(ms))).toContain('const vec2 COMET_AT')
+  expect(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}).comet).toBeNull()
+})
