@@ -996,41 +996,47 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   vec2 dir = normalize(ion - vec2(-ion.y, ion.x) * 0.18);
   vec2 side = vec2(-dir.y, dir.x);
   float pitch = max(3.0, u * 0.24);
-  float pulse = 0.85 + 0.15 * sin(iTime * 1.6);
+  float pulse = 0.9 + 0.1 * sin(iTime * 1.6);
   vec2 q = p - head;
   float along = dot(q, dir);
-  if (along > 0.0) {
-    // The dust tail: broad, yellow, light flowing outward along it.
-    float bend = along * along * 0.0006 / u;
-    float width = 0.3 * u + along * 0.13;
-    float across = dot(q, side) - bend;
-    float d = abs(across);
-    float flow = 0.7 + 0.3 * sin(along / (2.5 * u) - iTime * 1.4);
-    float cover = exp(-along / (11.0 * u)) * smoothstep(width, 0.0, d) * flow;
-    sky = mix(sky, INK_YELLOW, screen(p, cover * 0.8, pitch, 0.0) * 0.7);
+  if (along > -2.0 * u) {
+    // The dust tail: a broad fan, densest along its spine and fading
+    // softly to its edges, yellow printed over pink so the curve's outer
+    // edge runs orange.
+    float a = max(along, 0.0);
+    float bend = a * a * 0.0006 / u;
+    float width = 0.5 * u + a * 0.11;
+    float across = (dot(q, side) - bend) / width;
+    float fall = exp(-a / (10.0 * u)) * smoothstep(-2.0 * u, 0.8 * u, along);
+    float edge = exp(-pow(across - 0.45, 2.0) * 4.0) * fall * smoothstep(0.0, 4.0 * u, a);
+    sky = mix(sky, INK_PINK, screen(p, edge * 0.5, pitch, 75.0) * 0.85);
+    float spine = exp(-across * across * 2.2) * fall;
+    sky = mix(sky, INK_YELLOW, screen(p, spine * 0.8, pitch, 0.0) * 0.9);
     // Grains carried out down the tail, an even stream with no start.
-    vec2 g = vec2(along / (1.6 * u) - iTime * 0.9, across / (0.9 * u));
+    vec2 g = vec2(a / (1.6 * u) - iTime * 0.9, across * width / (0.9 * u));
     vec2 cell = floor(g);
     int n = int(cell.x) * 7919 + int(cell.y) * 104729 + int(seed);
     if (rand(n) < 0.3) {
       vec2 f = fract(g) - 0.2 - vec2(rand(n + 1), rand(n + 2)) * 0.6;
-      float grain = smoothstep(0.24, 0.0, length(f)) * exp(-along / (14.0 * u)) * smoothstep(width * 1.2, 0.0, d);
+      float grain = smoothstep(0.24, 0.0, length(f)) * exp(-a / (14.0 * u)) * exp(-across * across * 1.5);
       sky = mix(sky, vec3(1.0, 0.95, 0.75), grain);
     }
   }
-  // The ion tail: straight, blue, fluttering a little.
+  // The ion tail: straight, narrow, blue, fluttering a little.
   float ionAlong = dot(q, ion);
   if (ionAlong > 0.0) {
     vec2 ionSide = vec2(-ion.y, ion.x);
     float flutter = sin(iTime * 0.7 + ionAlong * 0.05) * ionAlong * 0.012;
     float ionD = abs(dot(q, ionSide) - flutter);
-    float ionFlow = 0.75 + 0.25 * sin(ionAlong / (1.8 * u) - iTime * 2.0);
-    float ionCover = exp(-ionAlong / (16.0 * u)) * smoothstep(0.25 * u + ionAlong * 0.02, 0.0, ionD) * ionFlow;
-    sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.3), screen(p, ionCover * 0.7, pitch, 15.0) * 0.7);
+    float ionCover = exp(-ionAlong / (18.0 * u)) * smoothstep(0.2 * u + ionAlong * 0.012, 0.0, ionD);
+    sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.35), screen(p, ionCover * 0.75, pitch, 15.0) * 0.8);
   }
-  // The head breathes.
-  sky = mix(sky, vec3(1.0, 0.97, 0.88), 0.35 * pulse * exp(-length(q) / (0.6 * u * pulse)));
-  return ink(sky, vec3(1.0, 0.98, 0.92), length(q) - 0.22 * u, 1.0);
+  // The coma: green, as a comet's is, screened round a bright nucleus
+  // that breathes.
+  float r = length(q);
+  sky = mix(sky, mix(INK_GREEN, vec3(1.0), 0.35), screen(p, exp(-r / (0.75 * u * pulse)) * smoothstep(3.0 * u, 1.0 * u, r) * 0.9, pitch, 30.0) * 0.85);
+  sky = mix(sky, vec3(1.0, 0.98, 0.9), 0.55 * exp(-r / (0.35 * u * pulse)));
+  return ink(sky, vec3(1.0, 0.98, 0.92), r - 0.25 * u, 1.0);
 }
 
 // Clawd among the stars: his outline joined by faint lines, his eyes the brightest.
