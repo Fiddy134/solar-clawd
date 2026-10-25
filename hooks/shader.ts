@@ -19,6 +19,7 @@ import { SKY } from './glsl/sky'
 import { CLOUDS } from './glsl/clouds'
 import { SEA } from './glsl/sea'
 import { EVENTS } from './glsl/events'
+import { KEEPER } from './glsl/keeper'
 import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
 
@@ -351,4 +352,4 @@ export function skyShader(params: ShaderParams): string {
 // Everything but the constants. Coordinates are x right and y down from the
 // top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
 // flipped from OpenGL's y up (Linux) when Y_UP is set.
-const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, BASKET, MAIN].join('\n')
+const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, KEEPER, BASKET, MAIN].join('\n')

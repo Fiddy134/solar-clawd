@@ -47,6 +47,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = events(sky, p, unit, k, true);
   if (ISS_UP > 0.5) sky = iss(sky, p, unit);
   sky = beacon(sky, p, unit, k);
+  sky = keeper(sky, p, unit, k);
   sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
