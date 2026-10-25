@@ -4,7 +4,8 @@
 // reload), so the scene is baked in as constants and the shader is written
 // again, and Ghostty told to reload, when they change.
 
-import { horizontalAt, localMidnight, moonAt, sunAt } from './astro'
+import { horizontalAt, localMidnight, localTime, moonAt, sunAt } from './astro'
+import { activityOn } from './clawd'
 import { chartAt, tileLines, tileStars } from './chart'
 import type { ChartStar } from './chart'
 import { domePoint } from './dome'
@@ -18,6 +19,11 @@ import { SKY } from './glsl/sky'
 import { CLOUDS } from './glsl/clouds'
 import { SEA } from './glsl/sea'
 import { EVENTS } from './glsl/events'
+import { KEEPER } from './glsl/keeper'
+import { SURF } from './glsl/surf'
+import { NIGHT } from './glsl/night'
+import { ROUTINE } from './glsl/routine'
+import { UFO } from './glsl/ufo'
 import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
 
@@ -65,8 +71,13 @@ export type ShaderParams = {
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
+  // The keeper at the lighthouse: asleep when Clawd is, and a preview forced.
+  keeper: { isAsleep: boolean; force: 'none' | 'ufo' | 'surf' }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
+  // The width of the strip at the right where the lighthouse stands, in
+  // pixels; 0 while it is not known.
+  stagePx: number
 }
 
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
@@ -104,6 +115,9 @@ const EVENT_INDEX: Record<EventKind, number> = {
   fireworks: 20,
   dolphin: 21,
   pinkDolphin: 22,
+  // The shader schedules these itself; they are never drawn as events.
+  abduction: 23,
+  surf: 24,
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -142,7 +156,7 @@ export function sceneAt(ms: number, place: SkyInput['place']): Scene {
 // The shader's constants for a moment, `demo` playing the place's whole day
 // from local midnight instead.
 export function shaderParams(
-  input: SkyInput,
+  input: SkyInput & { offsetMs?: number },
   options: {
     demo?: { seconds: number; offsetMs?: number } | null
     events?: readonly ActiveEvent[]
@@ -151,6 +165,7 @@ export function shaderParams(
     iss?: ShaderParams['iss']
     basket?: ShaderParams['basket']
     isYUp?: boolean
+    stagePx?: number
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -180,6 +195,7 @@ export function shaderParams(
     beacon: options.beacon ?? null,
     basket: options.basket ?? null,
     isYUp: !!options.isYUp,
+    stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -196,10 +212,14 @@ export function shaderParams(
     auroraFloor: isAuroraForced ? 0.4 : 0,
     // A shooting star asked for is a shower: one every few seconds.
     events: (options.events ?? [])
-      .filter(event => event.kind !== 'shootingStar')
+      .filter(event => event.kind !== 'shootingStar' && event.kind !== 'abduction' && event.kind !== 'surf')
       .slice(0, 4)
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
+    keeper: {
+      isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep',
+      force: options.events?.some(event => event.kind === 'abduction') ? 'ufo' : options.events?.some(event => event.kind === 'surf') ? 'surf' : 'none',
+    },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -237,6 +257,42 @@ const STOPS: readonly [number, number, number, number][] = [
   [30, 0x2a7ad8, 0x66aaf0, 0xbfe0fa],
   [90, 0x1f6ed6, 0x58a2f0, 0xb0d8fb],
 ]
+
+// The colours Claude Code fills its own fields with in its dark themes, as
+// 2.1.310's CLI has them (dark, then what dark-daltonized has of its own):
+// a diff's added and removed rows, dimmed and not, and the brighter
+// backgrounds of the words changed in them; the prompt's rows, hovered and
+// not; the shell's rows; the # of a memory; the composer's sidebar. Glass
+// lets the sky through these and nothing else: the band's pixel art, text
+// and any other colour stay solid.
+export const FIELD_COLOURS: readonly number[] = [
+  0x225c2b, // diffAdded
+  0x7a2936, // diffRemoved
+  0x47584a, // diffAddedDimmed
+  0x69484d, // diffRemovedDimmed
+  0x38a660, // diffAddedWord
+  0xb3596b, // diffRemovedWord
+  0x373737, // userMessageBackground
+  0x464646, // userMessageBackgroundHover
+  0x413c41, // bashMessageBackgroundColor
+  0x374146, // memoryBackgroundColor
+  0x262626, // composerSidebarBackground
+  0x004466, // diffAdded, daltonized
+  0x660000, // diffRemoved, daltonized
+  0x3e515b, // diffAddedDimmed, daltonized
+  0x3e2c2c, // diffRemovedDimmed, daltonized
+  0x0077b3, // diffAddedWord, daltonized
+  0xb30000, // diffRemovedWord, daltonized
+]
+
+// A colour as the shader reads the terminal's image: in linear light on
+// Linux (sRGB's own curve, as the GPU decodes it), as it is elsewhere.
+function seen(c: number, isLinear: boolean): string {
+  const channel = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const [r, g, b] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff].map(v => (isLinear ? channel(v / 255) : v / 255))
+
+  return `vec3(${f(r!)}, ${f(g!)}, ${f(b!)})`
+}
 
 function ints(values: number[]): string {
   return `int[${values.length}](${values.join(', ')})`
@@ -310,12 +366,17 @@ export function skyShader(params: ShaderParams): string {
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
     `const int BASKET = ${params.basket ? 1 : 0};`,
+    `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
+    `const int FIELD_COUNT = ${FIELD_COLOURS.length};`,
+    `const vec3 FIELD_COLOURS[${FIELD_COLOURS.length}] = vec3[${FIELD_COLOURS.length}](${FIELD_COLOURS.map(c => seen(c, params.isYUp)).join(', ')});`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const float FIREWORKS = ${f(params.fireworks)};`,
     `const float FLAG_DAY = ${params.events.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
+    `const float KEEPER_ASLEEP = ${params.keeper.isAsleep ? '1.0' : '0.0'};`,
+    `const int KEEPER_FORCE = ${{ none: 0, ufo: 1, surf: 2 }[params.keeper.force]};`,
     `const int EVENT_COUNT = ${params.events.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
     `const float EVENT_SEED[${events.length}] = ${floats(events.map(e => e.seed))};`,
@@ -333,4 +394,4 @@ export function skyShader(params: ShaderParams): string {
 // Everything but the constants. Coordinates are x right and y down from the
 // top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
 // flipped from OpenGL's y up (Linux) when Y_UP is set.
-const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, BASKET, MAIN].join('\n')
+const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, KEEPER, SURF, NIGHT, ROUTINE, UFO, BASKET, MAIN].join('\n')

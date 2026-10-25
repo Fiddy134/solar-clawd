@@ -2,8 +2,9 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { STOCKHOLM } from './astro'
-import { activityAt, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
+import { localTime, STOCKHOLM, swedishOffsetMs } from './astro'
+import { swedish } from './test-kit'
+import { activityAt, activityOn, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
@@ -105,4 +106,14 @@ test('a reaction under way is not cut short by looking up', () => {
   expect(nextPassing(cheer, 5000, true)).toEqual({ kind: 'lookUp', at: 5000 })
   expect(nextPassing(null, 2000, true)).toEqual({ kind: 'lookUp', at: 2000 })
   expect(nextPassing(cheer, 2000, false)).toBe(cheer)
+})
+
+test("activityOn keeps the band's own rules", () => {
+  const at = (month: number, day: number, hour: number, minute = 0) => {
+    const ms = swedish(2026, month, day, hour, minute)
+    return activityOn(localTime(ms, swedishOffsetMs(ms)))
+  }
+  expect(at(10, 25, 4)).toBe('sleep')
+  expect(activityOn(localTime(swedish(2027, 1, 1, 1), swedishOffsetMs(swedish(2027, 1, 1, 1))))).toBe('nightOwl')
+  expect(at(12, 13, 5, 30)).toBe('earlyBird')
 })

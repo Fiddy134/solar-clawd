@@ -30,6 +30,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // Paths written to, in order; commands answering as though they failed.
   const writes: string[] = []
   const failing = new Set<string>()
+  // Commands the engine refuses to run at all.
+  const denied = new Set<string>()
+  // The toasts shown, in order.
+  const toasts: string[] = []
   // What other commands answer, by name: uname, ghostty --version.
   const answers = new Map<string, string>()
   // What pmset says powers the Mac.
@@ -54,6 +58,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('process.run', (_, e) => {
     runs.push([...e.argv])
     const [command] = e.argv
+    if (command && denied.has(command)) return { deny: 'denied in a test' }
     if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
@@ -70,9 +75,12 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   })
   on('session.id', () => ({ value: 'this-session' }))
   on('session.end', () => ({ sessionId: 'this-session' }))
-  on('ui.toast', () => ({ value: undefined }))
+  on('ui.toast', (_, e) => {
+    toasts.push(e.text)
+    return { value: undefined }
+  })
 
-  return { files, runs, writes, failing, answers, power, front, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, tick: (ms: number) => (now = ms) }
 }
 
 export const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length

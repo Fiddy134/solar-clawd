@@ -12,11 +12,13 @@ import {
   ghosttyConfigs,
   ghosttyKnowsReloadSignal,
   hasOurInclude,
+  hasOurStage,
   includeInGhostty,
   isIncluded,
   reloadGhostty,
   runtimeFolder,
   shareWaiting,
+  STAGE_PT,
   tidy,
   updateGhosttySky,
 } from './ghostty'
@@ -24,7 +26,7 @@ import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
 import { issVisible } from './iss'
 import type { Elements } from './iss'
-import { ITERM_FRONTMOST, NOW_PLAYING, SET_BACKGROUND } from './mac'
+import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
 import { fromBase64 } from './paint'
@@ -75,6 +77,17 @@ const BATTERY_MS = 60_000
 const MILESTONE_MS = 3 * 60_000
 // While the ISS passes, the sky follows it this often.
 const ISS_TICK_MS = 2_000
+
+// The stage strip's width in pixels: its points times the screen's scale
+// (asked once, on macOS; Linux has the points as they are). An answer that
+// is no positive number counts as 1.
+async function stagePxOf($: EngineInterface, isOnLinux: boolean): Promise<number> {
+  if (isOnLinux) return STAGE_PT
+  const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
+  const scale = Number(answer?.stdout.trim())
+
+  return STAGE_PT * (Number.isFinite(scale) && scale > 0 ? scale : 1)
+}
 
 // How full the context window is, 0 to 100, for Clawd's pile of paper;
 // null when it could not say.
@@ -317,6 +330,8 @@ export const register: Register = on => {
         home,
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
+        // Asked below, once the config is known to include the sky.
+        stagePx: STAGE_PT,
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
         written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
@@ -326,11 +341,22 @@ export const register: Register = on => {
       ghostty.isIncluded = await isIncluded($, ghostty)
       // An include the mod added before, to its own folder: moved here, and
       // the old file emptied so Ghostty draws no second sky from it.
+      let isMarginNew = false
       if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
-        ghostty.isIncluded = (await includeInGhostty($, ghostty)) !== null
+        const added = await includeInGhostty($, ghostty)
+        ghostty.isIncluded = added !== null
+        isMarginNew = added?.isMarginNew ?? false
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
+      const isOurs = await hasOurInclude($, ghostty)
+      // An include from before there was a stage gets it, once: after that
+      // the margin is the person's, changed or taken away as they like.
+      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty))?.isMarginNew ?? false
+      if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${STAGE_PT}-point margin on the right of Ghostty's windows; new windows show it.`)
+      // The screen's scale costs a moment of osascript: asked only for a sky
+      // that shows.
+      if (isOurs) ghostty.stagePx = await stagePxOf($, isOnLinux)
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
@@ -652,6 +678,7 @@ export const register: Register = on => {
       if (added === null) return { text: `Solar: could not read Ghostty's config, so it is left as it is.` }
       const { line, config } = added
       ghostty.isIncluded = true
+      ghostty.stagePx = await stagePxOf($, ghostty.isLinux)
       await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($, ghostty)
 
@@ -668,6 +695,10 @@ export const register: Register = on => {
       const name = word.slice('event'.length).trim()
       const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name) ?? OLD_EVENT_WORDS[name]
       if (!kind) return { text: `Solar: no event called "${name}". /solar events lists them.` }
+      // The keeper lives in Ghostty's sky alone: the band has no lighthouse.
+      if ((kind === 'abduction' || kind === 'surf') && ghostty === null) {
+        return { text: `Solar: the ${EVENT_WORDS[kind]} shows only in Ghostty's sky, and this session is not running in Ghostty.` }
+      }
       forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
       await update($, isHidden, () => false)
 

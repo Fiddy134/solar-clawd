@@ -666,14 +666,22 @@ export type SceneState = {
   hat: HatKind | null
 }
 
+// What Clawd does at a time: the usual hours, but up all New Year's night,
+// and early for the Lucia train.
+export function activityOn(time: LocalTime): Activity {
+  const usual = activityAt(time)
+  if (usual !== 'sleep') return usual
+  const occasion = occasionAt(time)
+
+  return occasion === 'newYear' ? 'nightOwl' : occasion === 'lucia' && time.hour >= 5 ? 'earlyBird' : usual
+}
+
 export function sceneOf(view: View): SceneState {
   const { ms, place, offsetMs, weather } = view
   const sun = sunAt(ms, place.lat, place.lon)
   const time = localTime(ms, offsetMs)
   const occasion = occasionAt(time)
-  // Up all New Year's night, and early for the Lucia train.
-  const usual = activityAt(time)
-  const activity = usual !== 'sleep' ? usual : occasion === 'newYear' ? 'nightOwl' : occasion === 'lucia' && time.hour >= 5 ? 'earlyBird' : usual
+  const activity = activityOn(time)
   const isAwake = activity !== 'sleep'
   const wind = weather?.wind ?? 0
 
