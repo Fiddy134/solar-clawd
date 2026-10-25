@@ -3,6 +3,16 @@
 export const MAIN = `
 // --- The sky behind the terminal -------------------------------------------
 
+// How much sky shows through dark fields of the terminal: a diff's red and
+// green rows, the highlighted prompt row.
+const float GLASS = 0.55;
+
+// How much of the sky shows through a terminal pixel that is not its
+// background. Dark ones are tinted glass; anything brighter, text, is solid.
+float glass(vec3 term) {
+  return GLASS * (1.0 - smoothstep(0.18, 0.3, luminance(term)));
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec4 term = texture(iChannel0, fragCoord / iResolution.xy);
   // Wherever the terminal shows anything but its background (as Ghostty
@@ -11,6 +21,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // iBackgroundColor is sRGB: compared with both.
   vec3 linearBackground = pow(iBackgroundColor, vec3(2.2));
   float mask = smoothstep(0.02, 0.12, min(distance(term.rgb, iBackgroundColor), distance(term.rgb, linearBackground)));
+  // Dark fields let some sky through: less of the terminal.
+  mask *= 1.0 - glass(term.rgb);
   if (mask >= 1.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;

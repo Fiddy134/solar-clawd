@@ -6,6 +6,7 @@
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
+//   --diff (a diff on dark red and dark green rows, and a dim grey line)
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -116,6 +117,23 @@ t.fillStyle = '#${o.background}'; t.fillRect(0, 0, w, h)
 t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
 const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 file, ran 2 shell commands', '', '❯ how does it read?', '', '  ⎿  tools/preview/run.sh shader --at 22:00']
 lines.forEach((line, i) => t.fillText(line, 16, 40 + i * 20, w - ${stage} - 32))
+// --diff: a diff as Claude shows one, rows on dark red and dark green with
+// light text on them, and a dim grey line on the plain background.
+if (${!!o.diff}) {
+  const diff = [
+    ['#3d1418', '  13 -  float mask = smoothstep(0.02, 0.12, distance(term.rgb, iBackgroundColor));'],
+    ['#3d1418', '  14 -  if (mask >= 1.0) {'],
+    ['#14361c', '  13 +  float mask = smoothstep(0.02, 0.12, min(distance(term.rgb, iBackgroundColor), d));'],
+    ['#14361c', '  14 +  float g = glass(term.rgb);'],
+    ['#14361c', '  15 +  if (mask >= 1.0 && g == 0.0) {'],
+  ]
+  diff.forEach(([fill, line], i) => {
+    t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20)
+    t.fillStyle = '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
+  })
+  t.fillStyle = '#5c6370'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 300, w - ${stage} - 32)
+  t.fillStyle = '#d7dae0'
+}
 t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
 t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
 const render = () => {
