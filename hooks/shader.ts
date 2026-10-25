@@ -79,6 +79,7 @@ const EVENT_INDEX: Record<EventKind, number> = {
   sleigh: 19,
   fireworks: 20,
   dolphin: 21,
+  pinkDolphin: 22,
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -1244,7 +1245,7 @@ vec3 fireworks(vec3 sky, vec2 p, float u, float k) {
 }
 
 // The dolphin lives with the lighthouse's sea, further down.
-vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k);
+vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink);
 
 // Every event up now; \`isBehind\` draws only what sits behind the clouds.
 vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
@@ -1276,7 +1277,7 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
     if (kind == 17) sky = luciaTrain(sky, p, u, t);
     if (kind == 19) sky = sleigh(sky, p, u, seed, t, k);
     if (kind == 20) sky = fireworks(sky, p, u, k);
-    if (kind == 21) sky = dolphin(sky, p, u, seed, k);
+    if (kind == 21 || kind == 22) sky = dolphin(sky, p, u, seed, k, kind == 22);
   }
   return sky;
 }
@@ -1438,7 +1439,8 @@ vec3 splash(vec3 sky, vec2 p, vec2 at, float age, float s, float u, float k) {
 
 // A dolphin in the lighthouse's sea, leaping now and then: an arc out of
 // the water and back, a splash where it leaves and where it goes in.
-vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k) {
+// Sometimes a pink one.
+vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   // A little way out from the horizon, nearer than the lighthouse.
   float level = (ARC.w + 0.03) * iResolution.y;
   float period = 7.0;
@@ -1466,8 +1468,8 @@ vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k) {
   float fin = limb(q, vec2(0.1, 0.18) * s, vec2(-0.25, 0.52) * s, 0.1 * s, 0.02 * s);
   float fluke = limb(vec2(q.x, abs(q.y)), vec2(-0.8, 0.0) * s, vec2(-1.15, 0.3) * s, 0.08 * s, 0.04 * s);
   float shape = min(body, min(fin, fluke));
-  // Blue-grey, its belly paler, screened.
-  vec3 skin = tone(mix(INK_BLUE, vec3(0.55, 0.6, 0.7), 0.45), k);
+  // Blue-grey (or pink), its belly paler, screened.
+  vec3 skin = isPink ? lift(mix(INK_PINK, vec3(1.0, 0.88, 0.92), 0.35), k) : tone(mix(INK_BLUE, vec3(0.55, 0.6, 0.7), 0.45), k);
   vec3 color = mix(skin, mix(skin, vec3(0.95), 0.6), screen(p, smoothstep(0.0, -0.2 * s, q.y), max(3.0, u * 0.24), 45.0));
   sky = ink(sky, color, shape, 1.0);
   vec2 off = d - vec2(0.1, 0.08) * u;
