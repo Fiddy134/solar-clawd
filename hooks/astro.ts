@@ -92,9 +92,21 @@ export function sunAt(ms: number, lat = STOCKHOLM.lat, lon = STOCKHOLM.lon): Sun
   const tilt = (23.439 - 0.00000036 * d) * RAD
   const ra = Math.atan2(Math.cos(tilt) * Math.sin(l), Math.cos(l))
   const dec = Math.asin(Math.sin(tilt) * Math.sin(l))
-  const gmst = 18.697374558 + 24.06570982441908 * d
 
-  return horizontal((gmst * 15 + lon) * RAD - ra, dec, lat)
+  return horizontal((gmstDegrees(ms) + lon) * RAD - ra, dec, lat)
+}
+
+// Greenwich mean sidereal time, in degrees.
+export function gmstDegrees(ms: number): number {
+  const d = ms / DAY_MS - J2000_DAYS
+
+  return (((18.697374558 + 24.06570982441908 * d) * 15) % 360 + 360) % 360
+}
+
+// Where a star (right ascension and declination, in degrees) stands from a
+// place at a moment.
+export function horizontalAt(raDeg: number, decDeg: number, ms: number, lat: number, lon: number): Sun {
+  return horizontal((gmstDegrees(ms) + lon - raDeg) * RAD, decDeg * RAD, lat)
 }
 
 export type Moon = Sun & {

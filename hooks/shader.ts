@@ -5,6 +5,8 @@
 // again, and Ghostty told to reload, when they change.
 
 import { localMidnight, moonAt, sunAt } from './astro'
+import { domePoint } from './dome'
+import type { DomePoint } from './dome'
 import type { ActiveEvent, EventKind } from './events'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
@@ -21,7 +23,8 @@ export type Scene = {
 
 export type ShaderParams = {
   scene: Scene
-  moon: { illumination: number; isWaxing: boolean }
+  // Where the moon is on the dome, null while it is below the horizon.
+  moon: { illumination: number; isWaxing: boolean; at: DomePoint | null }
   // A whole day for /solar demo: scenes evenly through it, played in `seconds`.
   demo: { scenes: Scene[]; seconds: number } | null
   // How grey the weather makes the sky, cloud cover and wind (m/s).
@@ -65,6 +68,11 @@ function round(v: number, step: number): number {
   return Math.round(v / step) * step
 }
 
+// A dome point as the shader takes it: fine enough that nothing jumps.
+function dome(at: DomePoint): DomePoint {
+  return { x: round(at.x, 0.0005), y: round(at.y, 0.0005) }
+}
+
 export function sceneAt(ms: number, place: SkyInput['place']): Scene {
   const sun = sunAt(ms, place.lat, place.lon)
   const body = bodyAt(ms, place)
@@ -100,7 +108,7 @@ export function shaderParams(
     // In a demo the day plays from its table: a fixed scene keeps the text,
     // and with it Ghostty, still for the demo's length.
     scene: demo ? demo.scenes[0]! : sceneAt(ms, place),
-    moon: { illumination: round(moon.illumination, 0.01), isWaxing: moon.isWaxing },
+    moon: { illumination: round(moon.illumination, 0.01), isWaxing: moon.isWaxing, at: moon.elevation > 0 ? dome(domePoint(moon)) : null },
     demo,
     cloudiness: round(greyness(weather), 0.01),
     cover: weather ? round(weather.cloudCover / 100, 0.01) : 0.3,
@@ -163,6 +171,8 @@ export function skyShader(params: ShaderParams): string {
     `const float IS_DAY = ${scene.isDay ? '1.0' : '0.0'};`,
     `const float MOON_ILLUMINATION = ${f(moon.illumination)};`,
     `const float MOON_WAXING = ${moon.isWaxing ? '1.0' : '0.0'};`,
+    `const vec2 MOON_AT = vec2(${f(moon.at?.x ?? 0)}, ${f(moon.at?.y ?? 0)});`,
+    `const float MOON_UP = ${moon.at ? '1.0' : '0.0'};`,
     `const float CLOUDINESS = ${f(params.cloudiness)};`,
     `const float COVER = ${f(params.cover)};`,
     `const float WIND = ${f(params.wind)};`,
@@ -256,6 +266,10 @@ Scene sceneNow() {
   float progress = DEMO_DAY[i] == DEMO_DAY[j] ? mix(DEMO_PROGRESS[i], DEMO_PROGRESS[j], t) : DEMO_PROGRESS[i];
   return Scene(elevation, progress, DEMO_DAY[i]);
 }
+
+// A point of the dome (hooks/dome.ts), in window heights from the top
+// centre, as a pixel.
+vec2 domeToPixel(vec2 d) { return vec2(iResolution.x * 0.5 + d.x * iResolution.y, d.y * iResolution.y); }
 
 vec2 arcPoint(float progress) {
   float p = clamp(progress, 0.0, 1.0);
@@ -851,7 +865,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   float starStrength = night * (1.0 - CLOUDINESS * 0.9);
   if (starStrength > 0.03) sky = stars(sky, p, starStrength, max(1.0, floor(iResolution.y / 700.0 + 0.5)));
   vec2 body = arcPoint(s.progress);
-  if (s.isDay < 0.5) sky = moonAt(sky, p, body, unit * 2.0, (0.35 + 0.65 * night) * (1.0 - CLOUDINESS * 0.8));
+  if (s.isDay < 0.5 && MOON_UP > 0.5) sky = moonAt(sky, p, domeToPixel(MOON_AT), unit * 2.0, (0.35 + 0.65 * night) * (1.0 - CLOUDINESS * 0.8));
 
   sky = tone(sky, k);
   if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, max(3.0, unit * 0.24), k, s.elevation);

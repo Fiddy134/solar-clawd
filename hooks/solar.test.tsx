@@ -2,9 +2,10 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
-import { localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
+import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
 import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
+import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import { fromBase64 } from './paint'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
@@ -597,4 +598,32 @@ test('tidying takes the temp files a crashed write left, and no one else\'s', ()
     entry('notes.txt.tmp-old-session', now - 2 * 3_600_000),
   ]
   expect(staleFiles(entries, '/runtime', now, []).sort()).toEqual(['/runtime/sky.glsl.tmp-old-session', '/runtime/solar-clawd.ghostty.tmp-old-session'])
+})
+
+test('the dome: south horizon at the horizon line, east left, Polaris high in the north', () => {
+  const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-6)
+  near(domePoint({ elevation: 0, azimuth: 180 }).y, HORIZON)
+  near(domePoint({ elevation: 0, azimuth: 180 }).x, 0)
+  near(domePoint({ elevation: 90, azimuth: 0 }).y, ZENITH_Y)
+  expect(domePoint({ elevation: 0, azimuth: 90 }).x).toBeLessThan(0)
+  expect(domePoint({ elevation: 0, azimuth: 270 }).x).toBeGreaterThan(0)
+  // Polaris (RA 37.95°, Dec 89.26°) from Stockholm: north, about 59° up.
+  const polaris = horizontalAt(37.95, 89.26, Date.UTC(2026, 9, 24, 20), STOCKHOLM.lat, STOCKHOLM.lon)
+  expect(Math.abs(polaris.elevation - 59.3)).toBeLessThan(1.2)
+  const at = domePoint(polaris)
+  expect(Math.abs(at.x)).toBeLessThan(0.02)
+  expect(at.y).toBeGreaterThan(0)
+  expect(at.y).toBeLessThan(ZENITH_Y)
+})
+
+test('the moon stands where it is, and is gone below the horizon', () => {
+  const up = Date.UTC(2026, 9, 24, 20)
+  const params = shaderParams({ ms: up, t: 0, place: STOCKHOLM, weather: null }, {})
+  const moon = moonAt(up, STOCKHOLM.lat, STOCKHOLM.lon)
+  expect(moon.elevation).toBeGreaterThan(5)
+  expect(Math.abs(params.moon.at!.x - domePoint(moon).x)).toBeLessThan(0.002)
+  expect(Math.abs(params.moon.at!.y - domePoint(moon).y)).toBeLessThan(0.002)
+  const down = Date.UTC(2026, 9, 24, 8)
+  expect(shaderParams({ ms: down, t: 0, place: STOCKHOLM, weather: null }, {}).moon.at).toBeNull()
+  expect(skyShader(params)).toContain('const vec2 MOON_AT')
 })
