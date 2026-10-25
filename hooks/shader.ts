@@ -865,25 +865,70 @@ vec3 birds(vec3 sky, vec2 p, float u, float seed, float t) {
   return ink(sky, mix(INK_INDIGO, vec3(0.0), 0.3), d - 0.09 * u, 0.85);
 }
 
+// A capsule from a to b whose radius runs from ra to rb.
+float limb(vec2 p, vec2 a, vec2 b, float ra, float rb) {
+  vec2 ab = b - a;
+  float h = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
+  return length(p - a - ab * h) - mix(ra, rb, h);
+}
+
+// An airliner seen from below, in its own frame (x towards the nose, y
+// across, s its unit): fuselage, swept wings, tailplane.
+float airframe(vec2 q, float s) {
+  vec2 m = vec2(q.x, abs(q.y));
+  float body = min(limb(q, vec2(1.5, 0.0) * s, vec2(1.0, 0.0) * s, 0.1 * s, 0.19 * s), limb(q, vec2(1.0, 0.0) * s, vec2(-1.55, 0.0) * s, 0.19 * s, 0.06 * s));
+  float wing = limb(m, vec2(0.2, 0.0) * s, vec2(-0.5, 1.65) * s, 0.3 * s, 0.07 * s);
+  float tail = limb(m, vec2(-1.2, 0.0) * s, vec2(-1.5, 0.65) * s, 0.14 * s, 0.05 * s);
+  return min(body, min(wing, tail));
+}
+
+// An airliner crossing high up, printed as the balloon is; its contrails,
+// one from each engine, drift together and widen, lit pink and orange
+// when the sun is low. At night only its silhouette and lights.
 vec3 plane(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   bool isEast = seeded(seed, 1) < 0.5;
   vec2 a = iResolution.xy * vec2(isEast ? -0.05 : 1.05, 0.1 + 0.25 * seeded(seed, 2));
   vec2 b = iResolution.xy * vec2(isEast ? 1.05 : -0.05, 0.05 + 0.2 * seeded(seed, 3));
   vec2 at = mix(a, b, t);
   vec2 dir = normalize(b - a);
-  // The contrail: forming a little behind, widening and thinning out.
-  float behind = dot(at - p, dir);
-  if (behind > 0.0) {
-    float d = abs(dot(p - at, vec2(-dir.y, dir.x)));
-    float width = 0.1 * u + behind * 0.012;
-    float a2 = 0.6 * exp(-behind / (0.5 * iResolution.x)) * smoothstep(0.4 * u, 1.6 * u, behind);
-    float cover = smoothstep(width + 0.8, width - 0.8, d) * a2;
-    sky = mix(sky, lift(vec3(1.0), k), screen(p, cover, max(3.0, u * 0.24), 30.0) * 0.8 + cover * 0.25);
-  }
   vec2 n = vec2(-dir.y, dir.x);
-  float body = segment(p, at - dir * 0.45 * u, at + dir * 0.45 * u) - 0.1 * u;
-  float wings = segment(p, at - n * 0.5 * u, at + n * 0.5 * u) - 0.07 * u;
-  return ink(sky, vec3(1.0, 0.98, 0.94), min(body, wings), 1.0);
+  float s = 1.1 * u;
+  float elevation = sceneNow().elevation;
+  bool isNight = elevation < -4.0;
+  float behind = dot(at - p, dir);
+  if (behind > 0.0 && !isNight) {
+    float across = dot(p - at, n);
+    float spread = mix(0.6 * s, 0.22 * s, smoothstep(0.0, 0.3 * iResolution.x, behind));
+    float width = 0.08 * u + behind * 0.01;
+    float fade = 0.6 * exp(-behind / (0.5 * iResolution.x)) * smoothstep(1.4 * s, 3.5 * s, behind);
+    float cover = max(smoothstep(width + 0.8, width - 0.8, abs(across - spread)), smoothstep(width + 0.8, width - 0.8, abs(across + spread))) * fade;
+    vec3 trail = mix(vec3(1.0), mix(INK_PINK, INK_ORANGE, 0.45), smoothstep(16.0, 4.0, elevation) * 0.8);
+    sky = mix(sky, lift(trail, k), screen(p, cover, max(3.0, u * 0.24), 30.0) * 0.8 + cover * 0.25);
+  }
+  vec2 d = p - at;
+  vec2 q = vec2(dot(d, dir), dot(d, n));
+  if (abs(q.x) > 2.0 * s || abs(q.y) > 2.0 * s) return sky;
+  float frame = airframe(q, s);
+  float engines = limb(vec2(q.x, abs(q.y)), vec2(0.55, 0.6) * s, vec2(0.0, 0.6) * s, 0.12 * s, 0.1 * s);
+  if (isNight) {
+    sky = ink(sky, NIGHT_INK, min(frame, engines), 0.9);
+    // Red on one wingtip, green on the other, a white strobe at the tail.
+    vec2 tip = vec2(-0.5, 1.65) * s;
+    sky = ink(sky, vec3(1.0, 0.25, 0.2), length(q - vec2(tip.x, -tip.y)) - 0.12 * u, 1.0);
+    sky = ink(sky, vec3(0.3, 1.0, 0.5), length(q - tip) - 0.12 * u, 1.0);
+    return ink(sky, vec3(1.0), length(q - vec2(-1.55 * s, 0.0)) - 0.14 * u, step(0.85, fract(iTime * 0.8)));
+  }
+  // The underside pale, screened darker to one side; the engines in the
+  // seed's ink.
+  vec3 belly = mix(vec3(0.97, 0.96, 0.93), INK_BLUE, 0.08);
+  vec3 color = mix(belly, mix(belly, INK_INDIGO, 0.35), screen(p, clamp(0.3 - q.y / s * 0.35, 0.0, 1.0), max(3.0, u * 0.24), 45.0));
+  sky = ink(sky, lift(color, k), frame, 1.0);
+  vec3 accents[3] = vec3[3](INK_PINK, INK_ORANGE, INK_BLUE);
+  sky = ink(sky, lift(accents[int(seeded(seed, 4) * 3.0) % 3], k), engines, 1.0);
+  // The key plate, a little off register.
+  vec2 off = d - vec2(0.12, 0.1) * u;
+  float key = abs(airframe(vec2(dot(off, dir), dot(off, n)), s)) - 0.06 * u;
+  return ink(sky, lift(INK_INDIGO, k), key, 0.7);
 }
 
 // Three inks screened at their own angles: where they overlap the dots
