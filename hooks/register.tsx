@@ -269,13 +269,29 @@ async function idleMs($: EngineInterface): Promise<number> {
   }
 }
 
-// The background Ghostty draws, which the shader shows the sky in place of.
-async function ghosttyBackground($: EngineInterface, bin: string): Promise<number> {
-  try {
-    const { stdout } = await $.process.run([`${bin}/ghostty`, '+show-config', '--default'], { timeoutMs: 5_000 })
-    const hex = /^background = #?([0-9a-f]{6})\s*$/im.exec(stdout)?.[1]
+function backgroundIn(text: string): number | null {
+  const hex = /^background\s*=\s*#?([0-9a-f]{6})\s*$/im.exec(text)?.[1]
 
-    return hex ? parseInt(hex, 16) : GHOSTTY_BACKGROUND
+  return hex ? parseInt(hex, 16) : null
+}
+
+// The background Ghostty draws, which the shader shows the sky in place of:
+// the person's own (`+show-config` lists what differs from the defaults),
+// else their theme's, else Ghostty's default.
+async function ghosttyBackground($: EngineInterface, bin: string, resources: string | undefined): Promise<number> {
+  try {
+    const { stdout } = await $.process.run([`${bin}/ghostty`, '+show-config'], { timeoutMs: 5_000 })
+    const own = backgroundIn(stdout)
+    if (own !== null) return own
+    // A plain theme name; a light/dark pair is left to the default.
+    const theme = /^theme\s*=\s*([^,:\n]+?)\s*$/im.exec(stdout)?.[1]
+    if (theme && resources) {
+      const themed = backgroundIn(await $.fs.read(`${resources}/themes/${theme}`).catch(() => ''))
+      if (themed !== null) return themed
+    }
+    const { stdout: defaults } = await $.process.run([`${bin}/ghostty`, '+show-config', '--default'], { timeoutMs: 5_000 })
+
+    return backgroundIn(defaults) ?? GHOSTTY_BACKGROUND
   } catch {
     return GHOSTTY_BACKGROUND
   }
@@ -295,16 +311,22 @@ type Ghostty = {
   include: string
   shader: string
   heartbeat: string
+  // Present while the sky is hidden: /solar in any session hides it for all.
+  hidden: string
   home: string
   background: number
+  // Whether Ghostty's config includes the mod's file, asked each minute.
+  isIncluded: boolean
   written: { shader: string; include: string; heartbeatAt: number; isBusy: boolean }
 }
 
-// Whether one of Ghostty's config files includes the mod's file.
+// Whether one of Ghostty's config files includes the mod's file, on a line
+// of its own (a commented-out line does not count).
 async function isIncluded($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
   for (const path of ghosttyConfigs(ghostty.home)) {
     const text = await $.fs.read(path).catch(() => '')
-    if (text.includes(ghostty.include)) return true
+    const lines = text.split('\n').map(line => line.trim().replace(/^config-file\s*=\s*\??/, ''))
+    if (text.split('\n').some((line, i) => /^config-file\s*=/.test(line.trim()) && lines[i] === ghostty.include)) return true
   }
 
   return false
@@ -325,12 +347,12 @@ async function reloadGhostty($: EngineInterface): Promise<void> {
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // person is here and the sky is not hidden, nothing otherwise. Ghostty
 // reloads only when a file actually changed.
-async function updateGhosttySky(
-  $: EngineInterface,
-  ghostty: Ghostty,
-  isHidden: boolean,
-  shaderAt: (now: number) => string,
-): Promise<void> {
+//
+// Every session wants the same on or off (the hidden file and the person's
+// idleness are shared), so the include is checked against the disk and put
+// right whoever changed it. The shader's text is this session's own: it is
+// written when it changes here, the last session to change it winning.
+async function updateGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string): Promise<void> {
   const { written } = ghostty
   if (written.isBusy) return
   written.isBusy = true
@@ -339,7 +361,9 @@ async function updateGhosttySky(
     if (now - written.heartbeatAt >= HEARTBEAT_MS) {
       await $.fs.write(ghostty.heartbeat, String(now))
       written.heartbeatAt = now
+      ghostty.isIncluded = await isIncluded($, ghostty)
     }
+    const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
     const isWanted = !isHidden && (await idleMs($)) < AWAY_MS
     let isChanged = false
     let include = ''
@@ -352,11 +376,12 @@ async function updateGhosttySky(
       }
       include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = true\n`
     }
-    if (include !== written.include) {
+    const onDisk = await $.fs.read(ghostty.include).catch(() => null)
+    if (include !== onDisk) {
       await $.fs.write(ghostty.include, include)
-      written.include = include
       isChanged = true
     }
+    written.include = include
     if (isChanged) await reloadGhostty($)
   } finally {
     written.isBusy = false
@@ -364,8 +389,10 @@ async function updateGhosttySky(
 }
 
 // The session is ending: its heartbeat goes, and the sky with it unless
-// another session is still alive.
-async function endGhosttySky($: EngineInterface, ghostty: Ghostty): Promise<void> {
+// another session is still alive. A /clear or a resume goes on in the same
+// process: the sky stays.
+async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
+  if (reason === 'clear' || reason === 'resume') return
   const { folder, heartbeat, include } = ghostty
   await $.process.run(['/bin/rm', '-f', heartbeat]).catch(() => undefined)
   const now = await $.clock.now()
@@ -380,10 +407,13 @@ async function endGhosttySky($: EngineInterface, ghostty: Ghostty): Promise<void
 }
 
 // Adds the one include line to the config Ghostty reads first; `?` keeps
-// Ghostty quiet should the file ever be missing. Answers the line and file.
-async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string }> {
+// Ghostty quiet should the file ever be missing. Answers the line and file,
+// or null when the config is there but cannot be read: never written over.
+async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
   const config = ghosttyConfigs(ghostty.home)[0]!
-  const text = await $.fs.read(config).catch(() => '')
+  const isThere = await $.fs.exists(config).catch(() => true)
+  const text = isThere ? await $.fs.read(config).catch(() => null) : ''
+  if (text === null) return null
   const line = `config-file = ?${ghostty.include}`
   const gap = text === '' || text.endsWith('\n') ? '' : '\n'
   await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\n`)
@@ -481,7 +511,8 @@ export const register: Register = on => {
       weather,
       isAuroraForced,
       moonTexture,
-      isClear: iterm !== null || (ghostty !== null && ghostty.written.include !== ''),
+      // Clear where a wallpaper or Ghostty's sky shows through the band.
+      isClear: iterm !== null || (ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''),
       reaction: reactionAt(now),
       track,
       event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : shower,
@@ -532,18 +563,21 @@ export const register: Register = on => {
         include: `${folder}/solar-clawd.ghostty`,
         shader: `${folder}/sky.glsl`,
         heartbeat: `${folder}/alive-${id}`,
+        hidden: `${folder}/hidden`,
         home,
-        background: await ghosttyBackground($, bin),
+        background: await ghosttyBackground($, bin, await $.env.get('GHOSTTY_RESOURCES_DIR')),
+        isIncluded: false,
         written: { shader: '', include: '', heartbeatAt: -Infinity, isBusy: false },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.
-      if (!(await isIncluded($, ghostty))) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
+      ghostty.isIncluded = await isIncluded($, ghostty)
+      if (!ghostty.isIncluded) $.ui.toast('Solar: kör /solar ghostty så visas himlen bakom terminalen.')
     }
 
     if (ghostty !== null) {
       const sky = ghostty
-      const update = async () => updateGhosttySky($, sky, await read($, isHidden), shaderAt)
+      const update = () => updateGhosttySky($, sky, shaderAt)
       void update().catch(() => undefined)
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
     }
@@ -644,7 +678,10 @@ export const register: Register = on => {
         })
         // Hidden, collapsed or resized: wait for the next draw to say where.
         if (result.deny && site === drawn) site = null
-      })()
+      })().catch(() => {
+        // Gone between ticks: the next draw says where it is.
+        site = null
+      })
     })
 
     return next(e)
@@ -656,7 +693,7 @@ export const register: Register = on => {
     if (iterm !== null && wallpaper.isShown) {
       await $.process.run(['/usr/bin/osascript', ...SET_BACKGROUND, iterm.sessionId, ''])
     }
-    if (ghostty !== null) await endGhosttySky($, ghostty)
+    if (ghostty !== null) await endGhosttySky($, ghostty, e.reason)
 
     return next(e)
   })
@@ -717,6 +754,11 @@ export const register: Register = on => {
     if (word === '') {
       const wasHidden = await read($, isHidden)
       await update($, isHidden, () => !wasHidden)
+      // Ghostty's sky is one for every session: hidden in all of them.
+      if (ghostty !== null) {
+        if (wasHidden) await $.process.run(['/bin/rm', '-f', ghostty.hidden]).catch(() => undefined)
+        else await $.fs.write(ghostty.hidden, '')
+      }
 
       return { text: wasHidden ? 'Solar-himlen är tillbaka.' : 'Solar-himlen är gömd.' }
     }
@@ -738,10 +780,12 @@ export const register: Register = on => {
     if (word === 'ghostty') {
       if (ghostty === null) return { text: 'Solar: den här sessionen körs inte i Ghostty.' }
       if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty visar redan himlen.' }
-      const { line, config } = await includeInGhostty($, ghostty)
-      // Written again, so Ghostty reloads with the include in place.
-      ghostty.written.include = ''
-      await updateGhosttySky($, ghostty, await read($, isHidden), shaderAt)
+      const added = await includeInGhostty($, ghostty)
+      if (added === null) return { text: `Solar: kunde inte läsa Ghosttys config, så den lämnas orörd.` }
+      const { line, config } = added
+      ghostty.isIncluded = true
+      await updateGhosttySky($, ghostty, shaderAt)
+      await reloadGhostty($)
 
       return { text: `Solar: lade till "${line}" i ${config}.` }
     }
