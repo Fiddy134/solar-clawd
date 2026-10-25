@@ -262,9 +262,10 @@ const STOPS: readonly [number, number, number, number][] = [
 // 2.1.310's CLI has them (dark, then what dark-daltonized has of its own):
 // a diff's added and removed rows, dimmed and not, and the brighter
 // backgrounds of the words changed in them; the prompt's rows, hovered and
-// not; the shell's rows; the # of a memory; the composer's sidebar. Glass
-// lets the sky through these and nothing else: the band's pixel art, text
-// and any other colour stay solid.
+// not; the shell's rows; the # of a memory; the composer's sidebar; and a
+// tool's diff as color-diff highlights it, which has rows and words of its
+// own in truecolor. Glass lets the sky through these and nothing else: the
+// band's pixel art, text and any other colour stay solid.
 export const FIELD_COLOURS: readonly number[] = [
   0x225c2b, // diffAdded
   0x7a2936, // diffRemoved
@@ -283,6 +284,12 @@ export const FIELD_COLOURS: readonly number[] = [
   0x3e2c2c, // diffRemovedDimmed, daltonized
   0x0077b3, // diffAddedWord, daltonized
   0xb30000, // diffRemovedWord, daltonized
+  0x022800, // color-diff's addLine
+  0x044700, // color-diff's addWord
+  0x3d0100, // color-diff's deleteLine
+  0x5c0200, // color-diff's deleteWord
+  0x001b29, // color-diff's addLine, daltonized
+  0x003047, // color-diff's addWord, daltonized
 ]
 
 // A colour as the shader reads the terminal's image: in linear light on
@@ -292,6 +299,27 @@ function seen(c: number, isLinear: boolean): string {
   const [r, g, b] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff].map(v => (isLinear ? channel(v / 255) : v / 255))
 
   return `vec3(${f(r!)}, ${f(g!)}, ${f(b!)})`
+}
+
+// The sRGB colour c in Display P3, as a Mac's Ghostty (its window-colorspace
+// srgb, the default) hands the shader the terminal's image: through linear
+// light, from sRGB's primaries to P3's, and back onto the same curve.
+function displayP3(c: number): number {
+  const decode = (v: number) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
+  const encode = (v: number) => Math.round(255 * Math.min(1, Math.max(0, v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)))
+  const [r, g, b] = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff].map(v => decode(v / 255)) as [number, number, number]
+  const p3 = [0.8225 * r + 0.1774 * g, 0.0332 * r + 0.9669 * g, 0.0171 * r + 0.0724 * g + 0.9108 * b].map(encode) as [number, number, number]
+  return (p3[0] << 16) | (p3[1] << 8) | p3[2]
+}
+
+// The field colours as the shader reads them: on Linux in linear light; on
+// a Mac both as they are (a window-colorspace of display-p3, and the
+// previews) and in Display P3, as Ghostty there gives them by default.
+// Greys are the same either way, and are given once.
+function fieldsSeen(isLinear: boolean): string[] {
+  if (isLinear) return FIELD_COLOURS.map(c => seen(c, true))
+  const converted = FIELD_COLOURS.map(displayP3).filter(c => !FIELD_COLOURS.includes(c))
+  return [...FIELD_COLOURS, ...converted].map(c => seen(c, false))
 }
 
 function ints(values: number[]): string {
@@ -368,8 +396,8 @@ export function skyShader(params: ShaderParams): string {
     `const int BASKET = ${params.basket ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
-    `const int FIELD_COUNT = ${FIELD_COLOURS.length};`,
-    `const vec3 FIELD_COLOURS[${FIELD_COLOURS.length}] = vec3[${FIELD_COLOURS.length}](${FIELD_COLOURS.map(c => seen(c, params.isYUp)).join(', ')});`,
+    `const int FIELD_COUNT = ${fieldsSeen(params.isYUp).length};`,
+    `const vec3 FIELD_COLOURS[${fieldsSeen(params.isYUp).length}] = vec3[${fieldsSeen(params.isYUp).length}](${fieldsSeen(params.isYUp).join(', ')});`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
