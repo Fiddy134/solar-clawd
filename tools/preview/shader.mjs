@@ -25,7 +25,7 @@ const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null
 const events = eventsAt(ms, context, forced)
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
-  { background, demo: o.demo ? { seconds: 48 } : null, events, shootingRate: shootingRate(context) },
+  { demo: o.demo ? { seconds: 48 } : null, events, shootingRate: shootingRate(context) },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.
@@ -38,6 +38,7 @@ const fragment = `#version 300 es
 precision highp float;
 precision highp int;
 uniform vec3 iResolution;
+uniform vec3 iBackgroundColor;
 uniform float iTime;
 uniform sampler2D iChannel0;
 out vec4 outColor;
@@ -86,6 +87,7 @@ try {
   gl.uniform3f(gl.getUniformLocation(program, 'iResolution'), w, h, 1)
   gl.uniform1f(gl.getUniformLocation(program, 'iTime'), ${Number(o.time)})
   gl.uniform1i(gl.getUniformLocation(program, 'iChannel0'), 0)
+  gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
   document.title = 'ok'

@@ -31,5 +31,5 @@ time('events', i => {
 time('ghostty shader text', i => {
   const at = ms + i * 10_000
   const context = contextAt(at, STOCKHOLM, weather, null)
-  skyShader(shaderParams({ ms: at, t: at / 1000, place: STOCKHOLM, weather }, { background: 0x282c34, events: eventsAt(at, context), shootingRate: shootingRate(context) }))
+  skyShader(shaderParams({ ms: at, t: at / 1000, place: STOCKHOLM, weather }, { events: eventsAt(at, context), shootingRate: shootingRate(context) }))
 })

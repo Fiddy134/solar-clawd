@@ -107,12 +107,11 @@ test('control characters never reach a cell', () => {
 test('the sky shader is the same text for the same scene, its constants baked in', () => {
   const snowyNight = { temperature: -2, code: 71, cloudCover: 60, wind: 3 }
   const input = { ms: Date.UTC(2026, 9, 24, 20, 0), t: 0, place: STOCKHOLM, weather: snowyNight, kp: 5 }
-  const options = { background: 0x282c34 }
+  const options = {}
   const shader = skyShader(shaderParams(input, options))
   // Within the same two minutes, nothing to reload.
   expect(skyShader(shaderParams({ ...input, ms: input.ms + 30_000 }, options))).toBe(shader)
   expect(skyShader(shaderParams({ ...input, ms: input.ms + 180_000 }, options))).not.toBe(shader)
-  expect(shader).toContain('const vec3 BACKGROUND = vec3(0.1569, 0.1725, 0.2039);')
   expect(shader).toContain('const float IS_DAY = 0.0;')
   expect(shader).toContain('const int PRECIPITATION = 4;')
   expect(shader).toContain('const int DEMO_COUNT = 0;')
@@ -150,7 +149,6 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
-    if (command?.endsWith('/ghostty')) stdout = e.argv.includes('--default') ? 'background = #282c34\n' : 'background = #1e1e2e\nforeground = #cdd6f4\n'
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
     if (command === '/bin/mv') {
       const [from, to] = e.argv.slice(-2) as [string, string]
@@ -184,8 +182,6 @@ test('in Ghostty the sky is a shader, rewritten as the scene moves, off while th
   const include = [...world.files.entries()].find(([path]) => path.endsWith('/runtime/solar-clawd.ghostty'))
   const shader = [...world.files.entries()].find(([path]) => path.endsWith('/runtime/sky.glsl'))
   expect(include?.[1].text).toContain(`custom-shader = ${shader?.[0]}`)
-  // The terminal's own background, as Ghostty says it, is where the sky shows.
-  expect(shader?.[1].text).toContain('const vec3 BACKGROUND = vec3(0.1176, 0.1176, 0.1804);')
   expect(RELOADS(world.runs)).toBe(1)
 
   // Nothing new within the same two minutes: no reload.
@@ -421,13 +417,16 @@ test('/clear keeps the sky: the session goes on', async ($, on) => {
   expect(RELOADS(world.runs)).toBe(reloads)
 })
 
-test('the sky is shown where Ghostty draws your own background, not its default', async ($, on) => {
+test('the shader takes the terminal background from Ghostty itself', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
   const world = ghosttyWorld(on, { value: 1 })
   world.tick(start)
   const runtime = await startGhostty($, on, clock, world)
-  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const vec3 BACKGROUND = vec3(0.1176, 0.1176, 0.1804);')
+  const shader = world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  expect(shader).toContain('iBackgroundColor')
+  expect(shader).not.toContain('const vec3 BACKGROUND')
+  expect(world.runs.some(argv => argv.some(a => a.includes('show-config')))).toBe(false)
 })
 
 test('/solar ghostty never writes over a config it could not read', async ($, on) => {

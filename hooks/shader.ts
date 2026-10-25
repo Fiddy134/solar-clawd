@@ -33,8 +33,6 @@ export type ShaderParams = {
   // night does; `auroraFloor` keeps a forced preview visible at dusk.
   aurora: number
   auroraFloor: number
-  // The terminal's background: where the terminal shows it, the sky shows.
-  background: number
   // Events up now, each looped over its length (Ghostty's iTime cannot say
   // when one began), and shooting stars an hour.
   events: { kind: EventKind; seed: number; seconds: number }[]
@@ -79,7 +77,6 @@ export function sceneAt(ms: number, place: SkyInput['place']): Scene {
 export function shaderParams(
   input: SkyInput,
   options: {
-    background: number
     demo?: { seconds: number; offsetMs?: number } | null
     events?: readonly ActiveEvent[]
     shootingRate?: number
@@ -111,7 +108,6 @@ export function shaderParams(
     precipitation: sky === 'drizzle' || sky === 'rain' || sky === 'thunder' || sky === 'snow' ? sky : 'none',
     aurora: isAuroraForced ? 0.9 : round(clamp(over / 3) * clear, 0.01),
     auroraFloor: isAuroraForced ? 0.4 : 0,
-    background: options.background,
     // A shooting star asked for is a shower: one every few seconds.
     events: (options.events ?? [])
       .filter(event => event.kind !== 'shootingStar')
@@ -162,7 +158,6 @@ export function skyShader(params: ShaderParams): string {
   // GLSL has no empty arrays: a placeholder when no event is up.
   const events = params.events.length > 0 ? params.events : [{ kind: 'satellite' as const, seed: 0, seconds: 1 }]
   const constants = [
-    `const vec3 BACKGROUND = ${rgb(params.background)};`,
     `const float ELEVATION = ${f(scene.elevation)};`,
     `const float PROGRESS = ${f(scene.progress)};`,
     `const float IS_DAY = ${scene.isDay ? '1.0' : '0.0'};`,
@@ -836,8 +831,9 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec4 term = texture(iChannel0, fragCoord / iResolution.xy);
-  // Wherever the terminal shows anything but its background, the terminal.
-  float mask = smoothstep(0.02, 0.12, distance(term.rgb, BACKGROUND));
+  // Wherever the terminal shows anything but its background (as Ghostty
+  // says it, theme and all), the terminal.
+  float mask = smoothstep(0.02, 0.12, distance(term.rgb, iBackgroundColor));
   if (mask >= 1.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;

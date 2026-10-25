@@ -57,8 +57,6 @@ const AWAY_MS = 5 * 60_000
 // ALIVE_MS is a session gone.
 const HEARTBEAT_MS = 60_000
 const ALIVE_MS = 5 * 60_000
-// Ghostty's own background, until it says otherwise.
-const GHOSTTY_BACKGROUND = 0x282c34
 
 // A turn of Claude's this long earns confetti when it is done.
 const MILESTONE_MS = 3 * 60_000
@@ -269,34 +267,6 @@ async function idleMs($: EngineInterface): Promise<number | null> {
   }
 }
 
-function backgroundIn(text: string): number | null {
-  const hex = /^background\s*=\s*#?([0-9a-f]{6})\s*$/im.exec(text)?.[1]
-
-  return hex ? parseInt(hex, 16) : null
-}
-
-// The background Ghostty draws, which the shader shows the sky in place of:
-// the person's own (`+show-config` lists what differs from the defaults),
-// else their theme's, else Ghostty's default.
-async function ghosttyBackground($: EngineInterface, bin: string, resources: string | undefined): Promise<number> {
-  try {
-    const { stdout } = await $.process.run([`${bin}/ghostty`, '+show-config'], { timeoutMs: 5_000 })
-    const own = backgroundIn(stdout)
-    if (own !== null) return own
-    // A plain theme name; a light/dark pair is left to the default.
-    const theme = /^theme\s*=\s*([^,:\n]+?)\s*$/im.exec(stdout)?.[1]
-    if (theme && resources) {
-      const themed = backgroundIn(await $.fs.read(`${resources}/themes/${theme}`).catch(() => ''))
-      if (themed !== null) return themed
-    }
-    const { stdout: defaults } = await $.process.run([`${bin}/ghostty`, '+show-config', '--default'], { timeoutMs: 5_000 })
-
-    return backgroundIn(defaults) ?? GHOSTTY_BACKGROUND
-  } catch {
-    return GHOSTTY_BACKGROUND
-  }
-}
-
 // Ghostty's config files on macOS, the one to add the include to first.
 function ghosttyConfigs(home: string): string[] {
   const support = `${home}/Library/Application Support/com.mitchellh.ghostty`
@@ -316,7 +286,6 @@ type Ghostty = {
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
   home: string
-  background: number
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
   written: {
@@ -569,9 +538,8 @@ export const register: Register = on => {
     const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
 
     const { events, context } = eventsNow(now)
-    const background = ghostty?.background ?? GHOSTTY_BACKGROUND
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { background, demo, events, shootingRate: shootingRate(context) }))
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context) }))
   }
 
   on('session.start', async ($, e, next) => {
@@ -600,7 +568,6 @@ export const register: Register = on => {
 
     if ((await $.env.get('TERM_PROGRAM')) === 'ghostty' && home) {
       const folder = `${$.plugin.root}/runtime`
-      const bin = (await $.env.get('GHOSTTY_BIN_DIR')) ?? '/Applications/Ghostty.app/Contents/MacOS'
       const id = await $.session.id().catch(() => 'session')
       ghostty = {
         id,
@@ -610,7 +577,6 @@ export const register: Register = on => {
         heartbeat: `${folder}/alive-${id}`,
         hidden: `${folder}/hidden`,
         home,
-        background: await ghosttyBackground($, bin, await $.env.get('GHOSTTY_RESOURCES_DIR')),
         isIncluded: false,
         written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null },
       }
