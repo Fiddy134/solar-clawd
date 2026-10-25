@@ -1,12 +1,13 @@
 // The sky shader's GLSL, part of hooks/shader.ts's BODY: the keeper's day,
-// what he is doing at any moment, and him drawn at the lighthouse.
+// and what he is doing at any moment.
 export const ROUTINE = `
 // --- His day -----------------------------------------------------------------
 
 // The day: fishing on the rocks, in through the door, a lap of the gallery
-// looking out, and back down to the rocks.
+// looking out, and back down to the rocks. Forced (/solar event abduction),
+// he fishes all day, so every UFO finds him on the rocks.
 Keeper keeperDay(float time, Lighthouse l) {
-  float t = time - floor(time / DAY_LOOP) * DAY_LOOP;
+  float t = KEEPER_FORCE == 1 ? 0.0 : time - floor(time / DAY_LOOP) * DAY_LOOP;
   vec2 spot = fishingSpot(l);
   vec2 door = vec2(l.x, l.foot);
   Keeper kp = Keeper(spot, POSE_FISH, -1.0, 0.0, true, true, 0.0);
@@ -86,27 +87,5 @@ Keeper keeperAt(float time, Lighthouse l) {
   if (mode == MODE_HAMMOCK) return keeperHammock(l);
   if (mode == MODE_DAY) return keeperDay(time, l);
   return keeperNight(time, l, mode);
-}
-
-// The keeper and his door, near the lighthouse only: his rod propped on the
-// rocks while he is away from it, his lantern by him fishing at night,
-// his binoculars, and his hammock over him asleep.
-vec3 keeper(vec3 sky, vec2 p, float u, float k) {
-  Lighthouse l = lighthouse(u);
-  float s = l.s;
-  if (abs(p.x - l.x) > 4.0 * s || p.y < l.deck - 3.0 * s || p.y > l.foot + 1.0 * s) return sky;
-  int mode = keeperMode(iTime);
-  Keeper kp = keeperAt(iTime, l);
-  sky = keeperDoor(sky, p, l, kp.door, k);
-  if (kp.pose != POSE_FISH) {
-    vec2 spot = fishingSpot(l);
-    sky = keeperLine(sky, p, spot - vec2(0.45 * s, 0.0), spot - vec2(1.0 * s, 0.95 * s), keeperInk(WOOD, k), max(1.5, 0.3 * keeperCell(s)), 1.0);
-  }
-  sky = surf(sky, p, l, u, k);
-  if (mode == MODE_MOON) sky = fishingLantern(sky, p, l, u, k);
-  if (kp.isShown && !keeperIsHidden(p, kp, l)) sky = keeperSprite(sky, p, kp, vec2(0.0), k);
-  if (kp.pose == POSE_GAZE) sky = binoculars(sky, p, kp, l, k);
-  if (mode == MODE_HAMMOCK) sky = snore(hammock(sky, p, l, k), p, l, k);
-  return sky;
 }
 `

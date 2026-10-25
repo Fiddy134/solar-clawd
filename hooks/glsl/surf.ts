@@ -4,11 +4,12 @@ export const SURF = `
 // --- His surf ----------------------------------------------------------------
 
 // Now and then, about one round in ten and never in rain or snow, his
-// fishing gives way to a surf; forced (/solar event surf), every round is one.
+// fishing gives way to a surf; forced (/solar event surf), every round is
+// one, and with a UFO forced none, as he waits for it on the rocks.
 // The salt gives none in the first eight rounds, so a Ghostty just started
 // doesn't open on him surfing round after round.
 bool isSurfLoop(float n) {
-  if (KEEPER_FORCE == 2) return true;
+  if (KEEPER_FORCE != 0) return KEEPER_FORCE == 2;
   return PRECIPITATION == 0 && rand(int(n) * 19 + 41) < 0.1;
 }
 
