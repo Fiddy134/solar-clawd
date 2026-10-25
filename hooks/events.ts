@@ -229,7 +229,9 @@ export function dayEventsAt(ms: number, ctx: EventContext): ActiveEvent[] {
   if (easterDay === -3) days.push(passes('witch', ms, time, 19 * 60, 23 * 60, 40, 3 * MINUTE))
   if (easterDay >= -3 && easterDay <= 1) days.push(lasting('feathers', ms, time))
   if (time.month === 6 && time.day === 6) days.push(lasting('flag', ms, time))
-  if (time.month === 6 && time.day >= 19 && time.day <= 25 && time.weekday === 5) days.push(lasting('maypole', ms, time))
+  if (time.month === 6 && time.day >= 19 && time.day <= 25 && time.weekday === 5) {
+    days.push(lasting('maypole', ms, time), lasting('blossom', ms, time))
+  }
   if (time.month === 12 && time.day === 13 && time.hour >= 5 && time.hour < 8 && ctx.elevation < -3) {
     const start = Math.floor(ms / (3 * MINUTE)) * 3 * MINUTE
     days.push({ kind: 'luciaTrain', seed: 13, start, durationMs: 3 * MINUTE, progress: (ms - start) / (3 * MINUTE) })
@@ -267,13 +269,20 @@ export function eventsAt(ms: number, ctx: EventContext, forced: readonly Forced[
     active.push({ kind: 'rainbow', seed: 0, start: ctx.lastRainAt ?? ms, durationMs: 30 * MINUTE, progress: 0 })
   }
 
+  const played: ActiveEvent[] = []
   for (const { kind, at } of forced) {
     const durationMs = kind === 'milestone' ? MILESTONE.durationMs : PREVIEW_MS
-    if (ms < at || ms >= at + durationMs || active.some(event => event.kind === kind)) continue
+    if (ms < at || ms >= at + durationMs) continue
+    if (active.some(event => event.kind === kind) || played.some(event => event.kind === kind)) {
+      played.push(...active.filter(event => event.kind === kind && !played.includes(event)))
+      continue
+    }
     // A preview of the fireworks is the full display.
     const progress = kind === 'fireworks' ? 1 : (ms - at) / durationMs
-    active.push({ kind, seed: hash(at) % 1000, start: at, durationMs, progress })
+    played.push({ kind, seed: hash(at) % 1000, start: at, durationMs, progress })
   }
 
-  return active
+  // What was asked for (a preview, a milestone) first: the shader shows the
+  // first few, and the band names the first.
+  return [...played, ...active.filter(event => !played.includes(event))]
 }

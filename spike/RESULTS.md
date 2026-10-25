@@ -48,3 +48,5 @@ working (its spinner redrawing the terminal):
   spike's finding that `false` "does not help".
 - Every event, the demo and the lighthouse/ISS/aurora mix compile in
   WebGL; groups of four events compile in Ghostty itself (sky shown).
+- An ISS pass reloads Ghostty every 2 s: Ghostty CPU 17.7% → 19.8%, GPU
+  71% → 72% (20 s each, a night shader alternating the station's place).

@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
-import { drawFrame, isPrintable, REACTION_SECONDS, ROWS, skyGained } from './clawd'
+import { drawFrame, isPrintable, nextPassing, REACTION_SECONDS, ROWS, skyGained } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
 import type { Mode, Reaction } from './clawd'
@@ -496,12 +496,14 @@ async function writeGhosttySky(
   let include = ''
   if (isWanted) {
     const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, onlyBeacon: state.isAway }
+    // Against the disk, not what this session last wrote: another session
+    // may have written the same (no reload) or something else (put right).
     const shader = shaderAt(now, extras)
-    if (shader !== written.shader) {
+    if (shader !== (await $.fs.read(ghostty.shader).catch(() => null))) {
       await writeWhole($, ghostty.shader, shader, ghostty.id)
-      written.shader = shader
       written.isReloadOwed = true
     }
+    written.shader = shader
     const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery })
     include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
   }
@@ -589,6 +591,9 @@ export const register: Register = on => {
   const power = { isOnBattery: false }
   // Updates the Ghostty sky at once, once a Ghostty session has started.
   let refreshSky: (() => void) | null = null
+  // The calls the engine put to the person (tool.check's ask), by id: a
+  // permission asked for is answered when its own call goes on and ends.
+  const askingCalls = new Set<string>()
   // Sets what Claude waits for; whether that changed (a wait keeps the
   // moment it began).
   const waitFor = (next: Waiting | null): boolean => {
@@ -692,7 +697,7 @@ export const register: Register = on => {
     const iss = issNow(now, mode)
     // Something new up there: Clawd looks up at it.
     const sky = [...events.map(event => event.kind as string), ...(iss ? ['iss'] : []), ...(extras.beacon ? ['beacon'] : [])]
-    if (lastSky !== null && skyGained(lastSky, sky)) claude.passing = { kind: 'lookUp', at: now }
+    if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 
     return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras }))
@@ -760,10 +765,15 @@ export const register: Register = on => {
       })
       void update().catch(() => undefined)
       refreshSky = () => void update().catch(() => undefined)
-      // While the ISS passes, its place every two seconds.
+      // While the ISS passes, its place every two seconds, and once more as
+      // it goes, so it does not hang there until the next tick.
+      let isPassing = false
       $.clock.every(ISS_TICK_MS, () => {
         void (async () => {
-          if (issNow(await $.clock.now(), momentAt(await $.clock.now()).mode)) await update()
+          const now = await $.clock.now()
+          const wasPassing = isPassing
+          isPassing = issNow(now, momentAt(now).mode) !== null
+          if (isPassing || wasPassing) await update()
         })().catch(() => undefined)
       })
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
@@ -919,15 +929,34 @@ export const register: Register = on => {
     return next(e)
   })
 
+  // Which calls are put to the person: the call that asked is the one whose
+  // end answers the question.
+  on('tool.check', async ($, e, next) => {
+    const verdict = await next(e)
+    if (verdict.decision === 'ask' && e.tool_use_id) askingCalls.add(e.tool_use_id)
+
+    return verdict
+  })
+
   on('tool.call', async ($, e, next) => {
     // A question put to the person waits inside its call; any other call in
-    // the conversation means Claude is at work again.
+    // the conversation means Claude is at work again (unless a permission it
+    // asked for is still open).
     const isQuestion = e.tool === 'AskUserQuestion'
-    const asked = isQuestion ? { mode: 'asking' as const, since: await $.clock.now() } : null
-    if ((isQuestion || e.agentId === undefined) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
+    const startedAt = await $.clock.now()
+    const asked = isQuestion ? { mode: 'asking' as const, since: startedAt } : null
+    const isOpen = waiting?.mode === 'asking' && askingCalls.size > 0
+    if ((isQuestion || (e.agentId === undefined && !isOpen)) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
     const result = await next(e)
-    // Answered, or allowed and run: nothing waits on the person now.
-    if ((isQuestion || waiting?.mode === 'asking') && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
+    // Answered: the question's own call, or the last call that asked for a
+    // permission, has ended. A notice no call asked for (an MCP server's
+    // question) ends with the main call it came up in.
+    const wasAsking = askingCalls.delete(e.tool_use_id)
+    const isAnswered =
+      isQuestion ||
+      (wasAsking && askingCalls.size === 0) ||
+      (!wasAsking && askingCalls.size === 0 && e.agentId === undefined && (waiting?.since ?? -Infinity) >= startedAt)
+    if (waiting?.mode === 'asking' && isAnswered && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     if (result.isError && e.agentId === undefined) {
       claude.passing = { kind: 'facepalm', at: await $.clock.now() }
     }

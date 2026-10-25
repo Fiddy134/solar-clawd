@@ -692,3 +692,13 @@ function encode(canvas: Canvas, glyphs: Glyph[], isClear: boolean): string {
 
   return toBase64(new Uint8Array(words.buffer))
 }
+
+// Clawd's passing reaction once the sky has (or has not) gained something:
+// he looks up at it, unless a reaction is still under way (a cheer for work
+// done keeps its moment).
+export function nextPassing(passing: { kind: Reaction; at: number } | null, now: number, isGained: boolean): { kind: Reaction; at: number } | null {
+  if (!isGained) return passing
+  if (passing && (now - passing.at) / 1000 < REACTION_SECONDS[passing.kind]) return passing
+
+  return { kind: 'lookUp', at: now }
+}

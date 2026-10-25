@@ -9,7 +9,7 @@
 
 import { gmstDegrees, sunAt, sunDirection } from './astro'
 import type { Place } from './astro'
-import { domePoint } from './dome'
+import { domePoint, HORIZON } from './dome'
 import type { DomePoint } from './dome'
 
 export type Elements = {
@@ -122,11 +122,16 @@ export function issAt(el: Elements, ms: number, place: Place): { elevation: numb
 }
 
 // The station on the dome while it is worth looking up for, with where it
-// was 20 s before (its trail); null otherwise, or from missing or old elements.
+// was 20 s before (its trail); null otherwise (out of the window too), or
+// from missing or old elements.
 export function issVisible(el: Elements | null, ms: number, place: Place): { at: DomePoint; trail: DomePoint } | null {
   if (!el || Math.abs(ms - el.epochMs) > ELEMENTS_MAX_AGE_MS) return null
   const now = issAt(el, ms, place)
   if (now.elevation <= 10 || !now.isSunlit || sunAt(ms, place.lat, place.lon).elevation >= -6) return null
 
-  return { at: domePoint(now), trail: domePoint(issAt(el, ms - 20_000, place)) }
+  // Beyond the window's top (low in the north on the dome) it is not shown.
+  const at = domePoint(now)
+  if (at.y < 0 || at.y > HORIZON) return null
+
+  return { at, trail: domePoint(issAt(el, ms - 20_000, place)) }
 }

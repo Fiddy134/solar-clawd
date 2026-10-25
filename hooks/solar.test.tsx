@@ -3,9 +3,10 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
-import { activityAt, clawdRows, drawFrame, isPrintable, ROWS, skyGained } from './clawd'
+import { activityAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained } from './clawd'
 import { contextAt, EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
+import type { DomePoint } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } from './beacon'
 import { elementsOf, issAt, issVisible } from './iss'
@@ -999,4 +1000,74 @@ test('confetti is an even rain: it ignores where its loop is', () => {
   expect(body).not.toBe('')
   expect(body).not.toMatch(/float t\b/)
   expect(body).not.toMatch(/[^\w.]t \*|\(t\b|, t\)/)
+})
+
+// --- Fixes from the final review ----------------------------------------
+
+test("a question is put out by the end of the call that asked, not by another call's end", async ($, on) => {
+  const gates: Record<string, () => void> = {}
+  const { clock, shader } = await waitingWorld($, on, { value: 1 }, () => {
+    on('tool.check', (_, e) => ({ decision: e.tool === 'Bash' ? 'ask' : 'allow' }) as never)
+    // The person allows it (in a session, through the dialog).
+    on('classic.PermissionRequest', () => ({ decision: { behavior: 'allow' } }) as never)
+    on('tool.call', (_, e) => new Promise(done => (gates[e.tool] = () => done({ result: {} } as never))))
+  })
+  const asking = $.tool.call({ tool: 'Bash', command: 'make' } as never)
+  const reading = $.tool.call({ tool: 'Read', file_path: '/x' } as never)
+  await clock.advance(10)
+  await $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' })
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 1;')
+  gates.Read!()
+  await reading
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 1;')
+  gates.Bash!()
+  await asking
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 0;')
+})
+
+test('a reaction under way is not cut short by looking up', () => {
+  const cheer = { kind: 'cheer' as const, at: 1000 }
+  expect(nextPassing(cheer, 2000, true)).toBe(cheer)
+  expect(nextPassing(cheer, 5000, true)).toEqual({ kind: 'lookUp', at: 5000 })
+  expect(nextPassing(null, 2000, true)).toEqual({ kind: 'lookUp', at: 2000 })
+  expect(nextPassing(cheer, 2000, false)).toBe(cheer)
+})
+
+test('a shader changed on disk behind this session is written again', async ($, on) => {
+  const { clock, world, runtime, shader } = await waitingWorld($, on)
+  const mine = shader()
+  world.files.set(`${runtime}/sky.glsl`, { text: '// another session lit a lighthouse here', mtimeMs: 0 })
+  await clock.advance(10_000)
+  expect(shader()).toBe(mine)
+})
+
+test('the ISS shows only where the window shows it', () => {
+  const elements = elementsOf([ISS_OMM])!
+  let offTop = 0
+  for (const place of [STOCKHOLM, { name: 'Milano', lat: 45, lon: 10 }]) {
+    for (let ms = elements.epochMs; ms < elements.epochMs + 2.9 * 86_400_000; ms += 30_000) {
+      const now = issAt(elements, ms, place)
+      if (now.elevation <= 10 || !now.isSunlit || sunAt(ms, place.lat, place.lon).elevation >= -6) continue
+      const at: DomePoint = domePoint(now)
+      if (at.y >= 0) continue
+      offTop++
+      expect(issVisible(elements, ms, place)).toBeNull()
+    }
+  }
+  expect(offTop).toBeGreaterThan(0)
+})
+
+test('a preview or confetti comes first, whatever days fill the sky', () => {
+  const ms = swedish(2026, 12, 24, 15, 1)
+  const events = eventsAt(ms, contextFor(ms), [{ kind: 'comet', at: ms }])
+  expect(events[0]!.kind).toBe('comet')
+  expect(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { events }).events.some(e => e.kind === 'comet')).toBe(true)
+})
+
+test("Midsummer's Eve has blossom drifting by its maypole", () => {
+  const ms = swedish(2026, 6, 19, 12)
+  expect(eventsAt(ms, contextFor(ms)).map(e => e.kind)).toContain('blossom')
 })
