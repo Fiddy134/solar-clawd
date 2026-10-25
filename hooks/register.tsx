@@ -59,6 +59,8 @@ const AWAY_MS = 5 * 60_000
 // ALIVE_MS is a session gone.
 const HEARTBEAT_MS = 60_000
 const ALIVE_MS = 5 * 60_000
+// How often to ask whether the Mac runs on battery.
+const BATTERY_MS = 60_000
 
 // A turn of Claude's this long earns confetti when it is done.
 const MILESTONE_MS = 3 * 60_000
@@ -258,6 +260,18 @@ function plain(text: string): string {
 }
 
 // How long since the person last touched a key or the mouse.
+// Whether the Mac runs on battery: on battery the Ghostty sky stands still.
+// Anything pmset does not say plainly counts as mains power.
+async function isOnBattery($: EngineInterface): Promise<boolean> {
+  try {
+    const { stdout } = await $.process.run(['/usr/bin/pmset', '-g', 'batt'], { timeoutMs: 5_000 })
+
+    return stdout.includes("'Battery Power'")
+  } catch {
+    return false
+  }
+}
+
 async function idleMs($: EngineInterface): Promise<number | null> {
   try {
     const { stdout } = await $.process.run(['/usr/sbin/ioreg', '-c', 'IOHIDSystem', '-d', '4'], { timeoutMs: 5_000 })
@@ -693,9 +707,18 @@ export const register: Register = on => {
     if (ghostty !== null) {
       const sky = ghostty
       const update = () => updateGhosttySky($, sky, shaderAt, skyState)
-      // Whether the person is here before the first sky, not 3 s after.
+      // Whether the person is here, and the power, before the first sky.
       const idle = await idleMs($)
       if (idle !== null) activity.isAway = idle >= AWAY_MS
+      power.isOnBattery = await isOnBattery($)
+      $.clock.every(BATTERY_MS, () => {
+        void (async () => {
+          const isOn = await isOnBattery($)
+          if (isOn === power.isOnBattery) return
+          power.isOnBattery = isOn
+          await update()
+        })().catch(() => undefined)
+      })
       void update().catch(() => undefined)
       refreshSky = () => void update().catch(() => undefined)
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))

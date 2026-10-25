@@ -131,6 +131,8 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // Paths written to, in order; commands answering as though they failed.
   const writes: string[] = []
   const failing = new Set<string>()
+  // What pmset says powers the Mac.
+  const power = { text: "Now drawing from 'AC Power'\n" }
   let now = 0
   on('env.get', (_, e) => ({ value: ({ TERM_PROGRAM: 'ghostty', HOME: '/Users/test' } as Record<string, string>)[e.name] }))
   on('fs.write', (_, e) => {
@@ -152,6 +154,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
+    if (command === '/usr/bin/pmset') stdout = power.text
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
     if (command === '/bin/mv') {
       const [from, to] = e.argv.slice(-2) as [string, string]
@@ -164,7 +167,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', () => ({ value: undefined }))
 
-  return { files, runs, writes, failing, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, power, unreadable, tick: (ms: number) => (now = ms) }
 }
 
 const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
@@ -821,4 +824,21 @@ test('AskUserQuestion lights the orange lighthouse while it waits, and it goes o
   expect(JSON.parse(during).mode).toBe('asking')
   expect(world.files.has(`${runtime}/waiting-this-session`)).toBe(false)
   expect(shader()).toContain('const int BEACON = 0;')
+})
+
+test('on battery the sky stands still; a question still sweeps', async ($, on) => {
+  const { clock, world, include, ask } = await waitingWorld($, on, { value: 1 }, () => undefined)
+  world.power.text = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1234)\t80%; discharging\n"
+  await clock.advance(61_000)
+  expect(include()).toContain('custom-shader-animation = false')
+  await ask()
+  await clock.advance(100)
+  expect(include()).toContain('custom-shader-animation = always')
+})
+
+test('a pmset that fails counts as mains power', async ($, on) => {
+  const { clock, world, include } = await waitingWorld($, on)
+  world.failing.add('/usr/bin/pmset')
+  await clock.advance(61_000)
+  expect(include()).toContain('custom-shader-animation = true')
 })
