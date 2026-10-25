@@ -87,7 +87,7 @@ What differs from macOS:
 | `/solar burn` | The wastebasket burns for a while, as on `/compact` (the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
 
-The Swedish words it took before (`plats`, `norrsken`, `blåst`, `kasta`, `bränn`, and the events' Swedish names) still work.
+
 
 ## Data sources
 
