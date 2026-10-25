@@ -10,6 +10,8 @@ import type { Mode, Reaction } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import { staleFiles } from './tidy'
+import { animationOf, beaconAt } from './beacon'
+import type { Waiting } from './beacon'
 import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 
@@ -283,6 +285,9 @@ type Ghostty = {
   include: string
   shader: string
   heartbeat: string
+  // What this session waits on the person for, while it does: other
+  // sessions read it, so any of their skies lights the lighthouse.
+  waiting: string
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
   home: string
@@ -296,8 +301,10 @@ type Ghostty = {
     isReloadOwed: boolean
     // Set as the session ends: no tick writes after it.
     isEnded: boolean
-    // The update under way, which the session's end waits on.
+    // The update under way, which the session's end waits on, and whether
+    // something changed while it ran, so it runs again.
     running: Promise<void> | null
+    isAgain: boolean
   }
 }
 
@@ -341,27 +348,103 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
   if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
 }
 
+// What the Ghostty sky depends on besides the time: whether the person is
+// away, whether the Mac runs on battery, and what this session waits on the
+// person for.
+type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null }
+
+// What the session's shader is asked to draw beyond the scene.
+type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; onlyBeacon: boolean }
+
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
-// person is here and the sky is not hidden, nothing otherwise. Ghostty
+// person is here and the sky is not hidden (or only the lighthouse, while
+// they are away and some session waits on them), nothing otherwise, and
+// Ghostty animating it as the lighthouse and the battery say. Ghostty
 // reloads only when a file actually changed.
 //
 // Every session wants the same on or off (the hidden file and the person's
 // idleness are shared), so the include is checked against the disk and put
 // right whoever changed it. The shader's text is this session's own: it is
 // written when it changes here, the last session to change it winning.
-// One update at a time, and none once the session has ended.
-async function updateGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string, isAway: boolean): Promise<void> {
+// One update at a time, again if asked for while one ran, and none once the
+// session has ended.
+async function updateGhosttySky(
+  $: EngineInterface,
+  ghostty: Ghostty,
+  shaderAt: (now: number, extras: SkyExtras) => string,
+  state: () => SkyState,
+): Promise<void> {
   const { written } = ghostty
-  if (written.running !== null || written.isEnded) return
-  written.running = writeGhosttySky($, ghostty, shaderAt, isAway)
+  if (written.isEnded) return
+  if (written.running !== null) {
+    written.isAgain = true
+    return
+  }
+  do {
+    written.isAgain = false
+    written.running = writeGhosttySky($, ghostty, shaderAt, state())
+    try {
+      await written.running
+    } finally {
+      written.running = null
+    }
+  } while (written.isAgain && !written.isEnded)
+}
+
+// What other live sessions wait on the person for: their waiting files,
+// counted only while their heartbeat is fresh.
+async function othersWaiting($: EngineInterface, ghostty: Ghostty, now: number): Promise<Waiting[]> {
+  const entries = await $.fs.list(ghostty.folder).catch(() => [])
+  const own = ghostty.waiting.slice(ghostty.folder.length + 1)
+  const alive = new Map(entries.filter(entry => entry.name.startsWith('alive-')).map(entry => [entry.name.slice(6), entry.mtimeMs]))
+  const waits: Waiting[] = []
+  for (const entry of entries) {
+    if (!entry.name.startsWith('waiting-') || entry.name === own) continue
+    const beat = alive.get(entry.name.slice(8))
+    if (beat === undefined || now - beat >= ALIVE_MS) continue
+    const wait = asWaiting(await $.fs.read(`${ghostty.folder}/${entry.name}`).catch(() => ''))
+    if (wait) waits.push(wait)
+  }
+
+  return waits
+}
+
+function asWaiting(text: string): Waiting | null {
   try {
-    await written.running
-  } finally {
-    written.running = null
+    const value = JSON.parse(text) as unknown
+    const mode = field(value, 'mode')
+    const since = number(field(value, 'since'))
+
+    return (mode === 'asking' || mode === 'done') && since !== null ? { mode, since } : null
+  } catch {
+    return null
   }
 }
 
-async function writeGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string, isAway: boolean): Promise<void> {
+// The notifications that ask the person something.
+const ASKING = ['permission_prompt', 'elicitation_dialog']
+
+// Shares a change in what this session waits on the person for, and
+// updates the sky for it at once.
+async function shareWaiting($: EngineInterface, ghostty: Ghostty | null, waiting: Waiting | null, refresh: (() => void) | null): Promise<void> {
+  if (ghostty === null) return
+  await writeWaiting($, ghostty, waiting).catch(() => undefined)
+  refresh?.()
+}
+
+// Writes what this session waits on the person for where others read it,
+// or takes it away.
+async function writeWaiting($: EngineInterface, ghostty: Ghostty, waiting: Waiting | null): Promise<void> {
+  if (waiting) await $.fs.write(ghostty.waiting, JSON.stringify(waiting))
+  else await $.process.run(['/bin/rm', '-f', ghostty.waiting]).catch(() => undefined)
+}
+
+async function writeGhosttySky(
+  $: EngineInterface,
+  ghostty: Ghostty,
+  shaderAt: (now: number, extras: SkyExtras) => string,
+  state: SkyState,
+): Promise<void> {
   const { written } = ghostty
   const now = await $.clock.now()
   if (now - written.heartbeatAt >= HEARTBEAT_MS) {
@@ -369,17 +452,21 @@ async function writeGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (
     written.heartbeatAt = now
     ghostty.isIncluded = await isIncluded($, ghostty)
   }
+  const waits = [...(state.waiting ? [state.waiting] : []), ...(await othersWaiting($, ghostty, now))]
+  const beacon = beaconAt(waits, now)
   const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
-  const isWanted = !isHidden && !isAway
+  const isWanted = !isHidden && (!state.isAway || beacon !== null)
   let include = ''
   if (isWanted) {
-    const shader = shaderAt(now)
+    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, onlyBeacon: state.isAway }
+    const shader = shaderAt(now, extras)
     if (shader !== written.shader) {
       await writeWhole($, ghostty.shader, shader, ghostty.id)
       written.shader = shader
       written.isReloadOwed = true
     }
-    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = true\n`
+    const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery })
+    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
   }
   const onDisk = await $.fs.read(ghostty.include).catch(() => null)
   if (include !== onDisk) {
@@ -398,7 +485,7 @@ async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: strin
   ghostty.written.isEnded = true
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty
-  await $.process.run(['/bin/rm', '-f', heartbeat]).catch(() => undefined)
+  await $.process.run(['/bin/rm', '-f', heartbeat, ghostty.waiting]).catch(() => undefined)
   const now = await $.clock.now()
   const entries = await $.fs.list(folder).catch(() => [])
   const isAnotherAlive = entries.some(
@@ -454,8 +541,22 @@ export const register: Register = on => {
   // and the last passing reaction.
   const claude = {
     isWorking: false,
-    isWaiting: false,
     passing: null as { kind: Reaction; at: number } | null,
+  }
+  // What Claude waits on the person for: an answer (a permission or a
+  // question), or the next task once work is done. The lighthouse's.
+  let waiting: Waiting | null = null
+  // Whether the Mac runs on battery, as last asked.
+  const power = { isOnBattery: false }
+  // Updates the Ghostty sky at once, once a Ghostty session has started.
+  let refreshSky: (() => void) | null = null
+  // Sets what Claude waits for; whether that changed (a wait keeps the
+  // moment it began).
+  const waitFor = (next: Waiting | null): boolean => {
+    if ((next?.mode ?? null) === (waiting?.mode ?? null)) return false
+    waiting = next
+
+    return true
   }
   // Set when this session runs in iTerm2: its session id and where the
   // wallpaper files go.
@@ -489,7 +590,7 @@ export const register: Register = on => {
       const age = (now - passing.at) / 1000
       if (age < REACTION_SECONDS[passing.kind]) return { kind: passing.kind, age }
     }
-    if (claude.isWaiting) return { kind: 'wave' as const, age: 0 }
+    if (waiting?.mode === 'asking') return { kind: 'wave' as const, age: 0 }
     if (claude.isWorking) return { kind: 'working' as const, age: 0 }
 
     return null
@@ -532,14 +633,16 @@ export const register: Register = on => {
     }
   }
 
+  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting })
+
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
-  const shaderAt = (now: number) => {
+  const shaderAt = (now: number, extras: SkyExtras) => {
     const { ms, mode } = momentAt(now)
     const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
 
     const { events, context } = eventsNow(now)
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context) }))
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), ...extras }))
   }
 
   on('session.start', async ($, e, next) => {
@@ -575,10 +678,11 @@ export const register: Register = on => {
         include: `${folder}/solar-clawd.ghostty`,
         shader: `${folder}/sky.glsl`,
         heartbeat: `${folder}/alive-${id}`,
+        waiting: `${folder}/waiting-${id}`,
         hidden: `${folder}/hidden`,
         home,
         isIncluded: false,
-        written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null },
+        written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.
@@ -588,11 +692,12 @@ export const register: Register = on => {
 
     if (ghostty !== null) {
       const sky = ghostty
-      const update = () => updateGhosttySky($, sky, shaderAt, activity.isAway)
+      const update = () => updateGhosttySky($, sky, shaderAt, skyState)
       // Whether the person is here before the first sky, not 3 s after.
       const idle = await idleMs($)
       if (idle !== null) activity.isAway = idle >= AWAY_MS
       void update().catch(() => undefined)
+      refreshSky = () => void update().catch(() => undefined)
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
     }
 
@@ -720,7 +825,7 @@ export const register: Register = on => {
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       claude.isWorking = true
-      claude.isWaiting = false
+      if (waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     }
 
     return next(e)
@@ -732,6 +837,7 @@ export const register: Register = on => {
       const now = await $.clock.now()
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
+        if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
         // A long piece of work done: confetti over the sky.
         if (e.durationMs > MILESTONE_MS) forced.push({ kind: 'milestone', at: now })
       }
@@ -741,8 +847,14 @@ export const register: Register = on => {
   })
 
   on('tool.call', async ($, e, next) => {
-    claude.isWaiting = false
+    // A question put to the person waits inside its call; any other call in
+    // the conversation means Claude is at work again.
+    const isQuestion = e.tool === 'AskUserQuestion'
+    const asked = isQuestion ? { mode: 'asking' as const, since: await $.clock.now() } : null
+    if ((isQuestion || e.agentId === undefined) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
     const result = await next(e)
+    // Answered, or allowed and run: nothing waits on the person now.
+    if ((isQuestion || waiting?.mode === 'asking') && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     if (result.isError && e.agentId === undefined) {
       claude.passing = { kind: 'facepalm', at: await $.clock.now() }
     }
@@ -750,14 +862,18 @@ export const register: Register = on => {
     return result
   })
 
+  // A permission or a question for the person; Claude Code's reminder that
+  // it has been idle (`idle_prompt`) and other notices ask nothing.
   on('classic.Notification', async ($, e, next) => {
-    claude.isWaiting = true
+    if (ASKING.includes(e.notification_type) && waiting?.mode !== 'asking') {
+      if (waitFor({ mode: 'asking', since: await $.clock.now() })) await shareWaiting($, ghostty, waiting, refreshSky)
+    }
 
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
-    claude.isWaiting = false
+    if (waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
 
     return next(e)
   })
@@ -800,7 +916,7 @@ export const register: Register = on => {
       if (added === null) return { text: `Solar: kunde inte läsa Ghosttys config, så den lämnas orörd.` }
       const { line, config } = added
       ghostty.isIncluded = true
-      await updateGhosttySky($, ghostty, shaderAt, activity.isAway)
+      await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($)
 
       return { text: `Solar: lade till "${line}" i ${config}.` }

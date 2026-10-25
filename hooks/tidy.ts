@@ -9,12 +9,14 @@ import type { FsEntry } from 'claude-code'
 export const STALE_MS = 3_600_000
 
 // The names the mod writes: an iTerm2 session's two wallpapers, an older
-// version's sky-*.png, Ghostty sessions' heartbeats, and what a write cut
-// short left before it was moved into place.
+// version's sky-*.png, Ghostty sessions' heartbeats and what they wait on
+// the person for, and what a write cut short left before it was moved into
+// place.
 const OURS = [
   /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}-[01]\.png$/i,
   /^sky-[\w-]+\.png$/,
   /^alive-[\w-]+$/,
+  /^waiting-[\w-]+$/,
   /^(sky\.glsl|solar-clawd\.ghostty)\.tmp-[\w-]+$/,
 ]
 

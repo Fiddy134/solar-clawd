@@ -7,6 +7,7 @@ import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
 import { contextAt, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
+import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } from './beacon'
 import { fromBase64 } from './paint'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
@@ -338,6 +339,7 @@ test('tidying takes only our own old files, never those of this session', () => 
     entry('sky-1234.png', old),
     entry('alive-old-session', old),
     entry('alive-live-session', fresh),
+    entry('waiting-old-session', old),
     entry('photo.png', old),
     entry('notes-0.png', old),
     entry('sky.glsl', old),
@@ -348,6 +350,7 @@ test('tidying takes only our own old files, never those of this session', () => 
     '/cache/7A1B2C3D-2222-4B4B-8C8C-ABCDEF012345-0.png',
     '/cache/alive-old-session',
     '/cache/sky-1234.png',
+    '/cache/waiting-old-session',
   ])
 })
 
@@ -691,4 +694,131 @@ test('the lighthouse: orange when Claude asks, white when done, and alone while 
   expect(text({ beacon: { mode: 'done', isUrgent: false } })).toContain('const int BEACON = 2;')
   expect(text({ beacon: { mode: 'asking', isUrgent: true } })).toContain('const float BEACON_URGENT = 1.0;')
   expect(text({ beacon: { mode: 'done', isUrgent: false }, onlyBeacon: true })).toContain('const float ONLY_BEACON = 1.0;')
+})
+
+test('the lighthouse state: a question beats done, hurries after two minutes, is out after thirty', () => {
+  expect(beaconAt([], 0)).toBeNull()
+  expect(beaconAt([{ mode: 'done', since: 0 }, { mode: 'asking', since: 50_000 }], 60_000)).toEqual({ mode: 'asking', since: 50_000, isUrgent: false })
+  expect(beaconAt([{ mode: 'asking', since: 0 }], BEACON_URGENT_MS)!.isUrgent).toBe(true)
+  expect(beaconAt([{ mode: 'done', since: 0 }], 10 * 60_000)!.isUrgent).toBe(false)
+  expect(beaconAt([{ mode: 'asking', since: 30_000 }, { mode: 'asking', since: 0 }], 40_000)!.since).toBe(0)
+  expect(beaconAt([{ mode: 'asking', since: 0 }], BEACON_MS)).toBeNull()
+})
+
+test('Ghostty animates always while the lighthouse sweeps, stands still after it and on battery', () => {
+  const beacon = { mode: 'asking' as const, since: 0 }
+  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: false })).toBe('always')
+  expect(animationOf({ beacon, now: BEACON_SWEEP_MS, isAway: false, isOnBattery: false })).toBe('false')
+  expect(animationOf({ beacon, now: 1000, isAway: true, isOnBattery: false })).toBe('false')
+  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: true })).toBe('always')
+  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: true })).toBe('false')
+  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false })).toBe('true')
+})
+
+// A Ghostty session to wait in: its shader and include as text.
+async function waitingWorld($: Engine, on: On, idle = { value: 1 }, before?: (clock: ReturnType<typeof mock.clock>) => void) {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  before?.(clock)
+  const world = ghosttyWorld(on, idle)
+  world.tick(start)
+  on('prompt.submit', (_, e) => ({ text: e.text }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  on('classic.Notification', () => ({}))
+  const runtime = await startGhostty($, on, clock, world)
+
+  return {
+    start,
+    clock,
+    world,
+    runtime,
+    shader: () => world.files.get(`${runtime}/sky.glsl`)?.text ?? '',
+    include: () => world.files.get(`${runtime}/solar-clawd.ghostty`)?.text ?? '',
+    ask: (type = 'permission_prompt') => $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: type }),
+  }
+}
+
+test('a question lights the orange lighthouse at once, an answer puts it out', async ($, on) => {
+  const { clock, shader, include, ask } = await waitingWorld($, on)
+  await ask()
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 1;')
+  expect(include()).toContain('custom-shader-animation = always')
+  await $.prompt.submit({ text: 'ja', wait: false, origin: { kind: 'composer' } })
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 0;')
+  expect(include()).toContain('custom-shader-animation = true')
+})
+
+test('idle_prompt lights nothing', async ($, on) => {
+  const { clock, shader, ask } = await waitingWorld($, on)
+  await ask('idle_prompt')
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int BEACON = 0;')
+})
+
+test('a finished turn lights the white lighthouse, and it never hurries', async ($, on) => {
+  const { clock, shader } = await waitingWorld($, on)
+  await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(100)
+  expect(shader()).toContain('const int BEACON = 2;')
+  await clock.advance(3 * 60_000)
+  expect(shader()).toContain('const float BEACON_URGENT = 0.0;')
+})
+
+test('the lighthouse sweeps five minutes, then stands still, and is out after thirty', async ($, on) => {
+  const { clock, shader, include, ask } = await waitingWorld($, on)
+  // The band ticks eight times a second: minutes go by in steps.
+  const pass = async (ms: number) => {
+    for (let left = ms; left > 0; left -= 30_000) await clock.advance(Math.min(30_000, left))
+  }
+  await ask()
+  await clock.advance(100)
+  expect(include()).toContain('custom-shader-animation = always')
+  await pass(BEACON_SWEEP_MS + 10_000)
+  expect(shader()).toContain('const int BEACON = 1;')
+  expect(include()).toContain('custom-shader-animation = false')
+  await pass(BEACON_MS - BEACON_SWEEP_MS)
+  expect(shader()).toContain('const int BEACON = 0;')
+  expect(include()).toContain('custom-shader-animation = true')
+})
+
+test('away, the sky goes but the lighthouse stays', async ($, on) => {
+  const idle = { value: 1 }
+  const { clock, shader, include, ask } = await waitingWorld($, on, idle)
+  await ask()
+  idle.value = 400
+  await clock.advance(11_000)
+  expect(include()).toContain('custom-shader = ')
+  expect(include()).toContain('custom-shader-animation = false')
+  expect(shader()).toContain('const float ONLY_BEACON = 1.0;')
+})
+
+test("another live session's question lights this sky; a dead session's does not", async ($, on) => {
+  const { clock, world, runtime, start, shader } = await waitingWorld($, on)
+  world.files.set(`${runtime}/waiting-other`, { text: JSON.stringify({ mode: 'asking', since: start }), mtimeMs: start })
+  world.files.set(`${runtime}/alive-other`, { text: '', mtimeMs: start })
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int BEACON = 1;')
+  world.files.set(`${runtime}/alive-other`, { text: '', mtimeMs: start - 10 * 60_000 })
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int BEACON = 0;')
+})
+
+test('AskUserQuestion lights the orange lighthouse while it waits, and it goes out once answered', async ($, on) => {
+  // What this session waits for while the question is open, as other sessions read it.
+  const seen = { waiting: () => '' }
+  let during = ''
+  const { clock, shader, world, runtime } = await waitingWorld($, on, { value: 1 }, () =>
+    on('tool.call', () => {
+      during = seen.waiting()
+      return { result: {} } as never
+    }),
+  )
+  seen.waiting = () => world.files.get(`${runtime}/waiting-this-session`)?.text ?? ''
+  await $.tool.call({ tool: 'AskUserQuestion', questions: [] } as never)
+  await clock.advance(100)
+  expect(JSON.parse(during).mode).toBe('asking')
+  expect(world.files.has(`${runtime}/waiting-this-session`)).toBe(false)
+  expect(shader()).toContain('const int BEACON = 0;')
 })
