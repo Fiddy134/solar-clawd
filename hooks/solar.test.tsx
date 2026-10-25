@@ -985,3 +985,10 @@ test('Clawd looks up when something new comes into the sky, once', () => {
   expect(skyGained(['comet', 'iss'], ['comet'])).toBe(false)
   expect(skyGained(['comet'], ['comet', 'beacon'])).toBe(true)
 })
+
+test('the shader glances at the cursor, and never at iDate', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(text).toContain('iCurrentCursor')
+  expect(text).toContain('iTimeCursorChange')
+  expect(text).not.toContain('iDate')
+})

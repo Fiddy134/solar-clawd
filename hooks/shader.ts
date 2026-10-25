@@ -370,6 +370,28 @@ Scene sceneNow() {
 // centre, as a pixel.
 vec2 domeToPixel(vec2 d) { return vec2(iResolution.x * 0.5 + d.x * iResolution.y, d.y * iResolution.y); }
 
+// The terminal's cursor. Ghostty gives its bottom-left corner (y down, as
+// fragCoord; probed 2026-10-25) and its size in zw.
+vec2 cursorAt() { return vec2(iCurrentCursor.x + iCurrentCursor.z * 0.5, iCurrentCursor.y - iCurrentCursor.w * 0.5); }
+
+// How much a star at \`at\` glints for the cursor: near it, just after it
+// moved, fading within a second.
+float glance(vec2 at) {
+  if (iCurrentCursor.z <= 0.0) return 0.0;
+  float u = max(4.0, floor(iResolution.y / 60.0 + 0.5));
+  float fresh = exp(-max(0.0, iTime - iTimeCursorChange) * 2.5);
+  return fresh * smoothstep(6.0 * u, 0.0, length(at - cursorAt()));
+}
+
+// A thing at \`at\`, nudged out of the cursor's way.
+vec2 shy(vec2 at, float u) {
+  if (iCurrentCursor.z <= 0.0) return at;
+  vec2 away = at - cursorAt();
+  float d = length(away);
+  if (d > 8.0 * u || d < 0.001) return at;
+  return at + away / d * 3.0 * u * (1.0 - d / (8.0 * u));
+}
+
 vec2 arcPoint(float progress) {
   float p = clamp(progress, 0.0, 1.0);
   return iResolution.xy * vec2(ARC.x + (ARC.y - ARC.x) * p, ARC.w - (ARC.w - ARC.z) * sin(p * PI));
@@ -455,8 +477,9 @@ vec3 stars(vec3 sky, vec2 p, float strength, float size) {
   // Faint fill: the bright stars are the real ones (realStars).
   float bright = (kind < 3u ? 0.48 : 0.35 + float(hashi(n + 5) % 5u) * 0.1) * twinkle;
   // Fainter near the horizon, where the air is thick.
-  float a = strength * bright * (1.0 - smoothstep(0.45, 0.8, at.y / iResolution.y));
-  float disc = (d.x < size * 0.5 + 0.5 && d.y < size * 0.5 + 0.5) ? 1.0 : 0.0;
+  float glint = glance(at);
+  float a = strength * bright * (1.0 - smoothstep(0.45, 0.8, at.y / iResolution.y)) * (1.0 + 1.5 * glint);
+  float disc = (d.x < size * (0.5 + glint) + 0.5 && d.y < size * (0.5 + glint) + 0.5) ? 1.0 : 0.0;
   float glint = kind < 3u && size > 1.0 && min(d.x, d.y) < 0.5 ? 0.35 * (1.0 - max(d.x, d.y) / (size * 2.0 + 1.0)) : 0.0;
   return mix(sky, tint, clamp(a * max(disc, glint), 0.0, 1.0));
 }
@@ -484,15 +507,16 @@ vec3 realStars(vec3 sky, vec2 p, float strength, float size) {
         vec2 at = domeToPixel(STAR_AT[i]);
         float mag = STAR_LOOK[i].x;
         float bv = STAR_LOOK[i].y;
-        float r = size * (0.9 + max(0.0, 3.5 - mag) * 0.6);
+        float glint = glance(at);
+        float r = size * (0.9 + max(0.0, 3.5 - mag) * 0.6) * (1.0 + 0.7 * glint);
         float dist = length(p - at);
         if (dist > r * 4.0) continue;
         vec3 tint = bv < 0.2 ? vec3(0.78, 0.86, 1.0) : bv > 1.2 ? vec3(1.0, 0.8, 0.62) : vec3(1.0, 0.97, 0.92);
         float twinkle = 0.85 + 0.15 * sin(iTime * (1.1 + mod(float(i), 7.0) * 0.3) + float(i));
         float bright = clamp((4.5 - mag) / 3.5, 0.3, 1.0) * twinkle;
         float core = clamp(r - dist + 0.5, 0.0, 1.0);
-        float halo = mag < 2.0 ? 0.45 * exp(-dist / (r * 0.8)) : 0.0;
-        float a = strength * bright * (1.0 - smoothstep(0.5, 0.85, at.y / iResolution.y));
+        float halo = max(mag < 2.0 ? 0.45 * exp(-dist / (r * 0.8)) : 0.0, 0.7 * glint * exp(-dist / (r * 1.4)));
+        float a = strength * bright * (1.0 - smoothstep(0.5, 0.85, at.y / iResolution.y)) * (1.0 + 1.5 * glint);
         sky = mix(sky, tint, clamp(a * max(core, halo), 0.0, 1.0));
       }
     }
@@ -833,7 +857,7 @@ vec3 birds(vec3 sky, vec2 p, float u, float seed, float t) {
   for (int i = 0; i < 9; i++) {
     float rank = float((i + 1) / 2);
     float side = i % 2 == 0 ? 1.0 : -1.0;
-    vec2 at = lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u);
+    vec2 at = shy(lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u), u);
     float flap = sin(iTime * 7.0 + float(i) * 1.3) * 0.35 * u;
     d = min(d, segment(p, at, at + vec2(-0.6 * u, -flap)));
     d = min(d, segment(p, at, at + vec2(0.6 * u, -flap)));
@@ -908,7 +932,7 @@ vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
     float span = iResolution.x + 4.0 * u;
     float x = mod(a * span + iTime * (2.0 + WIND * 0.6) * u * (0.6 + 0.8 * b), span) - 2.0 * u;
     float y = mod(b * iResolution.y + iTime * 0.9 * u * (0.5 + a), iResolution.y + 4.0 * u) - 2.0 * u + sin(iTime * 1.7 + a * 9.0) * u;
-    vec2 q = p - vec2(x, y);
+    vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > u * u) continue;
     float spin = iTime * (1.5 + 2.0 * a) + b * 6.0;
     q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
@@ -1042,7 +1066,7 @@ vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
-    vec2 q = p - vec2(x, y);
+    vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > 1.5 * u * u) continue;
     float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
     q = mat2(cos(sway), -sin(sway), sin(sway), cos(sway)) * q;

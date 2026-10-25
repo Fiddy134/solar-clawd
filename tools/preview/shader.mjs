@@ -18,6 +18,7 @@ const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
 const [width, height] = [Number(o.width), Number(o.height)]
 const ms = timeOf(o.at)
 const background = parseInt(o.background, 16)
+const cursor = o.cursor ? String(o.cursor).split(',').map(Number) : [-10000, -10000]
 const weather = o.weather ? weatherOf(o.weather) : null
 // --event balloon (or several, comma-separated) plays them as a preview would.
 const forced = o.event ? String(o.event).split(',').map(kind => ({ kind, at: ms })) : []
@@ -48,6 +49,9 @@ precision highp float;
 precision highp int;
 uniform vec3 iResolution;
 uniform vec3 iBackgroundColor;
+uniform vec4 iCurrentCursor;
+uniform float iTimeCursorChange;
+uniform int iFocus;
 uniform float iTime;
 uniform sampler2D iChannel0;
 out vec4 outColor;
@@ -96,6 +100,10 @@ try {
   gl.uniform3f(gl.getUniformLocation(program, 'iResolution'), w, h, 1)
   gl.uniform1f(gl.getUniformLocation(program, 'iTime'), ${Number(o.time)})
   gl.uniform1i(gl.getUniformLocation(program, 'iChannel0'), 0)
+  // --cursor x,y (its centre, y down) and --since s: a cursor that moved s seconds ago.
+  gl.uniform4f(gl.getUniformLocation(program, 'iCurrentCursor'), ${cursor[0] - 5}, ${cursor[1] + 10}, 10, 20)
+  gl.uniform1f(gl.getUniformLocation(program, 'iTimeCursorChange'), ${Number(o.time) - Number(o.since ?? 100)})
+  gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), 1)
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
