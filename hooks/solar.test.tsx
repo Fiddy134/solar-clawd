@@ -3,7 +3,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
-import { activityAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
+import { activityAt, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { contextAt, EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import type { DomePoint } from './dome'
@@ -1097,6 +1097,14 @@ test('in Ghostty the wastebasket stands in the sky: its balls and its fire are b
   const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
   // The band throws toward the sky's basket instead of keeping its own.
   expect(drawFrame({ ...view, isBasketInSky: true })).not.toBe(drawFrame(view))
+})
+
+test('a throw at the wastebasket stops a chase after his hat', () => {
+  const windy = { temperature: 8, code: 3, cloudCover: 60, wind: 12 }
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), mode: 'live' as const, place: STOCKHOLM, weather: windy, paper: 50 }
+  // A moment he is off chasing it.
+  const t = [...Array(400).keys()].map(i => i * 0.25).find(at => chaseAt(at) !== null)!
+  expect(drawFrame({ ...view, t, reaction: { kind: 'toss', age: 0.4 } })).not.toBe(drawFrame({ ...view, t, reaction: null }))
 })
 
 test('the shader glances at the cursor, and never at iDate', () => {

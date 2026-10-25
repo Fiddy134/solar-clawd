@@ -570,7 +570,9 @@ function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'],
 function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: number): Glyph[] {
   const { t, reaction, track } = view
   const { activity, occasion, isAwake, light, isWindy } = state
-  const chase = isWindy ? chaseAt(t) : null
+  // A throw at the wastebasket stops even a chase after his hat.
+  const isThrowing = reaction?.kind === 'toss' || reaction?.kind === 'burn'
+  const chase = isWindy && !isThrowing ? chaseAt(t) : null
   const stage: Stage = {
     c,
     x,
