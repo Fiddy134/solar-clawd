@@ -27,6 +27,16 @@ float seaRow(vec2 p, float u) { return sqrt((p.y - ARC.w * iResolution.y + 1.0) 
 // The lantern room: its middle, and half its width and height.
 vec4 lanternRoom(Lighthouse l) { return vec4(l.x, l.deck - 0.35 * l.s, 0.36 * l.s, 0.28 * l.s); }
 
+// Whether p is on the lighthouse's head, as beacon() prints it: the lantern
+// room, its dome and the finial on top, a pixel round them too.
+bool isLanternHead(vec2 p, Lighthouse l) {
+  vec4 room = lanternRoom(l);
+  vec2 v = p - room.xy;
+  vec2 dome = (v + vec2(0.0, room.w)) / vec2(0.44 * l.s + 1.0, 0.34 * l.s + 1.0);
+  bool isFinial = abs(v.x) < 0.04 * l.s + 1.0 && v.y < -0.6 * l.s + 1.0 && v.y > -0.85 * l.s - 1.0;
+  return (abs(v.x) < room.z + 1.0 && abs(v.y) < room.w + 1.0) || (v.y < -room.w && dot(dome, dome) < 1.0) || isFinial;
+}
+
 // The sea on the horizon at the right, fading out toward the middle and
 // down into the sky: halftone ripples drifting, the low sun or the moon
 // glittering in it and a lit lighthouse's lantern too. \`glow\` is the

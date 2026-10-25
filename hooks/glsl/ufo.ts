@@ -82,10 +82,13 @@ Abduction abductionAt(float time, Lighthouse l) {
 
 // The UFO's beam: green screened, narrow at the saucer and wider below,
 // fading out at his feet, its sides in the key plate off register. Drawn
-// before him, so he shows in it.
+// before him, so he shows in it, and behind the lighthouse's head, which
+// stands dark against it over the gallery.
 vec3 ufoBeam(vec3 sky, vec2 p, Abduction a, float u, float k) {
   if (a.beam <= 0.0) return sky;
-  float s = lighthouse(u).s;
+  Lighthouse l = lighthouse(u);
+  if (isLanternHead(p, l)) return sky;
+  float s = l.s;
   float off = max(1.0, floor(0.4 * keeperCell(s)));
   float top = a.saucer.y + 0.3 * s;
   float bottom = a.saucer.y + (HOVER + 0.2) * s;
@@ -97,7 +100,7 @@ vec3 ufoBeam(vec3 sky, vec2 p, Abduction a, float u, float k) {
     float side = abs(q.x - a.saucer.x) - w;
     float fade = a.beam * smoothstep(1.0, 0.85, h);
     if (i == 0) sky = ink(sky, lift(INK_INDIGO, k), abs(side) - 0.5, 0.5 * fade);
-    else if (side < 0.0) sky = mix(sky, INK_GREEN, screen(p, fade * (0.3 - 0.35 * side / w), max(3.0, u * 0.24), 75.0) * 0.9);
+    else if (side < 0.0) sky = mix(sky, lift(INK_GREEN, k), screen(p, fade * (0.3 - 0.35 * side / w), max(3.0, u * 0.24), 75.0) * 0.9);
   }
   return sky;
 }
@@ -149,8 +152,9 @@ vec3 keeper(vec3 sky, vec2 p, float u, float k) {
   float s = l.s;
   if (abs(p.x - l.x) > 4.0 * s || p.y > l.foot + 1.0 * s) return sky;
   Abduction a = abductionAt(iTime, l);
-  // Above the lighthouse, only ever the saucer on its way in or out.
-  if (p.y < l.deck - 3.0 * s) return ufo(ufoBeam(sky, p, a, u, k), p, a, u, k);
+  // High over the lighthouse, only the saucer: on its way in or out, or
+  // the top of it hovering over the gallery. The beam never reaches up here.
+  if (p.y < l.deck - 3.0 * s) return ufo(sky, p, a, u, k);
   int mode = keeperMode(iTime);
   Keeper kp = keeperAt(iTime, l);
   bool isTaken = a.isOn && a.age >= 5.0 && a.age < 26.1;
