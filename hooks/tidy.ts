@@ -9,8 +9,14 @@ import type { FsEntry } from 'claude-code'
 export const STALE_MS = 3_600_000
 
 // The names the mod writes: an iTerm2 session's two wallpapers, an older
-// version's sky-*.png, and Ghostty sessions' heartbeats.
-const OURS = [/^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}-[01]\.png$/i, /^sky-[\w-]+\.png$/, /^alive-[\w-]+$/]
+// version's sky-*.png, Ghostty sessions' heartbeats, and what a write cut
+// short left before it was moved into place.
+const OURS = [
+  /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}-[01]\.png$/i,
+  /^sky-[\w-]+\.png$/,
+  /^alive-[\w-]+$/,
+  /^(sky\.glsl|solar-clawd\.ghostty)\.tmp-[\w-]+$/,
+]
 
 // Full paths of the files in `folder` to remove. `keep` names what the
 // session at hand owns: its iTerm2 session id, its heartbeat's name.

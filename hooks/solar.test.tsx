@@ -126,10 +126,14 @@ test('the sky shader is the same text for the same scene, its constants baked in
 function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   const files = new Map<string, { text: string; mtimeMs: number }>()
   const runs: string[][] = []
+  // Paths written to, in order; commands answering as though they failed.
+  const writes: string[] = []
+  const failing = new Set<string>()
   let now = 0
   on('env.get', (_, e) => ({ value: ({ TERM_PROGRAM: 'ghostty', HOME: '/Users/test' } as Record<string, string>)[e.name] }))
   on('fs.write', (_, e) => {
     files.set(e.path, { text: e.text, mtimeMs: now })
+    writes.push(e.path)
     return { value: undefined }
   })
   const unreadable = new Set<string>()
@@ -143,17 +147,23 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('process.run', (_, e) => {
     runs.push([...e.argv])
     const [command] = e.argv
+    if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
     if (command?.endsWith('/ghostty')) stdout = e.argv.includes('--default') ? 'background = #282c34\n' : 'background = #1e1e2e\nforeground = #cdd6f4\n'
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
+    if (command === '/bin/mv') {
+      const [from, to] = e.argv.slice(-2) as [string, string]
+      if (files.has(from)) files.set(to, { ...files.get(from)!, mtimeMs: now })
+      files.delete(from)
+    }
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
   on('session.id', () => ({ value: 'this-session' }))
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', () => ({ value: undefined }))
 
-  return { files, runs, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, unreadable, tick: (ms: number) => (now = ms) }
 }
 
 const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
@@ -476,4 +486,116 @@ test('the band keeps its own sky until Ghostty includes the shader', async ($, o
   world.files.set(CONFIG, { text: `# Solar\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`, mtimeMs: start })
   await clock.advance(61_000)
   expect(await isClear()).toBe(true)
+})
+
+test('a reload Ghostty did not take is tried again on the next tick', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.failing.add('/usr/bin/osascript')
+  await startGhostty($, on, clock, world)
+  const tried = RELOADS(world.runs)
+  expect(tried).toBeGreaterThan(0)
+
+  world.failing.delete('/usr/bin/osascript')
+  await clock.advance(10_000)
+  expect(RELOADS(world.runs)).toBe(tried + 1)
+  // Taken: nothing more is owed.
+  await clock.advance(10_000)
+  expect(RELOADS(world.runs)).toBe(tried + 1)
+})
+
+test('once the session has ended, no tick brings the sky or the heartbeat back', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  const runtime = await startGhostty($, on, clock, world)
+
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  await clock.advance(130_000)
+  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toBe('')
+  expect(world.files.has(`${runtime}/alive-this-session`)).toBe(false)
+})
+
+test('/solar ghostty puts its line in place of one the mod left from another folder', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  const old = '# Solar Clawd: the sky shader while a Claude session runs (empty otherwise).\nconfig-file = ?/old/place/runtime/solar-clawd.ghostty\n'
+  world.files.set(CONFIG, { text: `font-size = 14\n${old}theme = Dracula\n`, mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+
+  await $.command.run({ command: 'solar', args: 'ghostty', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const text = world.files.get(CONFIG)?.text ?? ''
+  expect(text).not.toContain('/old/place/')
+  expect(text.match(/^config-file = /gm)?.length).toBe(1)
+  expect(text).toContain(`config-file = ?${runtime}/solar-clawd.ghostty`)
+  expect(text).toContain('font-size = 14\ntheme = Dracula\n')
+})
+
+test('the shader and the include are written whole: a file of their own, moved into place', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  const runtime = await startGhostty($, on, clock, world)
+
+  expect(world.writes).not.toContain(`${runtime}/sky.glsl`)
+  expect(world.writes).not.toContain(`${runtime}/solar-clawd.ghostty`)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('void mainImage')
+  expect([...world.files.keys()].some(path => path.includes('.tmp-'))).toBe(false)
+})
+
+test('a failed ioreg keeps the last answer, and Ghostty asks no ioreg of its own', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const idle = { value: 1 }
+  const world = ghosttyWorld(on, idle)
+  world.tick(start)
+  const runtime = await startGhostty($, on, clock, world)
+  idle.value = 400
+  await clock.advance(10_000)
+  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toBe('')
+
+  // ioreg fails while the person is away: still away, the sky stays off.
+  world.failing.add('/usr/sbin/ioreg')
+  await clock.advance(20_000)
+  expect(world.files.get(`${runtime}/solar-clawd.ghostty`)?.text).toBe('')
+
+  // One ioreg each three seconds, and none besides.
+  world.failing.delete('/usr/sbin/ioreg')
+  const asked = world.runs.filter(argv => argv[0] === '/usr/sbin/ioreg').length
+  await clock.advance(30_000)
+  expect(world.runs.filter(argv => argv[0] === '/usr/sbin/ioreg').length - asked).toBe(10)
+})
+
+test('a rainbow needs rain that has been, not rain still to come', () => {
+  const ms = Date.UTC(2026, 5, 24, 16)
+  const clear = { temperature: 18, code: 1, cloudCover: 30, wind: 3 }
+  expect(eventsAt(ms, contextFor(ms, clear, ms - 600_000)).some(e => e.kind === 'rainbow')).toBe(true)
+  expect(eventsAt(ms, contextFor(ms, clear, ms + 600_000)).some(e => e.kind === 'rainbow')).toBe(false)
+})
+
+test('every event fits in its slot', () => {
+  for (const spec of EVENTS) expect(spec.durationMs).toBeLessThan(spec.slotMs)
+})
+
+test('a soft hyphen is no printable character', () => {
+  expect(isPrintable(0xad)).toBe(false)
+  expect(isPrintable(0xe5)).toBe(true)
+})
+
+test('tidying takes the temp files a crashed write left, and no one else\'s', () => {
+  const now = Date.UTC(2026, 9, 25, 12)
+  const entry = (name: string, mtimeMs: number) => ({ name, kind: 'file' as const, size: 1, mtimeMs, isLink: false })
+  const entries = [
+    entry('sky.glsl.tmp-old-session', now - 2 * 3_600_000),
+    entry('solar-clawd.ghostty.tmp-old-session', now - 2 * 3_600_000),
+    entry('sky.glsl.tmp-live-session', now - 60_000),
+    entry('notes.txt.tmp-old-session', now - 2 * 3_600_000),
+  ]
+  expect(staleFiles(entries, '/runtime', now, []).sort()).toEqual(['/runtime/sky.glsl.tmp-old-session', '/runtime/solar-clawd.ghostty.tmp-old-session'])
 })

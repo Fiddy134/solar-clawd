@@ -633,7 +633,8 @@ vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   float basket = max(b.x, b.y);
   float ropes = min(segment(q, vec2(-0.32, 1.45) * r, vec2(-0.24, 1.75) * r), segment(q, vec2(0.32, 1.45) * r, vec2(0.24, 1.75) * r)) - 0.04 * u;
   // Gores in three inks, the seed choosing their order; shaded to the right.
-  int gore = int(floor((q.x / max(across, 0.01) + 2.0) * 3.0)) + int(seed);
+  // Never below 0: % of a negative int is undefined in GLSL.
+  int gore = max(int(floor((q.x / max(across, 0.01) + 2.0) * 3.0)), 0) + int(seed);
   vec3 gores[3] = vec3[3](INK_PINK, INK_YELLOW, INK_ORANGE);
   vec3 color = gores[gore % 3];
   color = mix(color, mix(color, INK_INDIGO, 0.35), screen(p, clamp(q.x / r * 0.6 + 0.2, 0.0, 1.0), max(3.0, u * 0.24), 45.0));

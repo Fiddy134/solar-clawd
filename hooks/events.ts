@@ -143,7 +143,9 @@ export function shootingRate(ctx: EventContext): number {
 }
 
 function isRainbow(ctx: EventContext): boolean {
-  const isRecent = ctx.lastRainAt !== null && ctx.ms - ctx.lastRainAt < 30 * MINUTE
+  // Rain that has been: a pinned or played time may lie before it.
+  const since = ctx.lastRainAt === null ? -1 : ctx.ms - ctx.lastRainAt
+  const isRecent = since >= 0 && since < 30 * MINUTE
 
   return isRecent && !isWet(ctx.sky) && ctx.elevation > 0 && ctx.elevation < 42
 }

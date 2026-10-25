@@ -615,7 +615,8 @@ export function drawFrame(view: View): string {
 
 // Latin a cell can hold, without the C0 and C1 control characters.
 export function isPrintable(code: number): boolean {
-  return (code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code < 0x250)
+  // A soft hyphen (U+00AD) draws as nothing in some terminals: not one.
+  return (code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code < 0x250 && code !== 0xad)
 }
 
 // The terminal's own background, where a clear band lets the wallpaper show.

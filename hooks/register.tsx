@@ -258,14 +258,14 @@ function plain(text: string): string {
 }
 
 // How long since the person last touched a key or the mouse.
-async function idleMs($: EngineInterface): Promise<number> {
+async function idleMs($: EngineInterface): Promise<number | null> {
   try {
     const { stdout } = await $.process.run(['/usr/sbin/ioreg', '-c', 'IOHIDSystem', '-d', '4'], { timeoutMs: 5_000 })
     const ns = /"HIDIdleTime" = (\d+)/.exec(stdout)?.[1]
 
-    return ns ? Number(ns) / 1e6 : 0
+    return ns ? Number(ns) / 1e6 : null
   } catch {
-    return 0
+    return null
   }
 }
 
@@ -307,6 +307,8 @@ function ghosttyConfigs(home: string): string[] {
 // Where a Ghostty session keeps the sky's files, and what it last wrote:
 // the shader, the include, the heartbeat's time.
 type Ghostty = {
+  // This session's id, which its heartbeat and its temp files are named by.
+  id: string
   folder: string
   include: string
   shader: string
@@ -317,7 +319,17 @@ type Ghostty = {
   background: number
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
-  written: { shader: string; include: string; heartbeatAt: number; isBusy: boolean }
+  written: {
+    shader: string
+    include: string
+    heartbeatAt: number
+    // A change Ghostty has not yet reloaded for: tried again each tick.
+    isReloadOwed: boolean
+    // Set as the session ends: no tick writes after it.
+    isEnded: boolean
+    // The update under way, which the session's end waits on.
+    running: Promise<void> | null
+  }
 }
 
 // Whether one of Ghostty's config files includes the mod's file, on a line
@@ -340,8 +352,24 @@ async function tidy($: EngineInterface, folder: string, keep: string[]): Promise
   if (paths.length > 0) await $.process.run(['/bin/rm', '-f', ...paths]).catch(() => undefined)
 }
 
-async function reloadGhostty($: EngineInterface): Promise<void> {
-  await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 }).catch(() => undefined)
+// Whether Ghostty took the reload.
+async function reloadGhostty($: EngineInterface): Promise<boolean> {
+  try {
+    const { exitCode } = await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 })
+
+    return exitCode === 0
+  } catch {
+    return false
+  }
+}
+
+// Writes `text` to a file of this session's own beside `path`, then moves it
+// into place: Ghostty, reloading at any moment, never reads half a file.
+async function writeWhole($: EngineInterface, path: string, text: string, id: string): Promise<void> {
+  const temp = `${path}.tmp-${id}`
+  await $.fs.write(temp, text)
+  const { exitCode } = await $.process.run(['/bin/mv', '-f', temp, path])
+  if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
 }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
@@ -352,40 +380,45 @@ async function reloadGhostty($: EngineInterface): Promise<void> {
 // idleness are shared), so the include is checked against the disk and put
 // right whoever changed it. The shader's text is this session's own: it is
 // written when it changes here, the last session to change it winning.
-async function updateGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string): Promise<void> {
+// One update at a time, and none once the session has ended.
+async function updateGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string, isAway: boolean): Promise<void> {
   const { written } = ghostty
-  if (written.isBusy) return
-  written.isBusy = true
+  if (written.running !== null || written.isEnded) return
+  written.running = writeGhosttySky($, ghostty, shaderAt, isAway)
   try {
-    const now = await $.clock.now()
-    if (now - written.heartbeatAt >= HEARTBEAT_MS) {
-      await $.fs.write(ghostty.heartbeat, String(now))
-      written.heartbeatAt = now
-      ghostty.isIncluded = await isIncluded($, ghostty)
-    }
-    const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
-    const isWanted = !isHidden && (await idleMs($)) < AWAY_MS
-    let isChanged = false
-    let include = ''
-    if (isWanted) {
-      const shader = shaderAt(now)
-      if (shader !== written.shader) {
-        await $.fs.write(ghostty.shader, shader)
-        written.shader = shader
-        isChanged = true
-      }
-      include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = true\n`
-    }
-    const onDisk = await $.fs.read(ghostty.include).catch(() => null)
-    if (include !== onDisk) {
-      await $.fs.write(ghostty.include, include)
-      isChanged = true
-    }
-    written.include = include
-    if (isChanged) await reloadGhostty($)
+    await written.running
   } finally {
-    written.isBusy = false
+    written.running = null
   }
+}
+
+async function writeGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: (now: number) => string, isAway: boolean): Promise<void> {
+  const { written } = ghostty
+  const now = await $.clock.now()
+  if (now - written.heartbeatAt >= HEARTBEAT_MS) {
+    await $.fs.write(ghostty.heartbeat, String(now))
+    written.heartbeatAt = now
+    ghostty.isIncluded = await isIncluded($, ghostty)
+  }
+  const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
+  const isWanted = !isHidden && !isAway
+  let include = ''
+  if (isWanted) {
+    const shader = shaderAt(now)
+    if (shader !== written.shader) {
+      await writeWhole($, ghostty.shader, shader, ghostty.id)
+      written.shader = shader
+      written.isReloadOwed = true
+    }
+    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = true\n`
+  }
+  const onDisk = await $.fs.read(ghostty.include).catch(() => null)
+  if (include !== onDisk) {
+    await writeWhole($, ghostty.include, include, ghostty.id)
+    written.isReloadOwed = true
+  }
+  written.include = include
+  if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($))
 }
 
 // The session is ending: its heartbeat goes, and the sky with it unless
@@ -393,6 +426,8 @@ async function updateGhosttySky($: EngineInterface, ghostty: Ghostty, shaderAt: 
 // process: the sky stays.
 async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
+  ghostty.written.isEnded = true
+  await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty
   await $.process.run(['/bin/rm', '-f', heartbeat]).catch(() => undefined)
   const now = await $.clock.now()
@@ -401,19 +436,28 @@ async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: strin
     entry => entry.name.startsWith('alive-') && `${folder}/${entry.name}` !== heartbeat && now - entry.mtimeMs < ALIVE_MS,
   )
   if (!isAnotherAlive && (await $.fs.read(include).catch(() => '')) !== '') {
-    await $.fs.write(include, '')
+    await writeWhole($, include, '', ghostty.id)
     await reloadGhostty($)
   }
 }
 
-// Adds the one include line to the config Ghostty reads first; `?` keeps
-// Ghostty quiet should the file ever be missing. Answers the line and file,
-// or null when the config is there but cannot be read: never written over.
+// The lines the mod itself added to a Ghostty config, from any folder it was
+// loaded from: its comment, and the include of its runtime file.
+const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??\S*\/runtime\/solar-clawd\.ghostty$/]
+
+// Adds the one include line to the config Ghostty reads first, in place of
+// any the mod added before; `?` keeps Ghostty quiet should the file ever be
+// missing. Answers the line and file, or null when the config is there but
+// cannot be read: never written over.
 async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
   const config = ghosttyConfigs(ghostty.home)[0]!
   const isThere = await $.fs.exists(config).catch(() => true)
-  const text = isThere ? await $.fs.read(config).catch(() => null) : ''
-  if (text === null) return null
+  const read = isThere ? await $.fs.read(config).catch(() => null) : ''
+  if (read === null) return null
+  const text = read
+    .split('\n')
+    .filter(row => !OUR_LINES.some(pattern => pattern.test(row.trim())))
+    .join('\n')
   const line = `config-file = ?${ghostty.include}`
   const gap = text === '' || text.endsWith('\n') ? '' : '\n'
   await $.fs.write(config, `${text}${gap}# Solar Clawd: the sky while a Claude session runs.\n${line}\n`)
@@ -559,6 +603,7 @@ export const register: Register = on => {
       const bin = (await $.env.get('GHOSTTY_BIN_DIR')) ?? '/Applications/Ghostty.app/Contents/MacOS'
       const id = await $.session.id().catch(() => 'session')
       ghostty = {
+        id,
         folder,
         include: `${folder}/solar-clawd.ghostty`,
         shader: `${folder}/sky.glsl`,
@@ -567,7 +612,7 @@ export const register: Register = on => {
         home,
         background: await ghosttyBackground($, bin, await $.env.get('GHOSTTY_RESOURCES_DIR')),
         isIncluded: false,
-        written: { shader: '', include: '', heartbeatAt: -Infinity, isBusy: false },
+        written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.
@@ -577,7 +622,10 @@ export const register: Register = on => {
 
     if (ghostty !== null) {
       const sky = ghostty
-      const update = () => updateGhosttySky($, sky, shaderAt)
+      const update = () => updateGhosttySky($, sky, shaderAt, activity.isAway)
+      // Whether the person is here before the first sky, not 3 s after.
+      const idle = await idleMs($)
+      if (idle !== null) activity.isAway = idle >= AWAY_MS
       void update().catch(() => undefined)
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
     }
@@ -590,7 +638,9 @@ export const register: Register = on => {
     $.clock.every(ACTIVITY_MS, () => {
       void (async () => {
         const wasIdle = activity.isAway || !activity.isFrontmost
-        activity.isAway = (await idleMs($)) >= AWAY_MS
+        // An ioreg that failed says nothing: the last answer stands.
+        const idle = await idleMs($)
+        if (idle !== null) activity.isAway = idle >= AWAY_MS
         if (iterm !== null && !activity.isAway && (wasIdle || !activity.isFrontmost)) {
           const { stdout } = await $.process.run(['/usr/bin/osascript', ...ITERM_FRONTMOST], { timeoutMs: 5_000 })
           activity.isFrontmost = stdout.trim() === 'true'
@@ -784,7 +834,7 @@ export const register: Register = on => {
       if (added === null) return { text: `Solar: kunde inte läsa Ghosttys config, så den lämnas orörd.` }
       const { line, config } = added
       ghostty.isIncluded = true
-      await updateGhosttySky($, ghostty, shaderAt)
+      await updateGhosttySky($, ghostty, shaderAt, activity.isAway)
       await reloadGhostty($)
 
       return { text: `Solar: lade till "${line}" i ${config}.` }
