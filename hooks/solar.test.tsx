@@ -133,6 +133,8 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // Paths written to, in order; commands answering as though they failed.
   const writes: string[] = []
   const failing = new Set<string>()
+  // What other commands answer, by name: uname, ghostty --version.
+  const answers = new Map<string, string>()
   // What pmset says powers the Mac.
   const power = { text: "Now drawing from 'AC Power'\n" }
   let now = 0
@@ -157,6 +159,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
     if (command === '/usr/bin/pmset') stdout = power.text
+    if (command && answers.has(command)) stdout = answers.get(command)!
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
     if (command === '/bin/mv') {
       const [from, to] = e.argv.slice(-2) as [string, string]
@@ -169,7 +172,7 @@ function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', () => ({ value: undefined }))
 
-  return { files, runs, writes, failing, power, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, answers, power, unreadable, tick: (ms: number) => (now = ms) }
 }
 
 const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
@@ -450,6 +453,54 @@ test('/solar ghostty never writes over a config it could not read', async ($, on
 
   await $.command.run({ command: 'solar', args: 'ghostty', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   expect(world.files.get(CONFIG)?.text).toBe('font-size = 14\ntheme = Dracula\n')
+})
+
+const SIGNALS = (runs: string[][]) => runs.filter(argv => argv.join(' ') === 'pkill -USR2 -x ghostty').length
+
+// Ghostty on Linux, `version` its own, not running as a systemd service.
+function linuxWorld(on: On, start: number, version: string) {
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.answers.set('uname', 'Linux\n')
+  world.answers.set('ghostty', `Ghostty ${version}\n\nVersion\n`)
+  world.failing.add('systemctl')
+
+  return world
+}
+
+test('on Linux Ghostty reloads on SIGUSR2, and nothing of the Mac is asked', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  await startGhostty($, on, clock, world)
+
+  expect(world.runs.some(argv => argv.join(' ') === 'systemctl --user reload app-com.mitchellh.ghostty.service')).toBe(true)
+  expect(SIGNALS(world.runs)).toBe(1)
+  expect(RELOADS(world.runs)).toBe(0)
+  expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript'].includes(argv[0]!))).toBe(false)
+})
+
+test('on Linux a Ghostty older than 1.3 is never sent SIGUSR2', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.2.3')
+  await startGhostty($, on, clock, world)
+  await clock.advance(60_000)
+
+  expect(SIGNALS(world.runs)).toBe(0)
+})
+
+test('/solar ghostty on Linux adds the include to the XDG config that is there', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  const config = '/Users/test/.config/ghostty/config'
+  world.files.set(config, { text: 'font-size = 14\n', mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+
+  await $.command.run({ command: 'solar', args: 'ghostty', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  expect(world.files.get(config)?.text).toBe(`font-size = 14\n# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?${runtime}/solar-clawd.ghostty\n`)
+  expect([...world.files.keys()].some(path => path.includes('Library/Application Support'))).toBe(false)
 })
 
 test('a sky another session took down comes back while this one wants it', async ($, on) => {

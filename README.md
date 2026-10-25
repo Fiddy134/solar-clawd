@@ -17,7 +17,7 @@ Events are a pure function of the time and the sky, so every session shows the s
 
 ## Requirements
 
-- macOS
+- macOS, or Linux (untested — see [Linux](#linux))
 - [Claude Code](https://claude.com/claude-code) with mod support (tested on 2.1.310)
 - [Ghostty](https://ghostty.org) 1.3 or later for the sky behind the terminal (iTerm2 gets it as a background image instead)
 
@@ -38,6 +38,23 @@ Load it as a plugin directory in `~/.claude/settings.json`:
 ```
 
 Start Claude Code in Ghostty and run `/solar ghostty` once. It adds one optional include line to Ghostty's config; the included file names the shader while a Claude session runs and is empty otherwise.
+
+## Linux
+
+> **Untested.** Linux support is written and covered by unit tests, but nobody has run it on a real Linux desktop yet. Reports and fixes are welcome.
+
+Installation is the same. `/solar ghostty` adds the include to `$XDG_CONFIG_HOME/ghostty/config.ghostty` (or to `config` if that is the file you have), defaulting to `~/.config/ghostty`.
+
+The mod rewrites the shader and asks Ghostty to reload its config, which on Linux means a `SIGUSR2`:
+
+- If Ghostty runs as its systemd user service, the mod runs `systemctl --user reload app-com.mitchellh.ghostty.service` — the way [Ghostty's docs](https://ghostty.org/docs/linux/systemd) recommend.
+- Otherwise it sends `SIGUSR2` with `pkill -x ghostty`, but only if `ghostty --version` says 1.3 or later, since an older Ghostty would quit on that signal.
+
+What differs from macOS:
+
+- Battery is read from `/sys/class/power_supply` (the sky stands still on battery).
+- There is no idle detection, so the sky keeps animating while you are away.
+- No now-playing music in the band, and no iTerm2 background.
 
 ## Commands
 

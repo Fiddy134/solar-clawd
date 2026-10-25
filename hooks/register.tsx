@@ -282,11 +282,24 @@ function plain(text: string): string {
   return [...text].map(ch => (isPrintable(ch.codePointAt(0)!) ? ch : '?')).join('')
 }
 
-// How long since the person last touched a key or the mouse.
-// Whether the Mac runs on battery: on battery the Ghostty sky stands still.
-// Anything pmset does not say plainly counts as mains power.
-async function isOnBattery($: EngineInterface): Promise<boolean> {
+// Whether the session runs on Linux, as uname says; anything it does not
+// say plainly counts as the Mac.
+async function isLinuxHost($: EngineInterface): Promise<boolean> {
+  const answer = await $.process.run(['uname', '-s'], { timeoutMs: 5_000 }).catch(() => null)
+
+  return answer?.stdout.trim() === 'Linux'
+}
+
+// Whether the computer runs on battery: on battery the Ghostty sky stands
+// still. Anything pmset (or Linux's power supplies) does not say plainly
+// counts as mains power.
+async function isOnBattery($: EngineInterface, isOnLinux: boolean): Promise<boolean> {
   try {
+    if (isOnLinux) {
+      const { stdout } = await $.process.run(['sh', '-c', 'cat /sys/class/power_supply/*/status 2>/dev/null'], { timeoutMs: 5_000 })
+
+      return stdout.split('\n').some(line => line.trim() === 'Discharging')
+    }
     const { stdout } = await $.process.run(['/usr/bin/pmset', '-g', 'batt'], { timeoutMs: 5_000 })
 
     return stdout.includes("'Battery Power'")
@@ -295,7 +308,10 @@ async function isOnBattery($: EngineInterface): Promise<boolean> {
   }
 }
 
-async function idleMs($: EngineInterface): Promise<number | null> {
+// How long since the person last touched a key or the mouse; null on
+// Linux, which has no one way to ask.
+async function idleMs($: EngineInterface, isOnLinux: boolean): Promise<number | null> {
+  if (isOnLinux) return null
   try {
     const { stdout } = await $.process.run(['/usr/sbin/ioreg', '-c', 'IOHIDSystem', '-d', '4'], { timeoutMs: 5_000 })
     const ns = /"HIDIdleTime" = (\d+)/.exec(stdout)?.[1]
@@ -306,11 +322,14 @@ async function idleMs($: EngineInterface): Promise<number | null> {
   }
 }
 
-// Ghostty's config files on macOS, the one to add the include to first.
-function ghosttyConfigs(home: string): string[] {
+// Ghostty's config files, the one to add the include to first: on macOS
+// Application Support before ~/.config, on Linux only the XDG folder.
+function ghosttyConfigs(home: string, isOnLinux: boolean, xdgConfig: string | null): string[] {
+  const xdg = `${xdgConfig ?? `${home}/.config`}/ghostty`
+  if (isOnLinux) return [`${xdg}/config.ghostty`, `${xdg}/config`]
   const support = `${home}/Library/Application Support/com.mitchellh.ghostty`
 
-  return [`${support}/config.ghostty`, `${support}/config`, `${home}/.config/ghostty/config.ghostty`, `${home}/.config/ghostty/config`]
+  return [`${support}/config.ghostty`, `${support}/config`, `${xdg}/config.ghostty`, `${xdg}/config`]
 }
 
 // Where a Ghostty session keeps the sky's files, and what it last wrote:
@@ -328,6 +347,10 @@ type Ghostty = {
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
   home: string
+  configs: string[]
+  isLinux: boolean
+  // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
+  knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
   written: {
@@ -348,7 +371,7 @@ type Ghostty = {
 // Whether one of Ghostty's config files includes the mod's file, on a line
 // of its own (a commented-out line does not count).
 async function isIncluded($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
-  for (const path of ghosttyConfigs(ghostty.home)) {
+  for (const path of ghostty.configs) {
     const text = await $.fs.read(path).catch(() => '')
     const lines = text.split('\n').map(line => line.trim().replace(/^config-file\s*=\s*\??/, ''))
     if (text.split('\n').some((line, i) => /^config-file\s*=/.test(line.trim()) && lines[i] === ghostty.include)) return true
@@ -365,15 +388,36 @@ async function tidy($: EngineInterface, folder: string, keep: string[]): Promise
   if (paths.length > 0) await $.process.run(['/bin/rm', '-f', ...paths]).catch(() => undefined)
 }
 
-// Whether Ghostty took the reload.
-async function reloadGhostty($: EngineInterface): Promise<boolean> {
+// Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
+// through systemd while it runs as its service, else sent to it straight,
+// but only to a Ghostty new enough to know the signal (to an older one it
+// is the end).
+async function reloadGhostty($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
   try {
+    if (ghostty.isLinux) {
+      const service = await $.process
+        .run(['systemctl', '--user', 'reload', 'app-com.mitchellh.ghostty.service'], { timeoutMs: 5_000 })
+        .catch(() => null)
+      if (service?.exitCode === 0) return true
+      if (!ghostty.knowsReloadSignal) return false
+      const { exitCode } = await $.process.run(['pkill', '-USR2', '-x', 'ghostty'], { timeoutMs: 5_000 })
+
+      return exitCode === 0
+    }
     const { exitCode } = await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 })
 
     return exitCode === 0
   } catch {
     return false
   }
+}
+
+// Whether the Ghostty on the PATH is 1.3 or later.
+async function ghosttyKnowsReloadSignal($: EngineInterface): Promise<boolean> {
+  const answer = await $.process.run(['ghostty', '--version'], { timeoutMs: 5_000 }).catch(() => null)
+  const [major = 0, minor = 0] = (/Ghostty (\d+)\.(\d+)/.exec(answer?.stdout ?? '') ?? []).slice(1).map(Number)
+
+  return major > 1 || (major === 1 && minor >= 3)
 }
 
 // Writes `text` to a file of this session's own beside `path`, then moves it
@@ -513,7 +557,7 @@ async function writeGhosttySky(
     written.isReloadOwed = true
   }
   written.include = include
-  if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($))
+  if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($, ghostty))
 }
 
 // The session is ending: its heartbeat goes, and the sky with it unless
@@ -532,7 +576,7 @@ async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: strin
   )
   if (!isAnotherAlive && (await $.fs.read(include).catch(() => '')) !== '') {
     await writeWhole($, include, '', ghostty.id)
-    await reloadGhostty($)
+    await reloadGhostty($, ghostty)
   }
 }
 
@@ -545,7 +589,17 @@ const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??\S*\/runtime\/sola
 // missing. Answers the line and file, or null when the config is there but
 // cannot be read: never written over.
 async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{ line: string; config: string } | null> {
-  const config = ghosttyConfigs(ghostty.home)[0]!
+  let config = ghostty.configs[0]!
+  // On Linux the file that is there, config.ghostty if neither is.
+  if (ghostty.isLinux) {
+    for (const path of ghostty.configs) {
+      if (await $.fs.exists(path).catch(() => false)) {
+        config = path
+        break
+      }
+    }
+    await $.process.run(['mkdir', '-p', config.slice(0, config.lastIndexOf('/'))]).catch(() => undefined)
+  }
   const isThere = await $.fs.exists(config).catch(() => true)
   const read = isThere ? await $.fs.read(config).catch(() => null) : ''
   if (read === null) return null
@@ -727,7 +781,9 @@ export const register: Register = on => {
       // A plain disc, then.
     }
 
+    const isOnLinux = await isLinuxHost($)
     if ((await $.env.get('TERM_PROGRAM')) === 'ghostty' && home) {
+      const xdgConfig = isOnLinux ? (await $.env.get('XDG_CONFIG_HOME')) || null : null
       const folder = `${$.plugin.root}/runtime`
       const id = await $.session.id().catch(() => 'session')
       ghostty = {
@@ -739,6 +795,9 @@ export const register: Register = on => {
         waiting: `${folder}/waiting-${id}`,
         hidden: `${folder}/hidden`,
         home,
+        configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
+        isLinux: isOnLinux,
+        knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
         written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
       }
@@ -752,12 +811,12 @@ export const register: Register = on => {
       const sky = ghostty
       const update = () => updateGhosttySky($, sky, shaderAt, skyState)
       // Whether the person is here, and the power, before the first sky.
-      const idle = await idleMs($)
+      const idle = await idleMs($, isOnLinux)
       if (idle !== null) activity.isAway = idle >= AWAY_MS
-      power.isOnBattery = await isOnBattery($)
+      power.isOnBattery = await isOnBattery($, isOnLinux)
       $.clock.every(BATTERY_MS, () => {
         void (async () => {
-          const isOn = await isOnBattery($)
+          const isOn = await isOnBattery($, isOnLinux)
           if (isOn === power.isOnBattery) return
           power.isOnBattery = isOn
           await update()
@@ -793,7 +852,7 @@ export const register: Register = on => {
       void (async () => {
         const wasIdle = activity.isAway || !activity.isFrontmost
         // An ioreg that failed says nothing: the last answer stands.
-        const idle = await idleMs($)
+        const idle = await idleMs($, isOnLinux)
         if (idle !== null) activity.isAway = idle >= AWAY_MS
         if (iterm !== null && !activity.isAway && (wasIdle || !activity.isFrontmost)) {
           const { stdout } = await $.process.run(['/usr/bin/osascript', ...ITERM_FRONTMOST], { timeoutMs: 5_000 })
@@ -801,8 +860,9 @@ export const register: Register = on => {
         }
       })().catch(() => undefined)
     })
+    // Music is asked of macOS's own apps.
     $.clock.every(MUSIC_MS, () => {
-      if (activity.isAway) return
+      if (activity.isAway || isOnLinux) return
       void $.process
         .run(['/usr/bin/osascript', ...NOW_PLAYING], { timeoutMs: 5_000 })
         .then(({ stdout }) => {
@@ -1019,7 +1079,7 @@ export const register: Register = on => {
       const { line, config } = added
       ghostty.isIncluded = true
       await updateGhosttySky($, ghostty, shaderAt, skyState)
-      await reloadGhostty($)
+      await reloadGhostty($, ghostty)
 
       return { text: `Solar: lade till "${line}" i ${config}.` }
     }
