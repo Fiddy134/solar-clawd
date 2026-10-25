@@ -12,7 +12,7 @@ import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } f
 import { elementsOf, issAt, issVisible } from './iss'
 import { fromBase64 } from './paint'
 import { staleFiles } from './tidy'
-import { shaderParams, skyShader } from './shader'
+import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
 
 const BAND = {
@@ -1100,13 +1100,17 @@ test('the wastebasket fills with the context window, a ball at a time, and burns
   expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'embers', age: 1 } })).not.toBe(drawFrame({ ...view, paper: 90 }))
 })
 
-test('in Ghostty the wastebasket stands in the sky: its balls and its fire are baked in', () => {
+test('in Ghostty the wastebasket stands in the sky, each tab\'s own carried in its mark', () => {
   const text = (basket: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { basket } as never))
   expect(text(null)).toContain('const int BASKET = 0;')
-  expect(text({ balls: 7, fire: null })).toContain('const int BASKET_BALLS = 7;')
-  expect(text({ balls: 14, fire: null })).toContain('const int BASKET_BALLS = 10;')
-  expect(text({ balls: 3, fire: 'burn' })).toContain('const int BASKET_FIRE = 1;')
-  expect(text({ balls: 0, fire: 'embers' })).toContain('const int BASKET_FIRE = 2;')
+  expect(text({ balls: 7, fire: null })).toContain('const int BASKET = 1;')
+  // The shader's text is one for every tab: what is in the basket is not in it.
+  expect(text({ balls: 7, fire: null })).toBe(text({ balls: 2, fire: 'burn' }))
+  expect(tabMark({ balls: 7, fire: null })).toEqual([0, 7, 1])
+  expect(tabMark({ balls: 14, fire: null })).toEqual([0, 10, 1])
+  expect(tabMark({ balls: 3, fire: 'burn' })).toEqual([1, 3, 1])
+  expect(tabMark({ balls: 0, fire: 'embers' })).toEqual([2, 0, 1])
+  expect(tabMark(null)).toEqual([0, 0, 1])
   const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
   // The band throws toward the sky's basket instead of keeping its own.
   expect(drawFrame({ ...view, isBasketInSky: true })).not.toBe(drawFrame(view))
@@ -1170,19 +1174,21 @@ test('a reaction under way is not cut short by looking up', () => {
 })
 
 test('/solar kasta throws a ball in the sky\'s basket, /solar bränn burns it for a while', async ($, on) => {
-  const { clock, shader } = await waitingWorld($, on)
+  const { clock, world } = await waitingWorld($, on)
   const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
-  expect(shader()).toContain('const int BASKET_BALLS = 0;')
+  // The tab's mark as last written to its terminal.
+  const mark = () => world.runs.filter(argv => argv[0] === 'sh' && argv[4]?.includes(']4;16;')).at(-1)?.[4]
+  expect(mark()).toContain('rgb:00/00/01')
   await solar('kasta')
   await clock.advance(1_500)
-  expect(shader()).toContain('const int BASKET_BALLS = 1;')
+  expect(mark()).toContain('rgb:00/01/01')
   await solar('bränn')
   await clock.advance(1_500)
-  expect(shader()).toContain('const int BASKET_FIRE = 1;')
+  expect(mark()).toContain('rgb:01/01/01')
   await clock.advance(7_000)
-  expect(shader()).toContain('const int BASKET_FIRE = 2;')
+  expect(mark()).toContain('rgb:02/00/01')
   await clock.advance(4_000)
-  expect(shader()).toContain('const int BASKET_FIRE = 0;')
+  expect(mark()).toMatch(/rgb:00\/0[01]\/01/)
 })
 
 test('a shader changed on disk behind this session is written again', async ($, on) => {

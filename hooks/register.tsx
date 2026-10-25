@@ -10,6 +10,7 @@ import type { Mode, Reaction } from './clawd'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import type { ShaderParams } from './shader'
+import { tabMark } from './shader'
 import { staleFiles } from './tidy'
 import { animationOf, beaconAt } from './beacon'
 import { elementsOf, issVisible } from './iss'
@@ -386,6 +387,8 @@ type Ghostty = {
   written: {
     shader: string
     include: string
+    // The tab's mark as last written (markOf).
+    mark: string
     heartbeatAt: number
     // A change Ghostty has not yet reloaded for: tried again each tick.
     isReloadOwed: boolean
@@ -423,8 +426,13 @@ async function tidy($: EngineInterface, folder: string, keep: string[]): Promise
 // in the colour cube) one step off, which no one sees and the shader looks
 // for, so the sky shows only where Claude runs. Written to the session's
 // own terminal: the tty of the process the mod's commands run under.
-const MARK_TAB = '\x1b]4;16;rgb:00/00/01\x1b\\'
 const UNMARK_TAB = '\x1b]104;16\x1b\\'
+// The mark for what this tab's wastebasket holds (tabMark).
+function markOf(basket: ShaderParams['basket']): string {
+  const hex = tabMark(basket).map(v => v.toString(16).padStart(2, '0'))
+
+  return `\x1b]4;16;rgb:${hex.join('/')}\x1b\\`
+}
 async function markTab($: EngineInterface, sequence: string): Promise<void> {
   const script = 'tty=$(ps -o tty= -p $PPID | tr -d " "); case "$tty" in ""|"?"*) exit 1;; esac; printf "%s" "$1" > "/dev/$tty"'
   await $.process.run(['sh', '-c', script, 'sh', sequence], { timeoutMs: 5_000 }).catch(() => undefined)
@@ -474,7 +482,7 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
 // What the Ghostty sky depends on besides the time: whether the person is
 // away, whether the Mac runs on battery, and what this session waits on the
 // person for.
-type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null }
+type SkyState = { isAway: boolean; isOnBattery: boolean; waiting: Waiting | null; basketAt: (now: number) => ShaderParams['basket'] }
 
 // What the session's shader is asked to draw beyond the scene.
 type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean }
@@ -569,9 +577,14 @@ async function writeGhosttySky(
 ): Promise<void> {
   const { written } = ghostty
   const now = await $.clock.now()
+  // The tab's mark when its basket changes, and again each minute: a
+  // `reset` in the tab would have cleared it.
+  const mark = markOf(state.basketAt(now))
+  if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
+    await markTab($, mark)
+    written.mark = mark
+  }
   if (now - written.heartbeatAt >= HEARTBEAT_MS) {
-    // Again each minute: a `reset` in the tab would have cleared it.
-    await markTab($, MARK_TAB)
     await $.fs.write(ghostty.heartbeat, String(now))
     written.heartbeatAt = now
     ghostty.isIncluded = await isIncluded($, ghostty)
@@ -818,7 +831,7 @@ export const register: Register = on => {
   // The ISS on a visible pass now; never in a demo or at a pinned time.
   const issNow = (now: number, mode: Mode) => (mode === 'live' ? issVisible(issOrbit, now, where.place) : null)
 
-  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting })
+  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, basketAt })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   // What was in the Ghostty sky last time it was drawn; null before the first.
@@ -881,7 +894,7 @@ export const register: Register = on => {
         isLinux: isOnLinux,
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
-        written: { shader: '', include: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
+        written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // The sky shows only once Ghostty's config includes the mod's file.

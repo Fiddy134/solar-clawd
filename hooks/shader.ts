@@ -62,6 +62,17 @@ export type ShaderParams = {
   isYUp: boolean
 }
 
+// A tab's mark, palette colour 16 as the session sets it (register.tsx,
+// markTab): blue one step off black says Claude runs there, green counts
+// the balls in its wastebasket and red says what burns (1 a fire, 2
+// embers). Per tab, where the shader's text is one for all of them.
+export function tabMark(basket: ShaderParams['basket']): [number, number, number] {
+  const balls = Math.max(0, Math.min(10, Math.round(basket?.balls ?? 0)))
+  const fire = basket?.fire === 'burn' ? 1 : basket?.fire === 'embers' ? 2 : 0
+
+  return [fire, balls, 1]
+}
+
 // The shader's number for each event.
 const EVENT_INDEX: Record<EventKind, number> = {
   satellite: 1,
@@ -293,8 +304,6 @@ export function skyShader(params: ShaderParams): string {
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
     `const int BASKET = ${params.basket ? 1 : 0};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
-    `const int BASKET_BALLS = ${Math.max(0, Math.min(10, Math.round(params.basket?.balls ?? 0)))};`,
-    `const int BASKET_FIRE = ${params.basket?.fire === 'burn' ? 1 : params.basket?.fire === 'embers' ? 2 : 0};`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
@@ -1549,6 +1558,9 @@ const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0
   vec2(-0.55, -1.85), vec2(0.05, -1.8), vec2(0.6, -1.85), vec2(-0.3, -2.55), vec2(0.4, -2.6));
 vec3 basket(vec3 sky, vec2 p, float u, float k) {
   if (BASKET == 0) return sky;
+  // This tab's own, from its mark (tabMark).
+  int balls = int(iPalette[16].g * 255.0 + 0.5);
+  int fire = int(iPalette[16].r * 255.0 + 0.5);
   float pitch = max(3.0, u * 0.24);
   // Its own unit, a little smaller than the sky's.
   u *= 0.85;
@@ -1559,11 +1571,11 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   float rise = clamp(-v.y / hgt, 0.0, 1.0);
   float halfWidth = mix(0.85, 1.15, rise) * u;
   bool isInside = v.y <= 0.0 && v.y >= -hgt && abs(v.x) <= halfWidth;
-  bool isBurning = BASKET_FIRE == 1;
+  bool isBurning = fire == 1;
   float burnt = isBurning ? 0.55 + 0.25 * sin(iTime * 2.0) : 0.0;
 
   // Smoke, behind it all.
-  if (BASKET_FIRE != 0) {
+  if (fire != 0) {
     for (int j = 0; j < 4; j++) {
       float age = fract(iTime * 0.22 + float(j) * 0.25);
       vec2 at = base + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 0.5 * u, -hgt - 0.8 * u - age * 4.5 * u);
@@ -1573,7 +1585,7 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   }
   if (isInside) sky = mix(sky, tone(INK_INDIGO, k) * 0.55, 0.85);
   for (int i = 0; i < 8; i++) {
-    if (i >= BASKET_BALLS) break;
+    if (i >= balls) break;
     sky = paperBall(sky, p, base + BALL_AT[i] * u, 0.42 * u, i + 3, k, burnt);
   }
   // The mesh, the sides, the rim and the base, in steel.
@@ -1591,7 +1603,7 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   float wr = clamp(-w.y / hgt, 0.0, 1.0);
   if (w.y <= 0.0 && w.y >= -hgt) sky = ink(sky, lift(INK_INDIGO, k), abs(abs(w.x) - mix(0.85, 1.15, wr) * u) - 0.04 * u, 0.5);
   for (int i = 8; i < 10; i++) {
-    if (i >= BASKET_BALLS) break;
+    if (i >= balls) break;
     sky = paperBall(sky, p, base + BALL_AT[i] * u, 0.42 * u, i + 3, k, burnt);
   }
 
@@ -1611,7 +1623,7 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
     }
   }
   // Embers in the bottom of an emptied bin.
-  if (BASKET_FIRE == 2 && isInside && v.y > -0.6 * u) {
+  if (fire == 2 && isInside && v.y > -0.6 * u) {
     float glow = step(0.82, rand(int(floor(p.x / pitch)) * 31 + int(floor(p.y / pitch)) * 17 + int(floor(iTime * 4.0))));
     sky = mix(sky, INK_ORANGE, glow * 0.9);
   }
@@ -1632,9 +1644,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }
-  // Only in a tab where Claude runs: its session marks palette colour 16
-  // one step off black (register.tsx, markTab).
-  if (distance(iPalette[16], vec3(0.0, 0.0, 1.0 / 255.0)) > 0.5 / 255.0) {
+  // Only in a tab where Claude runs: its session marks palette colour 16,
+  // blue one step off black (tabMark).
+  if (abs(iPalette[16].b - 1.0 / 255.0) > 0.5 / 255.0 || iPalette[16].r > 2.5 / 255.0 || iPalette[16].g > 10.5 / 255.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }

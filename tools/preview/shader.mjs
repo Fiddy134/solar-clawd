@@ -11,7 +11,7 @@ import { join } from 'node:path'
 
 import { STOCKHOLM } from '../../hooks/astro.ts'
 import { contextAt, eventsAt, shootingRate } from '../../hooks/events.ts'
-import { shaderParams, skyShader } from '../../hooks/shader.ts'
+import { shaderParams, skyShader, tabMark } from '../../hooks/shader.ts'
 import { dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
@@ -111,7 +111,7 @@ try {
   gl.uniform1f(gl.getUniformLocation(program, 'iTimeCursorChange'), ${Number(o.time) - Number(o.since ?? 100)})
   gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), 1)
   // A tab Claude has marked (register.tsx, markTab).
-  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), 0, 0, 1 / 255)
+  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${tabMark(params.basket).map(v => v / 255).join(', ')})
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
