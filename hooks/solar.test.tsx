@@ -918,3 +918,12 @@ test('with no ISS elements to be had the sky goes on without it', async ($, on) 
   expect(shader()).toContain('const float ISS_UP = 0.0;')
   expect(shader()).toContain('void mainImage')
 })
+
+test('the real ISS replaces the scheduled satellite; a preview still shows one', () => {
+  const clear = { temperature: 2, code: 0, cloudCover: 0, wind: 2 }
+  const start = Date.UTC(2026, 9, 24, 18)
+  for (let ms = start; ms < start + 48 * 3_600_000; ms += 60_000) {
+    expect(eventsAt(ms, contextFor(ms, clear)).some(e => e.kind === 'satellite')).toBe(false)
+  }
+  expect(eventsAt(start, contextFor(start, clear), [{ kind: 'satellite', at: start }]).some(e => e.kind === 'satellite')).toBe(true)
+})

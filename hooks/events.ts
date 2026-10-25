@@ -72,7 +72,6 @@ const inMonths = (ctx: EventContext, ...months: number[]) => months.includes(ctx
 
 // The catalogue, at a pace that leaves the sky mostly quiet.
 export const EVENTS: readonly Spec[] = [
-  { kind: 'satellite', word: 'satellit', slotMs: HOUR, chance: 1, durationMs: MINUTE, when: ctx => isNight(ctx) && isClear(ctx) },
   { kind: 'balloon', word: 'luftballong', slotMs: 3 * HOUR, chance: 1, durationMs: 4 * MINUTE, when: ctx => isDay(ctx) && ctx.wind < 6 && !isWet(ctx.sky) },
   {
     kind: 'birds',
@@ -98,14 +97,17 @@ export const EVENTS: readonly Spec[] = [
   { kind: 'constellation', word: 'clawd-stjärnbild', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5) },
 ]
 
-// Not scheduled: while its condition holds, and when Claude says so.
+// Not scheduled: while its condition holds, and when Claude says so. A
+// satellite is the real ISS now (iss.ts), and played only as a preview.
 const RAINBOW = { kind: 'rainbow', word: 'regnbåge' } as const
 const MILESTONE = { kind: 'milestone', word: 'milstolpe', durationMs: 20_000 } as const
 const SHOOTING_STAR = { kind: 'shootingStar', word: 'stjärnfall' } as const
+const SATELLITE = { kind: 'satellite', word: 'satellit' } as const
 
 // Every event the band and /solar can name, its word first.
 export const EVENT_WORDS: Record<EventKind, string> = {
-  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar'>, string>),
+  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'satellite'>, string>),
+  satellite: SATELLITE.word,
   rainbow: RAINBOW.word,
   milestone: MILESTONE.word,
   shootingStar: SHOOTING_STAR.word,
