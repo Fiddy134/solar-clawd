@@ -532,10 +532,13 @@ vec3 realStars(vec3 sky, vec2 p, float strength, float size) {
         int i = TILE_STAR[k];
         vec2 at = domeToPixel(STAR_AT[i]);
         float mag = STAR_LOOK[i].x;
+        // Far from it, past the largest its glint could make it: nothing.
+        float dist = length(p - at);
+        float plain = size * (0.9 + max(0.0, 3.5 - mag) * 0.6);
+        if (dist > plain * 6.8) continue;
         float bv = STAR_LOOK[i].y;
         float glint = glance(at);
-        float r = size * (0.9 + max(0.0, 3.5 - mag) * 0.6) * (1.0 + 0.7 * glint);
-        float dist = length(p - at);
+        float r = plain * (1.0 + 0.7 * glint);
         if (dist > r * 4.0) continue;
         vec3 tint = bv < 0.2 ? vec3(0.78, 0.86, 1.0) : bv > 1.2 ? vec3(1.0, 0.8, 0.62) : vec3(1.0, 0.97, 0.92);
         float twinkle = 0.85 + 0.15 * sin(iTime * (1.1 + mod(float(i), 7.0) * 0.3) + float(i));
@@ -651,6 +654,9 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
   float baseSize = unit * 3.2;
   float pitch = max(3.0, unit * 0.24);
   float speed = (w / 1400.0) * (1.0 + WIND / 5.0);
+  // Clouds keep to the upper half: below the lowest a cloud could reach,
+  // none of them is worth asking about.
+  if (p.y > h * 0.5 + baseSize * 1.3 * 3.0) return sky;
   float opacity = 0.55 + COVER * 0.3;
   float day = smoothstep(-8.0, 6.0, s.elevation);
   float golden = clamp(1.0 - abs(s.elevation - 2.0) / 9.0, 0.0, 1.0);
