@@ -5,8 +5,7 @@ import { localMidnight, STOCKHOLM } from './astro'
 import type { Place } from './astro'
 import { drawFrame, isPrintable, REACTION_SECONDS, ROWS } from './clawd'
 import type { Mode, Reaction } from './clawd'
-import { drawCorner, HQ_COLUMNS } from './hq'
-import { fromBase64, toBase64 } from './paint'
+import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import { SKY_WORDS, skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
@@ -14,14 +13,12 @@ import type { MoonTexture, WallpaperCache, Weather } from './sky'
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
 
 const KEY = 'sky'
-// The corner as a picture, where the terminal draws pictures.
-const PICTURE = 'clawd'
 // The moon's texture, baked by tools/bake-moon.sh.
 const MOON_SIZE = 256
 // Pixels per point of the window: Retina.
 const BACKING_SCALE = 2
-// Twelve frames a second, as film is often drawn: on twos.
-const TICK_MS = 83
+// Eight frames a second: Clawd's sprites step, they do not glide.
+const TICK_MS = 125
 // A whole day in this long, for /solar demo.
 const DEMO_MS = 48_000
 // Narrower than this and the scene goes away rather than squeezing.
@@ -372,9 +369,7 @@ async function includeInGhostty($: EngineInterface, ghostty: Ghostty): Promise<{
 export const register: Register = on => {
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
-  let site: { requestId: string; columns: number; isPicture: boolean } | null = null
-  // Set once the terminal answers a picture with its alt text: cells from then on.
-  let isPictureRefused = false
+  let site: { requestId: string; columns: number } | null = null
   let viewport = { columns: 160, rows: 45 }
   // The iTerm2 window in points, once iTerm2 has said.
   let windowSize: { width: number; height: number } | null = null
@@ -422,15 +417,6 @@ export const register: Register = on => {
     if (claude.isWorking) return { kind: 'working' as const, age: 0 }
 
     return null
-  }
-
-  // The corner picture's size in pixels: the terminal's cells at the
-  // screen's own pixels, once iTerm2 has said its window's size.
-  const cornerPixels = () => {
-    const perColumn = windowSize ? (windowSize.width * BACKING_SCALE) / viewport.columns : 14.4
-    const perRow = windowSize ? (windowSize.height * BACKING_SCALE) / viewport.rows : 31
-
-    return { width: Math.round(HQ_COLUMNS * perColumn), height: Math.round(ROWS * perRow) }
   }
 
   const viewAt = (now: number, columns: number) => {
@@ -578,48 +564,15 @@ export const register: Register = on => {
 
         const drawn = site
         if (drawn === null) return
-        if (!drawn.isPicture) {
-          const result = await $.ui.blit({
-            requestId: drawn.requestId,
-            key: KEY,
-            cells: drawFrame(viewAt(now, drawn.columns)),
-            columns: drawn.columns,
-            rows: ROWS,
-          })
-          // Hidden, collapsed or resized: wait for the next draw to say where.
-          if (result.deny && site === drawn) site = null
-
-          return
-        }
-
-        const view = viewAt(now, drawn.columns - HQ_COLUMNS)
-        const { width, height } = cornerPixels()
-        const corner = drawCorner(view, width, height)
-        const [sky, picture] = await Promise.all([
-          $.ui.blit({
-            requestId: drawn.requestId,
-            key: KEY,
-            cells: drawFrame(view, false),
-            columns: drawn.columns - HQ_COLUMNS,
-            rows: ROWS,
-          }),
-          $.ui.blit({
-            requestId: drawn.requestId,
-            key: PICTURE,
-            source: { rgba: toBase64(corner.rgba), width, height },
-            columns: HQ_COLUMNS,
-            rows: ROWS,
-          }),
-        ])
-        if (site !== drawn) return
-        // A terminal that cannot draw pictures shows the alt: back to cells.
-        if (picture.deny && /\balt\b/.test(picture.deny)) {
-          isPictureRefused = true
-          site = null
-          $.ui.invalidate('ui.render')
-        } else if (sky.deny || picture.deny) {
-          site = null
-        }
+        const result = await $.ui.blit({
+          requestId: drawn.requestId,
+          key: KEY,
+          cells: drawFrame(viewAt(now, drawn.columns)),
+          columns: drawn.columns,
+          rows: ROWS,
+        })
+        // Hidden, collapsed or resized: wait for the next draw to say where.
+        if (result.deny && site === drawn) site = null
       })()
     })
 
@@ -780,29 +733,9 @@ export const register: Register = on => {
     if (columns < MIN_COLUMNS || e.props.maxRows < ROWS) return next(e)
 
     const now = await $.clock.now()
-    const isPicture = !isPictureRefused && columns >= HQ_COLUMNS + MIN_COLUMNS
-    site = { requestId: e.requestId, columns, isPicture }
-    const { Box, Image, Raster } = $.ui.resolve(e)
+    site = { requestId: e.requestId, columns }
+    const { Raster } = $.ui.resolve(e)
 
-    if (!isPicture) {
-      return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
-    }
-
-    const view = viewAt(now, columns - HQ_COLUMNS)
-    const { width, height } = cornerPixels()
-    const corner = drawCorner(view, width, height)
-
-    return (
-      <Box flexDirection="row">
-        <Raster key={KEY} columns={columns - HQ_COLUMNS} rows={ROWS} cells={drawFrame(view, false)} />
-        <Image
-          key={PICTURE}
-          source={{ rgba: toBase64(corner.rgba), width, height }}
-          columns={HQ_COLUMNS}
-          rows={ROWS}
-          alt=" "
-        />
-      </Box>
-    )
+    return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
   })
 }

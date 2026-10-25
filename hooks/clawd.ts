@@ -1,10 +1,13 @@
 // Clawd in the band's right-hand corner: what he does at this hour, what he
 // wears for the weather and the day, how he reacts to Claude's work, and the
-// line of words beside him. One frame is one Raster's cells.
+// line of words beside him. One frame is one Raster's cells, printed as a
+// risograph would: the inks of paint.ts, a deeper tone dithered in where a
+// halftone would shade, night as an indigo plate rather than darkness, and
+// the odd indigo pixel printed off register.
 
 import { localTime, moonAt, OCCASION_WORDS, occasionAt, sunAt } from './astro'
 import type { LocalTime, Occasion } from './astro'
-import { Canvas, luminance, mix, rand, smoothstep, toBase64 } from './paint'
+import { Canvas, INKS, luminance, mix, rand, smoothstep, toBase64 } from './paint'
 import { auroraStrength, paintBandSky, paintPrecipitation, SKY_WORDS, skyOf } from './sky'
 import type { SkyInput } from './sky'
 
@@ -52,9 +55,61 @@ export function activityAt({ hour, weekday }: Pick<LocalTime, 'hour' | 'weekday'
   return 'gta'
 }
 
+// --- Riso ------------------------------------------------------------------
+
+const CREAM = 0xf5efe0
+// Clawd's own ink, Claude's coral: the orange drum printed thin on cream,
+// with a breath of indigo under it.
+const CORAL = mix(mix(INKS.orange, CREAM, 0.15), INKS.indigo, 0.1)
+// Wood and desks: orange printed over indigo.
+const WOOD = mix(INKS.orange, INKS.indigo, 0.35)
+// Blue printed thin, for screens and drops; paler still, for words.
+const SKY_INK = mix(INKS.blue, 0xffffff, 0.45)
+const PALE = mix(INKS.blue, 0xffffff, 0.6)
+// The key plate at its darkest, for screens and eyes.
+const KEY_DARK = mix(INKS.indigo, 0x000000, 0.55)
+
+// A deeper tone of an ink, as its halftone's dots would print it.
+function deeper(c: number): number {
+  return mix(c, INKS.indigo, 0.22)
+}
+
+// A sprite printed: rows of characters looked up in the palette ('.' and
+// unknown characters see-through). Night lays the indigo plate over all but
+// the `glows`; the `shaded` keys get their deeper tone on every other pixel,
+// from row `shadeFrom` down, as a halftone shades.
+function print(
+  c: Canvas,
+  x0: number,
+  y0: number,
+  rows: readonly string[],
+  palette: Record<string, number>,
+  light: number,
+  options: { glows?: string; shaded?: string; shadeFrom?: number } = {},
+): void {
+  const { glows = '', shaded = '', shadeFrom = 0 } = options
+  const night = clamp01((1 - light) / 0.45) * 0.45
+  rows.forEach((row, dy) => {
+    for (let dx = 0; dx < row.length; dx++) {
+      const ch = row[dx]!
+      const ink = palette[ch]
+      if (ink === undefined) continue
+      const x = x0 + dx
+      const y = y0 + dy
+      const isShaded = shaded.includes(ch) && dy >= shadeFrom && (Math.round(x) + Math.round(y)) % 2 === 0
+      const color = isShaded ? deeper(ink) : ink
+      c.set(x, y, glows.includes(ch) ? color : mix(color, KEY_DARK, night))
+    }
+  })
+}
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v))
+}
+
 // --- Clawd ----------------------------------------------------------------
 
-const CLAWD = { O: 0xd97757, K: 0x2b1d17, k: 0x9c4f36, G: 0x15151c, h: 0xb85f43 }
+const CLAWD = { O: CORAL, K: INKS.indigo, k: deeper(CORAL), G: KEY_DARK, h: deeper(deeper(CORAL)) }
 
 export type Eyes = 'open' | 'closed' | 'right' | 'left' | 'shades'
 export type Arms = 'down' | 'typing' | 'up' | 'right-up' | 'none'
@@ -92,22 +147,28 @@ function paintClawd(
   legs: Legs,
   light: number,
 ): void {
-  c.sprite(x, y, ['.OOOO.', FACES[eyes], ARMS[arms], LEGS[legs]], CLAWD, light)
-  if (arms === 'typing') c.sprite(x + 5, y + 3, ['O'], CLAWD, light)
-  if (arms === 'up') c.sprite(x, y - 1, ['O....O'], CLAWD, light)
+  // Shaded in his legs, the halftone darker below.
+  print(c, x, y, ['.OOOO.', FACES[eyes], ARMS[arms], LEGS[legs]], CLAWD, light, { shaded: 'O', shadeFrom: 3 })
+  if (arms === 'typing') print(c, x + 5, y + 3, ['O'], CLAWD, light)
+  if (arms === 'up') print(c, x, y - 1, ['O....O'], CLAWD, light)
+  // The key plate a pixel off register, just past his right side.
+  if (!c.isSolid(x + 6, y + 1)) c.blend(x + 6, y + 1, INKS.indigo, 0.55)
 }
 
 // --- Hats -------------------------------------------------------------------
 
 type Hat = { rows: string[]; palette: Record<string, number>; glows?: string }
 
+// Red is pink printed over orange.
+const RED = mix(INKS.pink, INKS.orange, 0.45)
+
 const HATS = {
-  nightcap: { rows: ['....NW', '.NNNN.'], palette: { N: 0x4f6bd8, W: 0xf4f1ea } },
-  beanie: { rows: ['..W...', '.RRRR.'], palette: { W: 0xf4f1ea, R: 0xc8323c } },
-  cap: { rows: ['......', '.BBBBB'], palette: { B: 0x2f6fd6 } },
-  santa: { rows: ['..RRRW', '.WWWW.'], palette: { R: 0xd62e3a, W: 0xf4f1ea } },
-  lucia: { rows: ['.f..f.', '.wGGw.'], palette: { f: 0xffd15c, w: 0xf6f2e6, G: 0x3f8f4a }, glows: 'f' },
-  midsummer: { rows: ['......', '.pGyG.'], palette: { p: 0xff7eb6, G: 0x4fa65a, y: 0xffe066 } },
+  nightcap: { rows: ['....NW', '.NNNN.'], palette: { N: INKS.blue, W: CREAM } },
+  beanie: { rows: ['..W...', '.RRRR.'], palette: { W: CREAM, R: RED } },
+  cap: { rows: ['......', '.BBBBB'], palette: { B: INKS.blue } },
+  santa: { rows: ['..RRRW', '.WWWW.'], palette: { R: RED, W: CREAM } },
+  lucia: { rows: ['.f..f.', '.wGGw.'], palette: { f: INKS.yellow, w: CREAM, G: INKS.green }, glows: 'f' },
+  midsummer: { rows: ['......', '.pGyG.'], palette: { p: INKS.pink, G: INKS.green, y: INKS.yellow } },
 } satisfies Record<string, Hat>
 
 export type HatKind = keyof typeof HATS
@@ -126,8 +187,8 @@ function hatFor(occasion: Occasion | null, temperature: number | undefined, wind
 function paintHat(c: Canvas, hat: Hat, x: number, y: number, light: number, t: number): void {
   const palette = { ...hat.palette }
   // Lucia's candles flicker.
-  if (palette.f !== undefined) palette.f = Math.sin(t * 9) > 0 ? 0xffd15c : 0xffa63d
-  c.sprite(x, y - 2, hat.rows, palette, light, hat.glows ?? '')
+  if (palette.f !== undefined) palette.f = Math.sin(t * 9) > 0 ? INKS.yellow : mix(INKS.yellow, INKS.orange, 0.5)
+  print(c, x, y - 2, hat.rows, palette, light, { glows: hat.glows })
 }
 
 // --- Wind -------------------------------------------------------------------
@@ -208,41 +269,44 @@ type Scene = {
 
 type Glyph = { x: number; y: number; text: string; fg: number; dim?: boolean }
 
-const SYNTAX = [0xd97757, 0x7ee787, 0x79c0ff, 0xd2a8ff, 0xffa657]
+const SYNTAX = [INKS.pink, INKS.green, INKS.yellow, mix(INKS.blue, 0xffffff, 0.35), INKS.orange]
 
 const sleep: Scene = {
   behind: ({ c, x, y, light }) => {
-    c.sprite(x - 1, y, ['F', 'F', 'F', 'F'], { F: 0x7a5238 }, light)
-    c.sprite(x + 7, y + 1, ['F', 'F', 'F'], { F: 0x7a5238 }, light)
+    print(c, x - 1, y, ['F', 'F', 'F', 'F'], { F: WOOD }, light)
+    print(c, x + 7, y + 1, ['F', 'F', 'F'], { F: WOOD }, light)
   },
   front: ({ c, x, y, t, light }) => {
     // The blanket rises and falls with his breath.
     const isIn = Math.sin(t * 1.4) > 0
-    c.sprite(x, y + 2, [isIn ? 'LLLLLLL' : 'BBBBBBB'], { L: 0xe9e4f5, B: 0x6a5acd }, light)
-    c.sprite(x - 1, y + 3, ['FFFFFFFFF'], { F: 0x7a5238 }, light)
+    // A violet blanket, its halftone breathing with him.
+    const blanket = isIn ? mix(INKS.violet, CREAM, 0.35) : INKS.violet
+    print(c, x, y + 2, ['BBBBBBB'], { B: blanket }, light, { shaded: 'B' })
+    print(c, x - 1, y + 3, ['FFFFFFFFF'], { F: WOOD }, light)
   },
   pose: () => ({ eyes: 'closed', arms: 'none' }),
   glyphs: ({ x, t }) => {
     const shown = Math.floor(t / 0.9) % 3
 
     return [
-      { x: x + 7, y: 0, text: 'z', fg: 0xdfe6ff },
-      { x: x + 9, y: 0, text: 'Z', fg: 0xdfe6ff },
+      { x: x + 7, y: 0, text: 'z', fg: PALE },
+      { x: x + 9, y: 0, text: 'Z', fg: PALE },
     ].slice(0, shown)
   },
 }
 
 const coffee: Scene = {
   behind: ({ c, x, y, light, occasion }) => {
-    c.sprite(x + 6, y + 3, ['DDDDDDD'], { D: 0x8a5a3c }, light)
-    if (occasion === 'cinnamonBun') c.sprite(x + 10, y + 1, ['.b.', 'bBb'], { b: 0xc98a4b, B: 0x7a4a24 }, light)
-    if (occasion === 'semla') c.sprite(x + 10, y + 1, ['ww', 'bb'], { w: 0xfdf8ee, b: 0xd09a5a }, light)
+    print(c, x + 6, y + 3, ['DDDDDDD'], { D: WOOD }, light, { shaded: 'D' })
+    const bun = mix(INKS.orange, INKS.yellow, 0.4)
+    if (occasion === 'cinnamonBun') print(c, x + 10, y + 1, ['.b.', 'bBb'], { b: bun, B: WOOD }, light)
+    if (occasion === 'semla') print(c, x + 10, y + 1, ['ww', 'bb'], { w: CREAM, b: bun }, light)
   },
   front: ({ c, x, y, t, light, isAway }) => {
     // A sip now and then lifts the mug a pixel; else it steams.
     const isSipping = !isAway && t % 7 > 6
     const lift = isSipping ? 1 : 0
-    c.sprite(x + 6, y + 1 - lift, ['WCW.', 'WWWW'], { W: 0xf3efe6, C: 0x6f4430 }, light)
+    print(c, x + 6, y + 1 - lift, ['WCW.', 'WWWW'], { W: CREAM, C: deeper(WOOD) }, light)
     if (!isSipping) {
       for (let k = 0; k < 3; k++) {
         const sway = Math.round(Math.sin(t * 3 + k * 1.3) * 0.6)
@@ -260,14 +324,14 @@ const coffee: Scene = {
 
 const code: Scene = {
   behind: ({ c, x, y, t, light }) => {
-    c.sprite(x + 6, y + 3, ['DDDDDDD'], { D: 0x8a5a3c }, light)
-    c.sprite(x + 7, y - 1, ['GGGGG', 'GsssG', 'GGGGG'], { G: 0x3b3d46, s: 0x14161f }, light, 's')
+    print(c, x + 6, y + 3, ['DDDDDDD'], { D: WOOD }, light, { shaded: 'D' })
+    print(c, x + 7, y - 1, ['GGGGG', 'GsssG', 'GGGGG'], { G: mix(INKS.indigo, 0x808080, 0.35), s: KEY_DARK }, light, { glows: 's' })
     // A line of code at a time, a new one every quarter second.
     const line = Math.floor(t * 4)
     for (let i = 0; i < 3; i++) {
       if (rand(line * 7 + i) < 0.75) c.set(x + 8 + i, y, SYNTAX[Math.floor(rand(line * 13 + i) * SYNTAX.length)]!)
     }
-    c.sprite(x + 6, y + 2, ['AAAAAA'], { A: 0xc4c8d0 }, light)
+    print(c, x + 6, y + 2, ['AAAAAA'], { A: mix(CREAM, INKS.blue, 0.2) }, light, { shaded: 'A' })
   },
   front: () => {},
   pose: ({ t }) => ({ eyes: 'right', arms: Math.floor(t * 6) % 2 === 0 ? 'down' : 'typing' }),
@@ -276,24 +340,23 @@ const code: Scene = {
 const gta: Scene = {
   behind: ({ c, x, y, t, light, isFridayNight }) => {
     const tx = x + 8
-    c.sprite(tx, y - 1, ['TTTTTT', 'T....T', 'T....T', 'TTTTTT'], { T: 0x101014 }, light)
-    c.sprite(tx + 1, y + 3, ['L..L'], { L: 0x2a2a30 }, light)
-    // Vice City: a neon sky with its sun, a causeway with a car on it.
-    for (let i = 0; i < 4; i++) c.set(tx + 1 + i, y, 0xd6246e)
-    c.set(tx + 3, y, 0xffd15c)
-    for (let i = 0; i < 4; i++) c.set(tx + 1 + i, y + 1, 0xff7a45)
-    c.set(tx + 1 + (Math.floor(t * 3) % 4), y + 1, 0x34e7ff)
+    print(c, tx, y - 1, ['TTTTTT', 'T....T', 'T....T', 'TTTTTT'], { T: KEY_DARK }, light)
+    print(c, tx + 1, y + 3, ['L..L'], { L: deeper(KEY_DARK) }, light)
+    // Vice City: a pink sky with its sun, an orange causeway with a car on
+    // it, dithered as the screen's halftone would print it.
+    print(c, tx + 1, y, ['ppyp', 'oooo'], { p: INKS.pink, y: INKS.yellow, o: INKS.orange }, 1, { shaded: 'po' })
+    c.set(tx + 1 + (Math.floor(t * 3) % 4), y + 1, SKY_INK)
     if (t % 1.2 < 0.25) {
-      c.set(tx + 1, y, 0xff2a2a)
-      c.set(tx + 4, y, 0x2a6bff)
+      c.set(tx + 1, y, RED)
+      c.set(tx + 4, y, INKS.blue)
     }
-    if (isFridayNight) c.sprite(x + 6, y + 2, ['yY', 'BB'], { y: 0xffd65a, Y: 0xf2b630, B: 0x3a6fd6 }, light)
+    if (isFridayNight) print(c, x + 6, y + 2, ['yY', 'BB'], { y: INKS.yellow, Y: mix(INKS.yellow, INKS.orange, 0.4), B: INKS.blue }, light)
   },
   front: ({ c, x, y, t, light, isAway }) => {
     // The pad, mashed; on the floor while he is off after his hat.
     const jiggle = Math.round(Math.sin(t * 14))
     const at = isAway ? { x: x + 1, y: y + 3 } : { x: x + 2 + jiggle * 0.5, y: y + 2 }
-    c.sprite(at.x, at.y, ['cp'], { c: 0x34e7ff, p: 0xff4fa0 }, light, 'cp')
+    print(c, at.x, at.y, ['cp'], { c: SKY_INK, p: INKS.pink }, light, { glows: 'cp' })
   },
   pose: () => ({ eyes: 'right', arms: 'down' }),
 }
@@ -303,13 +366,13 @@ const SCENES: Record<Activity, Scene> = { sleep, coffee, code, gta }
 // Seasonal things standing to the left of the scene.
 function paintOccasion(c: Canvas, occasion: Occasion | null, x: number, y: number, t: number, light: number): void {
   if (occasion === 'halloween') {
-    const glow = Math.sin(t * 5) > -0.3 ? 0xffc23d : 0xff8a1f
-    c.sprite(x, y + 1, ['.g.', 'OOO', 'yOy'], { g: 0x3f8f4a, O: 0xe8761e, y: glow }, light, 'y')
+    const glow = Math.sin(t * 5) > -0.3 ? INKS.yellow : mix(INKS.yellow, INKS.orange, 0.6)
+    print(c, x, y + 1, ['.g.', 'OOO', 'yOy'], { g: INKS.green, O: INKS.orange, y: glow }, light, { glows: 'y', shaded: 'O' })
   }
   if (occasion === 'christmas' || occasion === 'lucia') {
-    const lights = [0xff4f5e, 0xffd15c, 0x5fb0ff]
+    const lights = [RED, INKS.yellow, INKS.blue]
     const bulb = (k: number) => lights[(Math.floor(t * 2) + k) % 3]!
-    c.sprite(x, y, ['.y.', '.G.', 'aGb', 'GGG'], { y: 0xffd15c, G: 0x2f7a3a, a: bulb(0), b: bulb(1) }, light, 'yab')
+    print(c, x, y, ['.y.', '.G.', 'aGb', 'GGG'], { y: INKS.yellow, G: INKS.green, a: bulb(0), b: bulb(1) }, light, { glows: 'yab', shaded: 'G' })
   }
 }
 
@@ -321,9 +384,9 @@ function paintFireworks(c: Canvas, right: number, t: number): void {
     const round = Math.floor((t + k * 0.9) / period)
     const cx = Math.floor(rand(round * 31 + k) * Math.max(1, right - 6)) + 3
     const cy = 2
-    const color = [0xff5f7a, 0x7fe0ff, 0xffe066, 0xb38bff][Math.floor(rand(round * 17 + k) * 4)]!
+    const color = [INKS.pink, SKY_INK, INKS.yellow, INKS.violet][Math.floor(rand(round * 17 + k) * 4)]!
     if (age < 0.5) {
-      c.blend(cx, c.h - 1 - (age / 0.5) * (c.h - 1 - cy), 0xfff1c0, 0.9)
+      c.blend(cx, c.h - 1 - (age / 0.5) * (c.h - 1 - cy), mix(INKS.yellow, CREAM, 0.6), 0.9)
     } else if (age < 1.6) {
       const r = ((age - 0.5) / 1.1) * 3
       const fade = 1 - (age - 0.5) / 1.1
@@ -359,21 +422,21 @@ function reactionOverrides(
   const { kind, age } = reaction
   const dots = '.'.repeat(1 + (Math.floor(t * 3) % 3))
 
-  if (kind === 'working') return { glyphs: [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: 0xdfe6ff }] }
+  if (kind === 'working') return { glyphs: [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: PALE }] }
   if (!isAwake) {
     const mark = kind === 'cheer' ? '!' : '?'
 
-    return { glyphs: [{ x: x - 2, y: 0, text: mark, fg: 0xffe066 }] }
+    return { glyphs: [{ x: x - 2, y: 0, text: mark, fg: INKS.yellow }] }
   }
   if (kind === 'cheer') {
     const dy = -Math.round(Math.abs(Math.sin(age * Math.PI * 2.2)))
     const sparkle = Math.floor(age * 6) % 2 === 0 ? '*' : '+'
 
-    return { arms: 'up', dy, glyphs: [{ x: x + 6, y: 0, text: sparkle, fg: 0xffe066 }] }
+    return { arms: 'up', dy, glyphs: [{ x: x + 6, y: 0, text: sparkle, fg: INKS.yellow }] }
   }
   if (kind === 'facepalm') {
     c.set(x + 4, y + 1, CLAWD.h)
-    c.blend(x + 6, y, 0x7fc4ff, 0.9)
+    c.blend(x + 6, y, SKY_INK, 0.9)
 
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
@@ -381,7 +444,7 @@ function reactionOverrides(
   const isHigh = Math.floor(t * 4) % 2 === 0
   c.set(x + 6, y + (isHigh ? 0 : 1), CLAWD.O)
 
-  return { arms: 'right-up', glyphs: [{ x: x + 7, y: 0, text: '?', fg: 0xffe066 }] }
+  return { arms: 'right-up', glyphs: [{ x: x + 7, y: 0, text: '?', fg: INKS.yellow }] }
 }
 
 // --- Frame ----------------------------------------------------------------
@@ -426,11 +489,11 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
 
   // Headphones and notes while music plays.
   if (track && isAwake) {
-    c.sprite(cx, cy - 1, ['.HHHH.'], { H: 0x30303a }, light)
-    c.sprite(cx, cy + 1, ['H....H'], { H: 0x30303a }, light)
+    print(c, cx, cy - 1, ['.HHHH.'], { H: KEY_DARK }, light)
+    print(c, cx, cy + 1, ['H....H'], { H: KEY_DARK }, light)
     for (let k = 0; k < 2; k++) {
       const age = (t * 0.7 + k * 0.5) % 1
-      c.blend(cx + 6 + k * 2, cy + 1 - age * 3, k === 0 ? 0xff7eb6 : 0x7fe0ff, 1 - age)
+      c.blend(cx + 6 + k * 2, cy + 1 - age * 3, k === 0 ? INKS.pink : SKY_INK, 1 - age)
     }
   }
 
@@ -501,9 +564,9 @@ export function sceneOf(view: View): SceneState {
   }
 }
 
-// The band as cells. `withScene` false leaves Clawd's corner out: the band
-// is then only the words and the weather, the corner drawn as a picture.
-export function drawFrame(view: View, withScene = true): string {
+// The band as cells: the sky (or the terminal's own background, where a
+// wallpaper or shader shows through), the words, and Clawd's corner.
+export function drawFrame(view: View): string {
   const { columns, ms, t, mode, place, weather, isClear = false, reaction, track } = view
   const c = new Canvas(columns, ROWS * 2)
   const sun = sunAt(ms, place.lat, place.lon)
@@ -515,10 +578,10 @@ export function drawFrame(view: View, withScene = true): string {
 
   const x = columns - CORNER + 7
   const y = c.h - 4
-  const labelRight = withScene ? columns - CORNER - 1 - (isWindy ? 22 : 0) : columns - 1
+  const labelRight = columns - CORNER - 1 - (isWindy ? 22 : 0)
   if (occasion === 'newYear') paintFireworks(c, labelRight - 30, t)
   const glyphs: Glyph[] = []
-  if (withScene) glyphs.push(...paintScene(c, view, state, x, y))
+  glyphs.push(...paintScene(c, view, state, x, y))
 
   // The words, right-aligned against the scene.
   const room = labelRight - 1

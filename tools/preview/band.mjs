@@ -33,7 +33,7 @@ let body = ''
 for (let f = 0; f < frames; f++) {
   const t = view.t + f * Number(o.dt)
   const reaction = o.reaction ? { kind: o.reaction, age: f * Number(o.dt) } : null
-  body += cellsSvg(drawFrame({ ...view, t, reaction }, !o['no-scene']), columns, ROWS, cell, f * (height + gap))
+  body += cellsSvg(drawFrame({ ...view, t, reaction }), columns, ROWS, cell, f * (height + gap))
 }
 
 console.log(svgToPng(body, columns * cell, frames * (height + gap) - gap, o.out ?? 'band'))

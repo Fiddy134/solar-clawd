@@ -3,7 +3,6 @@ import { expect, mock, test } from 'claude-code/testing'
 
 import { localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock } from './astro'
 import { activityAt, drawFrame, isPrintable, ROWS } from './clawd'
-import { HQ_COLUMNS } from './hq'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
 import { wallpaperPng } from './sky'
@@ -58,7 +57,7 @@ test('a frame packs one cell per column and row, the wallpaper is a PNG', async 
   expect((await wallpaperPng(view, 120, 80)).startsWith('iVBORw0KGgo')).toBe(true)
 })
 
-test('the band draws the words as cells and Clawd as a picture, and /solar hides it', async ($, on) => {
+test('the band is one Raster of cells, Clawd among them, and /solar hides it', async ($, on) => {
   mock.clock(on, { now: Date.UTC(2026, 9, 24, 17, 30) })
   on('command.register', () => ({ value: { command: 'solar' } }))
   // Not in iTerm2, and nothing to read: the mod draws its own sky.
@@ -77,9 +76,8 @@ test('the band draws the words as cells and Clawd as a picture, and /solar hides
   const ui = await $.ui.mount(BAND)
   const sky = await ui.find({ type: 'Raster', key: 'sky' })
   expect(sky?.props.rows).toBe(ROWS)
-  expect(sky?.props.columns).toBe(80 - HQ_COLUMNS)
-  const clawd = await ui.find({ type: 'Image', key: 'clawd' })
-  expect(clawd?.props.columns).toBe(HQ_COLUMNS)
+  expect(sky?.props.columns).toBe(80)
+  expect(await ui.find({ type: 'Image' })).toBeUndefined()
   await ui.unmount()
 
   await $.command.run({
