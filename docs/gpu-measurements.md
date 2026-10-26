@@ -578,3 +578,176 @@ the branch, against a target of 5.
 - **The raw data is outside git** (`.preview/` is ignored); the tables here
   are the record, and `rows.tsv` for this run is 45 rows at
   `.preview/measure/out/2026-10-26T171840/`.
+
+## Bench 2026-10-26: per-stage cost in WebGL (preview)
+
+F4's task 0: what each stage of the sky costs, taken apart with the
+preview's `--bench` on the Mac's own GPU. This is a different instrument
+from the run above: it times the fragment shader alone in Chrome, not
+Ghostty drawing it, so it says how the shader's own work divides between
+its stages, not what Ghostty costs the machine.
+
+### Context
+
+- Same machine: MacBookPro18,3, Apple M1 Pro; macOS 27.0; Google Chrome
+  155.0.8059.85, headless. Branch `gpu` (main with `ljus-himmel` merged),
+  shader at commit `b3e9630`, in which the rim became its own stage.
+- **Renderer**, as `WEBGL_debug_renderer_info` gives it and as every run
+  printed it: `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro,
+  Unspecified Version)`. The flags are `--use-angle=metal --enable-gpu
+  --ignore-gpu-blocklist` (`tools/preview/run.sh shader … --gpu`);
+  headless Chrome 155 gives the Metal renderer even with none of them.
+  Without `--gpu` the preview stays on SwiftShader.
+- **Conditions:** the live sky hidden in every Ghostty window (the
+  `runtime/hidden` file, written 21:27), the external display unplugged
+  (`system_profiler` listing only the built-in Color LCD, Internal, at
+  21:28 and again at 21:32 and 21:43), other apps and Claude sessions
+  closed, AC power. `ecosystemd` still used 50–70 % of a CPU core at
+  21:29–21:30; load average 3.65 at the start of the main bench, 2.58 at
+  its end. Every round reported below was taken after both conditions
+  held; there were no earlier rounds.
+- **The bench:** `--bench 200 --gpu --width 3024 --height 1964`, i.e. one
+  warm-up frame, then 200 frames each followed by a one-pixel
+  `readPixels`, so a frame starts only when the one before has finished;
+  ms a frame is the wall-clock mean over the 200. Scenes as in the run
+  above: `day-clear` = `--at 2026-10-26T12:30 --weather 1,10,3,20 --stage
+  480`, `night-lit` = `--at 2026-10-26T22:00 --weather 0,5,2,10 --beacon
+  asking --stage 480`. The stand-in terminal is the preview's default
+  (seven short lines and a status bar at 13 px, no `--retina`), so text
+  covers little of the frame.
+- **Configs:** the full shader; `--without <stage>` for each of `clouds`,
+  `shaded`, `beacon`, `keeper`, `stars`, `realStars`, `events`, `basket`,
+  `aurora` (it drops every line matching `sky = <stage>(`: one line each,
+  two for `events`, the before- and after-clouds calls); `floor` = all nine
+  dropped at once; `bare` = those and also `weather`, `iss`, `tone`,
+  `sunAt`, `moonAt`, `chartLines`, which leaves the gradient, the mask,
+  `glass()` and `isTextOnGlass()`; and `--passthrough`, a shader that only
+  returns the terminal's texel.
+- **Rounds:** four, 21:32:38–21:36:27, all 26 configs per round (13 × 2
+  scenes), forward in rounds 1 and 3 and backward in 2 and 4 (ABBA).
+  The runs went from a scratch script, `node .preview/shader.bundle.mjs`
+  with the flags above, one Chrome per run.
+
+### What each stage costs
+
+**own** = full − passthrough: the shader's work over an empty one.
+**cost** = full − without that stage. Mean of four rounds, ms a frame;
+the range is the lowest and highest of the four.
+
+`day-clear`: full **8.54** (8.49–8.62), passthrough **2.19** (2.11–2.34),
+own **6.34**.
+
+| without | ms a frame | range | cost | share of own |
+|---|---|---|---|---|
+| shaded (the rim) | 5.44 | 5.39–5.52 | 3.10 | 49 % |
+| clouds | 5.59 | 5.57–5.61 | 2.95 | 47 % |
+| keeper | 8.25 | 8.23–8.28 | 0.29 | 5 % |
+| beacon | 8.29 | 8.25–8.31 | 0.25 | 4 % |
+| stars | 8.51 | 8.49–8.53 | 0.03 | 0 % |
+| events | 8.52 | 8.50–8.55 | 0.02 | 0 % |
+| aurora | 8.52 | 8.49–8.54 | 0.02 | 0 % |
+| realStars | 8.53 | 8.51–8.54 | 0.01 | 0 % |
+| basket | 8.54 | 8.51–8.60 | −0.01 | 0 % |
+| floor (all nine) | 2.27 | 2.18–2.40 | 6.27 | 99 % |
+| bare | 2.26 | 2.18–2.30 | 6.28 | 99 % |
+
+`night-lit`: full **9.97** (9.90–10.15), passthrough **2.23** (2.15–2.37),
+own **7.74**.
+
+| without | ms a frame | range | cost | share of own |
+|---|---|---|---|---|
+| shaded (the rim) | 6.83 | 6.79–6.85 | 3.14 | 41 % |
+| clouds | 7.30 | 7.28–7.33 | 2.67 | 34 % |
+| realStars | 8.34 | 8.31–8.38 | 1.63 | 21 % |
+| beacon | 9.59 | 9.58–9.62 | 0.38 | 5 % |
+| stars | 9.61 | 9.58–9.65 | 0.36 | 5 % |
+| keeper | 9.85 | 9.84–9.86 | 0.12 | 2 % |
+| events | 9.88 | 9.88–9.89 | 0.09 | 1 % |
+| aurora | 9.91 | 9.88–9.96 | 0.06 | 1 % |
+| basket | 9.94 | 9.91–9.96 | 0.03 | 0 % |
+| floor (all nine) | 2.38 | 2.35–2.43 | 7.59 | 98 % |
+| bare | 2.29 | 2.24–2.35 | 7.69 | 99 % |
+
+The costs do not quite add up: the nine add to 6.66 ms by day against
+6.27 for dropping all nine at once, and to 8.48 against 7.59 by night.
+Removing one stage seems to save a little of the others' cost too
+(registers, occupancy); the single-stage costs are each a little high,
+by up to about 10 %, and the shares above should be read that way.
+
+**Spread.** Every config's four rounds lie within 0.13 ms of each other
+except night `full` (0.25, its first round at 10.15 against 9.90–9.92),
+the two passthroughs and day `floor` (0.22–0.23; the shortest frames are
+the noisiest). No drift between the forward and backward rounds.
+
+### A screen full of text
+
+The default stand-in has little text, and `glass()` and
+`isTextOnGlass()` run only on text pixels, so a second bench used
+`--retina --prose --diff` (paragraphs of 22 px text, Claude Code's dark
+diff, prompt and shell fields) on the same scenes: full, passthrough,
+bare, `--without shaded` and `--without clouds`, four ABBA rounds,
+21:43:39–21:44:50, same conditions.
+
+| scene | full | passthrough | own | bare − passthrough | rim cost | clouds cost |
+|---|---|---|---|---|---|---|
+| day-clear | 8.82 | 2.13 | 6.69 | 0.73 (11 %) | 2.60 (39 %) | 3.10 (46 %) |
+| night-lit | 10.24 | 2.30 | 7.94 | 0.58 (7 %) | 2.49 (31 %) | 2.71 (34 %) |
+
+Ranges: 0.02–0.06 ms for every config but the passthroughs (0.10 and
+0.37). `bare − passthrough` is the gradient, the mask, `glass()` and
+`isTextOnGlass()` together; it has no stage line of its own, so this is an
+upper bound on what the glass costs. The rim costs less here because it
+is skipped under glass.
+
+### What it says about F4
+
+- **The rim is 41–49 % of the shader's own work with little text and
+  31–39 % with a screen of it** in this bench, against F4's hypothesis of
+  35–50 % of the branch's own cost. Consistent, by day at the top of the
+  range. Dropping the eight samples that weigh nothing (F4 change 1) is
+  aimed at the right thing.
+- **The clouds cost as much as the rim:** 47 % by day and 34 % by night
+  at 20 % and 10 % cloud cover, which fits the per-pixel slot work F4's
+  cost model describes better than the drawing of a few clouds. F4's
+  order puts the glass (changes 2 and 4) before the clouds (change 5,
+  −5–8 % of the upper half); by this bench the clouds belong next to the
+  rim, and changes 5 and 6 may be worth more than the plan expects. Neither scene is overcast, so the bench says nothing
+  about a full sky of clouds.
+- **The glass is small:** at most 0.6–0.7 ms of 6.7–7.9 (7–11 %) even with
+  a screen full of text, gradient and mask included. That is in line with
+  F4's −2–3 % for change 2 and −2–4 % for change 4, but it puts the glass
+  well behind the clouds, not second.
+- **`realStars()` is 21 % of the night.** F4 expects at most −3 % from
+  change 10 (skipping the twinkle away from the cursor), which may still
+  be right for that change, but the stage as a whole is larger than the
+  plan's ordering assumes. The night ranking is rim, clouds, realStars,
+  then beacon and stars at 5 % each.
+- **Events cost nothing when none is up** (0–1 %), as the cost model
+  says; these scenes have none, so change 7 is not measured here.
+  `keeper`, `beacon` and `basket` together are under 10 %.
+- **The empty shader is a fixed 2.1–2.3 ms a frame** here, which is the
+  readback and Chrome's own overhead rather than shading: the bare shader
+  (gradient, mask, glass, and in this stand-in few text pixels) is within
+  0.1 ms of it.
+
+### Caveats
+
+- **WebGL on ANGLE's Metal backend is not Ghostty.** Ghostty compiles
+  GLSL 4.30 to SPIR-V to MSL; Chrome compiles GLSL ES 3.00 through ANGLE
+  to MSL. The two compilers may inline, unroll and fold differently, so
+  the shares are evidence about the shader's work, not a measurement of
+  Ghostty's.
+- **Not vsync-bound, and at an unknown clock.** The bench draws back to
+  back with a sync per frame; the GPU's clock during it was not read
+  (powermetrics needs root, and it was not run). A ms difference here is
+  not a device % or mW difference in Ghostty; ms at one clock and ms at
+  another are not the same work, though all configs ran under the same
+  conditions, interleaved.
+- **One stand-in screen.** The sparse stand-in favours the sky; the
+  text-heavy one shows how the rim's share falls with more glass. Real
+  Claude Code screens lie somewhere between.
+- **Machine in use, lightly:** no other apps or sessions, but
+  `ecosystemd` busy on the CPU and this Claude session running the
+  bench. The spread above is what that left.
+- **Interaction between stages** makes single-stage costs overlap by up
+  to ~10 % (see above).
