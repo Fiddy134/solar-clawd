@@ -11,8 +11,9 @@
 #
 #   shader     none, passthrough, probe, or <ref>:<scene> (tools/measure/scenes.sh)
 #   animation  true, false, always (custom-shader-animation)
-#   focus      focused, unfocused (Finder in front), covered (a Finder window
-#              over it), minimized, tab (a plain tab in front of it)
+#   focus      focused, unfocused (Finder in front), covered (a second,
+#              shader-less Ghostty maximized over it), minimized, tab (a
+#              plain tab in front of it)
 #   activity   idle, blink, spinner, stream (tools/measure/term.sh)
 #
 #   --settle 10 --sample 30   seconds to wait after each change, and to measure

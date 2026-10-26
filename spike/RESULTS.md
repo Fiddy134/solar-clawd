@@ -50,3 +50,9 @@ working (its spinner redrawing the terminal):
   WebGL; groups of four events compile in Ghostty itself (sky shown).
 - An ISS pass reloads Ghostty every 2 s: Ghostty CPU 17.7% → 19.8%, GPU
   71% → 72% (20 s each, a night shader alternating the station's place).
+
+The fuller measurements, with frame counts per animation setting and the
+branch against main, are in `docs/gpu-measurements.md`. They contradict
+one line above: a still sky does not save while the terminal is quiet
+either, since `false` draws at vsync with a steady cursor and nothing else
+changing (rows 9, 19, 20 of the 2026-10-26 run).
