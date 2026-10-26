@@ -281,6 +281,10 @@ vec3 constellation(vec3 sky, vec2 p, float u, float seed) {
   float s = 1.7 * u;
   // Left of the arc and below where a comet would hang.
   vec2 o = iResolution.xy * vec2(0.08 + 0.22 * seeded(seed, 1), 0.34 + 0.12 * seeded(seed, 2));
+  // The figure spans -0.2 to 7.2 across and 0 to 4.4 down, in s; its lines, stars and eyes reach 0.3u + 1 past it.
+  vec2 off = p - o;
+  float m = 0.3 * u + 1.0;
+  if (off.x < -0.2 * s - m || off.x > 7.2 * s + m || off.y < -m || off.y > 4.4 * s + m) return sky;
   float line = 1e9;
   for (int i = 0; i < 10; i++) line = min(line, segment(p, o + FIGURE[i] * s, o + FIGURE[(i + 1) % 10] * s));
   line = min(line, segment(p, o + vec2(2.0, 3.2) * s, o + FIGURE[10] * s));
