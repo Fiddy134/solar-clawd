@@ -38,7 +38,8 @@ vec3 gradient(vec2 p, Scene s, out float k) {
   vec3 base = v < 0.55 ? mix(top, middle, v / 0.55) : mix(middle, horizon, (v - 0.55) / 0.45);
   float dx = p.x / iResolution.x - glowX;
   vec3 c = mix(base, glowColor, glow * v * v * exp(-dx * dx * 6.0) * 0.55);
-  return mix(c, grey(c), CLOUDINESS);
+  // Half the weather's grey: a cloudy day stays a day (CLOUD_GREY in sky.ts).
+  return mix(c, grey(c), CLOUDINESS * 0.5);
 }
 
 // --- Aurora ----------------------------------------------------------------

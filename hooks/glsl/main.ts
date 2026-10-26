@@ -6,6 +6,21 @@ export const MAIN = `
 // How much sky shows through Claude Code's own fields: a diff's red and
 // green rows, the prompt's and the shell's rows.
 const float GLASS = 0.55;
+// The colour a diff's red and green rows tint the sky with: their own hue
+// made lighter, its brightest channel at GLASS_LIGHT, so the sky shows
+// through them as through light coloured glass. Grey fields (the prompt's
+// and the shell's rows) keep their own colour: lightened, they would wash
+// out the light text on them.
+const float GLASS_LIGHT = 0.85;
+// The least lightness of text on that lighter glass.
+const float GLASS_TEXT = 0.75;
+
+float chroma(vec3 c) { return max(c.r, max(c.g, c.b)) - min(c.r, min(c.g, c.b)); }
+
+vec3 glassTint(vec3 field) {
+  float top = max(field.r, max(field.g, field.b));
+  return mix(field, field * (GLASS_LIGHT / max(top, 0.001)), smoothstep(0.05, 0.15, chroma(field)));
+}
 
 // The places a field is looked for around a pixel, in pixels: 4 either
 // side and 2 above and below, then 1 either side and 1 above and below.
@@ -66,12 +81,103 @@ bool isFieldColour(vec3 term) {
 // background: GLASS where it is in one of Claude Code's own fields, of
 // their colour and of their shape; none anywhere else. Text on a field,
 // the band's pixel art and every colour not Claude Code's stay solid, as
-// they would without glass. Only on a dark background: on a light one,
-// dark pixels are the text.
+// they would without glass. A coloured field (a diff's red and green) is
+// glass by its colour alone, no text or art being drawn in it: the shape
+// left the gaps between letters and their counters solid, dark spots in
+// the light glass. Only on a dark background: on a light one, dark pixels
+// are the text.
 float glass(vec3 term, vec2 uv) {
   if (luminance(iBackgroundColor) > 0.5) return 0.0;
-  if (!isFieldColour(term) || !isField(term, uv)) return 0.0;
+  if (!isFieldColour(term)) return 0.0;
+  if (chroma(term) < 0.05 && !isField(term, uv)) return 0.0;
   return GLASS;
+}
+
+// The places a coloured field and the core of a letter are looked for
+// round a pixel of text, in pixels: the ring of 8 next to it, and 2 and 4
+// away either side and above and below, the middle of a stroke being up
+// to 4 from the field.
+const vec2 TEXT_NEAR[16] = vec2[16](vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 0.0),
+                                    vec2(1.0, 0.0), vec2(-1.0, 1.0), vec2(0.0, 1.0), vec2(1.0, 1.0),
+                                    vec2(-2.0, 0.0), vec2(2.0, 0.0), vec2(0.0, -2.0), vec2(0.0, 2.0),
+                                    vec2(-4.0, 0.0), vec2(4.0, 0.0), vec2(0.0, -4.0), vec2(0.0, 4.0));
+
+// Whether term is text on a coloured field, answering the field's colour,
+// the text's (the place near that is furthest from the field's) and how
+// much of term is text: the soft edge of a letter is part text, part
+// field, and drawn as it is it stays a dark rim round every letter on the
+// lighter glass. Only on a dark background, as glass.
+bool isTextOnGlass(vec3 term, vec2 uv, out vec3 field, out vec3 text, out float cover) {
+  if (luminance(iBackgroundColor) > 0.5) return false;
+  // The darkest place near, a field being darker than the text on it; then
+  // whether it is a coloured field's colour, asked once, out of the loop,
+  // which otherwise unrolls into hundreds of compares.
+  field = term;
+  for (int i = 0; i < 16; i++) {
+    vec3 c = textureLod(iChannel0, uv + TEXT_NEAR[i] / iResolution.xy, 0.0).rgb;
+    if (luminance(c) < luminance(field)) field = c;
+  }
+  if (chroma(field) < 0.05 || !isFieldColour(field)) return false;
+  text = term;
+  for (int i = 0; i < 16; i++) {
+    vec3 c = textureLod(iChannel0, uv + TEXT_NEAR[i] / iResolution.xy, 0.0).rgb;
+    if (distance(c, field) > distance(text, field)) text = c;
+  }
+  vec3 span = text - field;
+  cover = clamp(dot(term - field, span) / max(dot(span, span), 1e-5), 0.0, 1.0);
+  // Text dimmer than GLASS_TEXT, as a comment or a line number is, made
+  // that light towards white: lighter than its dark field, it would be
+  // darker than the light glass and muddy on it.
+  float lightness = luminance(text);
+  if (lightness < GLASS_TEXT) text = mix(text, vec3(1.0), (GLASS_TEXT - lightness) / (1.0 - lightness));
+  return true;
+}
+
+// A thin dark rim round the terminal's text, as subtitles have, so light
+// text stays readable on a bright sky: the sky darkens towards SHADE_TINT
+// within SHADE_RADIUS of a glyph, dark only right by its strokes and
+// fading out over the rest, and stays bright everywhere else. Next to the
+// strokes, even the brightest sky LUMINANCE allows leaves light text about
+// 4.9 to 1, past AA's 4.5; a wider or darker rim made the text look bold.
+// Light text near the sky's own lightness, as Claude Code's grey is by day
+// or white is on a bright cloud, gets a stronger rim, up to SHADE_NEAR;
+// the text's lightness is its brightest pixel in reach, as the soft edge
+// of light text is dim too. Text darker than the sky keeps SHADE: a light
+// rim round it washed it out. Claude Code's fields are not text: rimmed,
+// the sky under their glass went dark. Every pixel of the disc is looked
+// at: a few places only drew dotted copies of each glyph. Only on a dark
+// background: on a light one, dark pixels are the text.
+const float SHADE = 0.6;
+const float SHADE_NEAR = 0.85;
+// How much lighter than the sky text is for SHADE_NEAR, and for SHADE.
+const vec2 SHADE_GAP = vec2(0.1, 0.35);
+const vec3 SHADE_TINT = vec3(0.03, 0.06, 0.16);
+// The rim's width, in units, at most 1.75 pixels: it fades out by half a
+// pixel past that, inside SHADE_DISC.
+const float SHADE_RADIUS = 0.05;
+// The disc looked at, as a fixed list (x, y, distance) rather than a
+// square with the corners skipped: a loop the compiler can lay out whole.
+const vec3 SHADE_DISC[21] = vec3[21](vec3(0.0, 0.0, 0.0),
+  vec3(-1.0, 0.0, 1.0), vec3(1.0, 0.0, 1.0), vec3(0.0, -1.0, 1.0), vec3(0.0, 1.0, 1.0),
+  vec3(-1.0, -1.0, 1.4142), vec3(1.0, -1.0, 1.4142), vec3(-1.0, 1.0, 1.4142), vec3(1.0, 1.0, 1.4142),
+  vec3(-2.0, 0.0, 2.0), vec3(2.0, 0.0, 2.0), vec3(0.0, -2.0, 2.0), vec3(0.0, 2.0, 2.0),
+  vec3(-2.0, -1.0, 2.2361), vec3(2.0, -1.0, 2.2361), vec3(-2.0, 1.0, 2.2361), vec3(2.0, 1.0, 2.2361),
+  vec3(-1.0, -2.0, 2.2361), vec3(1.0, -2.0, 2.2361), vec3(-1.0, 2.0, 2.2361), vec3(1.0, 2.0, 2.2361));
+
+float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky) {
+  if (luminance(iBackgroundColor) > 0.5) return 0.0;
+  float radius = clamp(unit * SHADE_RADIUS, 1.5, 1.75);
+  float near = 0.0;
+  float brightest = 0.0;
+  for (int i = 0; i < 21; i++) {
+    float weight = 1.0 - smoothstep(radius - 1.0, radius + 0.5, SHADE_DISC[i].z);
+    vec3 c = textureLod(iChannel0, (fragCoord + SHADE_DISC[i].xy) / iResolution.xy, 0.0).rgb;
+    float text = smoothstep(0.02, 0.12, min(distance(c, iBackgroundColor), distance(c, linearBackground)));
+    near = max(near, text * weight);
+    if (text > 0.5) brightest = max(brightest, luminance(c));
+  }
+  float gap = brightest - luminance(sky);
+  return near * (gap < 0.0 ? SHADE : mix(SHADE_NEAR, SHADE, smoothstep(SHADE_GAP.x, SHADE_GAP.y, gap)));
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -83,8 +189,30 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // iBackgroundColor is sRGB: compared with both.
   vec3 linearBackground = pow(iBackgroundColor, vec3(2.2));
   float mask = smoothstep(0.02, 0.12, min(distance(term.rgb, iBackgroundColor), distance(term.rgb, linearBackground)));
-  // Dark fields let some sky through: less of the terminal.
-  if (mask > 0.0) mask *= 1.0 - glass(term.rgb, uv);
+  // Dark fields let some sky through: less of the terminal, and the
+  // coloured ones lighter.
+  vec3 ink = term.rgb;
+  float pane = 0.0;
+  if (mask > 0.0) {
+    pane = glass(term.rgb, uv);
+    mask *= 1.0 - pane;
+    if (pane > 0.0) ink = glassTint(term.rgb);
+  }
+  // Text on a coloured field: laid over the glass as it was over the field,
+  // put as an ink and a mask straight away (what the sky's long work keeps
+  // at hand costs every pixel). Its soft edges too where they come near the
+  // terminal's background, part field and part text as they are: taken
+  // for background, they let the dark rim through as dots along every
+  // stroke.
+  if (mask > 0.0 && pane == 0.0) {
+    vec3 field, text;
+    float cover;
+    if (isTextOnGlass(term.rgb, uv, field, text, cover)) {
+      pane = GLASS * (1.0 - cover);
+      mask = 1.0 - pane;
+      ink = ((1.0 - cover) * (1.0 - GLASS) * glassTint(field) + cover * text) / mask;
+    }
+  }
   if (mask >= 1.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;
@@ -126,7 +254,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
   sky = basket(sky, p, unit, k);
+  // No rim under glass.
+  if (pane == 0.0) sky = mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky));
 
-  fragColor = vec4(mix(sky, term.rgb, mask), 1.0);
+  fragColor = vec4(mix(sky, ink, mask), 1.0);
 }
 `

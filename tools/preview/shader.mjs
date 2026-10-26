@@ -6,7 +6,7 @@
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
-//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff, a prompt row, a shell row, and a line of its dimmest text)
+//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff with a grey comment, a prompt row, a shell row, and a line of its dimmest text)
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 
 import { writeFileSync } from 'node:fs'
@@ -115,6 +115,9 @@ const w = ${width}, h = ${height}
 const term = document.createElement('canvas')
 term.width = w; term.height = h
 const t = term.getContext('2d')
+// --retina: the stand-in drawn at twice the scale, as a Mac's Retina window has it.
+const k = ${o.retina ? 2 : 1}
+t.scale(k, k)
 t.fillStyle = '#${o.background}'; t.fillRect(0, 0, w, h)
 t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
 const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 file, ran 2 shell commands', '', '❯ how does it read?', '', '  ⎿  tools/preview/run.sh shader --at 22:00']
@@ -138,24 +141,46 @@ if (${!!o.diff}) {
     [null, ''],
     [deleteLine, '  12 -  const GLASS = 0.4;', [deleteWord, '0.4']],
     [addLine, '  12 +  const GLASS = 0.55;', [addWord, '0.55']],
+    [addLine, '  13 +  // lighter, so the sky shows through', null, 'rgb(106,115,125)'],
     [null, ''],
     [user, '> and the weekends?'],
     [null, ''],
     [bash, '! git status --short'],
   ]
-  diff.forEach(([fill, line, word], i) => {
+  diff.forEach(([fill, line, word, ink], i) => {
     if (fill) { t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20) }
     if (word) {
       const at = line.lastIndexOf(word[1])
       t.fillStyle = word[0]; t.fillRect(16 + t.measureText(line.slice(0, at)).width, 186 + i * 20, t.measureText(word[1]).width, 20)
     }
-    t.fillStyle = '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
+    t.fillStyle = ink ?? '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
   })
   t.fillStyle = 'rgb(80,80,80)'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 200 + diff.length * 20, w - ${stage} - 32)
   t.fillStyle = '#d7dae0'
 }
-t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
-t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
+// --prose: a reply of long paragraphs as a Retina window shows them (22px
+// text on 27px rows), to see the shade behind text on a bright sky; the
+// second and third in Claude Code's two greys, its inactive and subtle text.
+if (${!!o.prose}) {
+  t.font = '22px Menlo'
+  const inks = ['#d7dae0', 'rgb(153,153,153)', 'rgb(80,80,80)', '#d7dae0']
+  const words = 'Det fanns förr en fyrvaktare på en liten ö långt ut i Bottenhavet som hade för vana att skriva ner vädret varje morgon i en tjock, klotbunden bok. Han skrev inte bara vindriktning och lufttryck, utan också hur himlen såg ut.'.split(' ')
+  let row = 0
+  for (let p = 0; p < 4; p++) {
+    t.fillStyle = inks[p]
+    let line = p === 0 ? '● ' : '  '
+    for (let i = 0; i < 3 * words.length; i++) {
+      const word = words[(i + p * 7) % words.length]
+      if (t.measureText(line + word).width > w - ${stage} - 64) { t.fillText(line, 16, 330 + row++ * 27); line = '  ' }
+      line += word + ' '
+    }
+    t.fillText(line, 16, 330 + row++ * 27)
+    row++
+  }
+  t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
+}
+t.fillStyle = '#3e4451'; t.fillRect(0, h / k - 120, w, 22)
+t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h / k - 60)
 // --p3: the terminal as a Mac's Ghostty hands it to the shader, its sRGB
 // colours converted to Display P3 (the background as good as unchanged).
 if (${!!o.p3}) {
