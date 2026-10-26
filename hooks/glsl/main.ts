@@ -165,7 +165,10 @@ const float SHADE_RADIUS = 0.05;
 // whole. The pixel itself is not in it, being the terminal's own texel,
 // read already. Nothing past 2 pixels: at 2.24, the next places out, the
 // rim has faded to nothing by 1.65 pixels wide (a Retina window) and to a
-// four-thousandth at its widest.
+// four-thousandth at its widest. They did count towards the brightest
+// neighbour, which sets the rim's strength, so on the soft edges of glyphs
+// the rim is a little different without them, and a pixel away from text
+// by a few 255ths at most.
 const vec3 SHADE_DISC[12] = vec3[12](
   vec3(-1.0, 0.0, 1.0), vec3(1.0, 0.0, 1.0), vec3(0.0, -1.0, 1.0), vec3(0.0, 1.0, 1.0),
   vec3(-1.0, -1.0, 1.4142), vec3(1.0, -1.0, 1.4142), vec3(-1.0, 1.0, 1.4142), vec3(1.0, 1.0, 1.4142),
