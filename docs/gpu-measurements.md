@@ -108,9 +108,10 @@ corner (sixteen small bands behind the text area, or a strip along the
 bottom edge), so scenes get an fps column and the dropped-frames inference
 in the first run becomes a measurement. The second improvement is the
 Metal HUD (`MTL_HUD_ENABLED=1` on a direct exec) or another per-process
-reading, to replace the `GPU ms/s` column macOS 27 emptied. Printing MHz
-and residency from `report.mjs` (it already parses them) would make those
-columns reproducible with `gpu.sh report`.
+reading, to replace the `GPU ms/s` column macOS 27 emptied. `report.mjs`
+now prints MHz and residency beside the mW in every table that has mW, and
+gives this run's columns as quoted here (checked on rows 1–4 and the
+branch against main).
 
 ## Run 2026-10-26: M1 Pro, built-in display, level A, B and 60 Hz
 

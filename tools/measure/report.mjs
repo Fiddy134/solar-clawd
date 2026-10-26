@@ -4,9 +4,9 @@
 //   node tools/measure/report.mjs .preview/measure/out/<run>
 // powermetrics*.log, when the run had sudo, is cut into the rows by time:
 // the instance's own GPU time (ms/s, Activity Monitor's "% GPU" is a tenth
-// of it), WindowServer's, and the GPU's power and active residency. macOS 27
-// gives every process 0.00 ms/s, so those columns are left out when no row
-// has any.
+// of it), WindowServer's, and the GPU's power, active residency and mean
+// clock, so less work is not read off a lower clock. macOS 27 gives every
+// process 0.00 ms/s, so those columns are left out when no row has any.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
@@ -83,10 +83,14 @@ for (const row of rows) {
   row.server_gpu = mean(inside.map(s => s.tasks.get(Number(row.server_pid))?.gpu ?? null))
   row.power = mean(inside.map(s => s.power))
   row.residency = mean(inside.map(s => s.residency))
+  row.frequency = mean(inside.map(s => s.frequency))
 }
 
 // Per-process GPU time is only shown when powermetrics gave some.
 const hasGpuTime = rows.some(r => r.ghostty_gpu > 0 || r.server_gpu > 0)
+// The clock and residency beside the power, when powermetrics gave them.
+const hasClock = rows.some(r => r.frequency !== null && r.frequency !== undefined)
+const clockHeads = hasClock ? ['MHz', 'residens %'] : []
 
 const out = []
 const say = (...text) => out.push(...text)
@@ -113,12 +117,13 @@ const avg = (key, field) => mean((groups.get(key) ?? []).map(row => (typeof row[
 
 say('## Alla rader', '')
 table(
-  ['#', 'varv', 'shader', 'animation', 'fokus', 'aktivitet', 'flik', 'device %', 'Ghostty CPU %', 'WindowServer CPU %', ...(hasGpuTime ? ['Ghostty GPU ms/s', 'WindowServer GPU ms/s'] : []), 'GPU mW', 'fps', 'anm.'],
+  ['#', 'varv', 'shader', 'animation', 'fokus', 'aktivitet', 'flik', 'device %', 'Ghostty CPU %', 'WindowServer CPU %', ...(hasGpuTime ? ['Ghostty GPU ms/s', 'WindowServer GPU ms/s'] : []), 'GPU mW', ...clockHeads, 'fps', 'anm.'],
   rows.map(r => [
     r.index, r.pass, r.shader, r.animation, r.focus, r.activity, r.mark,
     `${fixed(number(r.device_mean))} ± ${fixed(number(r.device_sd))}`,
     fixed(number(r.ghostty_cpu_mean)), fixed(number(r.server_cpu_mean)),
     ...(hasGpuTime ? [fixed(r.ghostty_gpu ?? null), fixed(r.server_gpu ?? null)] : []), fixed(r.power ?? null, 0),
+    ...(hasClock ? [fixed(r.frequency ?? null, 0), fixed(r.residency ?? null)] : []),
     r.fps ?? '–', r.note ?? '',
   ]),
 )
@@ -167,7 +172,7 @@ if (scenes.length) {
     return focus === 'focused' && groups.has(floorKey) ? floorKey : null
   }
   table(
-    ['shader', 'animation', 'fokus', 'aktivitet', 'flik', 'device %', 'över golvet', ...(hasGpuTime ? ['Ghostty GPU ms/s', 'över golvet'] : []), 'GPU mW', 'över golvet', 'golv', 'n'],
+    ['shader', 'animation', 'fokus', 'aktivitet', 'flik', 'device %', 'över golvet', ...(hasGpuTime ? ['Ghostty GPU ms/s', 'över golvet'] : []), 'GPU mW', 'över golvet', ...clockHeads, 'golv', 'n'],
     scenes.map(key => {
       const [shader, animation, focus, activity, mark] = key.split(' ')
       const base = floorOf(key)
@@ -177,7 +182,9 @@ if (scenes.length) {
         shader, animation, focus, activity, mark,
         fixed(device), over(device, at('device_mean')),
         ...(hasGpuTime ? [fixed(gpu), over(gpu, at('ghostty_gpu'))] : []),
-        fixed(power, 0), over(power, at('power'), 0), base ?? '–', groups.get(key).length,
+        fixed(power, 0), over(power, at('power'), 0),
+        ...(hasClock ? [fixed(avg(key, 'frequency'), 0), fixed(avg(key, 'residency'))] : []),
+        base ?? '–', groups.get(key).length,
       ]
     }),
   )
@@ -186,11 +193,15 @@ if (scenes.length) {
   if (pairs.length) {
     say('## Grenen mot main', '')
     table(
-      ['scen', 'animation', 'fokus', 'aktivitet', 'flik', 'device % main → gren', ...(hasGpuTime ? ['GPU ms/s main → gren'] : []), 'mW main → gren'],
+      ['scen', 'animation', 'fokus', 'aktivitet', 'flik', 'device % main → gren', ...(hasGpuTime ? ['GPU ms/s main → gren'] : []), 'mW main → gren', ...(hasClock ? ['MHz main → gren', 'residens % main → gren'] : [])],
       pairs.map(([branch, base]) => {
         const [shader, animation, focus, activity, mark] = branch.split(' ')
-        const both = field => `${fixed(avg(base, field), field === 'power' ? 0 : 1)} → ${fixed(avg(branch, field), field === 'power' ? 0 : 1)}`
-        return [shader.split(':')[1], animation, focus, activity, mark, both('device_mean'), ...(hasGpuTime ? [both('ghostty_gpu')] : []), both('power')]
+        const digits = field => (field === 'power' || field === 'frequency' ? 0 : 1)
+        const both = field => `${fixed(avg(base, field), digits(field))} → ${fixed(avg(branch, field), digits(field))}`
+        return [
+          shader.split(':')[1], animation, focus, activity, mark, both('device_mean'), ...(hasGpuTime ? [both('ghostty_gpu')] : []), both('power'),
+          ...(hasClock ? [both('frequency'), both('residency')] : []),
+        ]
       }),
     )
   }
@@ -199,8 +210,9 @@ if (scenes.length) {
 const lives = rows.filter(r => r.shader === 'live')
 if (lives.length) {
   say('## Den levande fliken, med moddens egen policy', '')
-  table(['läge', 'device %', 'Ghostty CPU %', ...(hasGpuTime ? ['Ghostty GPU ms/s'] : []), 'GPU mW'], lives.map(r => [
+  table(['läge', 'device %', 'Ghostty CPU %', ...(hasGpuTime ? ['Ghostty GPU ms/s'] : []), 'GPU mW', ...clockHeads], lives.map(r => [
     r.focus, `${fixed(number(r.device_mean))} ± ${fixed(number(r.device_sd))}`, fixed(number(r.ghostty_cpu_mean)), ...(hasGpuTime ? [fixed(r.ghostty_gpu ?? null)] : []), fixed(r.power ?? null, 0),
+    ...(hasClock ? [fixed(r.frequency ?? null, 0), fixed(r.residency ?? null)] : []),
   ]))
 }
 
