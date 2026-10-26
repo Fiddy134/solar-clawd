@@ -2,13 +2,13 @@
 // the three tables the questions need (what each animation setting really
 // draws, what the sky costs over the floor, the branch against main).
 //   node tools/measure/report.mjs .preview/measure/out/<run>
-// powermetrics.log, when the run had sudo, is cut into the rows by time:
+// powermetrics*.log, when the run had sudo, is cut into the rows by time:
 // the instance's own GPU time (ms/s, Activity Monitor's "% GPU" is a tenth
 // of it), WindowServer's, and the GPU's power and active residency. macOS 27
 // gives every process 0.00 ms/s, so those columns are left out when no row
 // has any.
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
 const dir = process.argv[2]
@@ -70,8 +70,10 @@ const mean = values => {
 }
 const fixed = (value, digits = 1) => (value === null || value === undefined ? '–' : value.toFixed(digits))
 
-const pmPath = join(dir, 'powermetrics.log')
-const pm = existsSync(pmPath) ? samplesOf(readFileSync(pmPath, 'utf8')) : null
+// One log for a whole plan, or one per row where live or single rows share
+// a folder; every sample carries its time, so they read as one.
+const pmFiles = readdirSync(dir).filter(name => /^powermetrics(-.+)?\.log$/.test(name)).sort()
+const pm = pmFiles.length ? samplesOf(pmFiles.map(name => readFileSync(join(dir, name), 'utf8')).join('\n')) : null
 for (const row of rows) {
   if (!pm) continue
   const [start, end] = [number(row.start), number(row.end)]
