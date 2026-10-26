@@ -842,10 +842,66 @@ work that lets the GPU drop a clock step may save more in mW than in ms
 left on the table, in the plan's terms: the light decision's option (b),
 the rim only where text is light and the sky bright, which would make the
 night's rim free; and the rim by day, still the largest stage after the
-clouds lost a third of theirs. The lighter shader for the still and
-battery rules (task 5b) saves where it applies but does not count towards
-this target, which is measured with `true`, focused.
+clouds lost a third of theirs. The lighter shader for the battery and
+away rules (task 5b, below) saves where it applies but does not count
+towards this target, which is measured with `true`, focused.
 
 The baseline for phase 4 is the first run's table above; the harness
 runs again with `--twice` on a quiet machine, against the same scenes
 written from `gpu`.
+
+## F4 task 5b, 2026-10-26: the lighter sky on battery and away
+
+### What was decided
+
+The decision of 2026-10-26 (task 6, point 1 above) said the still-sky and
+battery rules get "a lighter shader (no rim, no clouds, fewer samples)".
+Two things came up before it was built, and Vincent narrowed it:
+
+- **Which rules.** `!isLively` holds whenever nothing in the sky moves
+  (no event, rain, fire or time-lapse), which is an ordinary clear or
+  grey day, so most of the time someone sits at the computer. A lighter
+  sky there would have been the everyday sky. It now applies **on battery
+  and while the person is away** (five minutes without a key or the
+  mouse, when nobody reads it). The still-sky rule keeps the whole sky.
+- **What it leaves out.** Without the rim Claude Code's grey text faded on
+  a bright day sky (post 8), and on battery the window is in front and
+  read. The lighter sky leaves out **the clouds only** and keeps the rim,
+  so it says nothing ahead of the light decision.
+
+`animationOf` and its test are untouched. The shader gets a constant
+`LIGHT`, and `mainImage` draws the clouds only when it is 0. Going away
+or on battery changes the shader's text, so it is one reload each way,
+within `SKY_MS` (10 s) and `BATTERY_MS` (60 s). Every session writes the
+same text, since idleness and power are the machine's. The preview draws
+it with `--light`.
+
+### The bench
+
+`gpu` at `743d58a`, `--bench 200 --gpu --width 3024 --height 1964`, the
+scenes from `tools/measure/scenes.sh`, the full sky and `--light` in turn,
+A B / B A / A B, with the empty shader once a round. 23:48–23:49 on
+2026-10-26, load 3.5, nothing else benching. Medians in ms a frame, the
+empty shader 2.26 (2.25–2.28):
+
+| scene | full | light | the sky's own cost |
+|---|---|---|---|
+| day-clear | 6.19 | 3.90 | 3.93 → 1.64 (−58 %) |
+| day-overcast | 7.09 | 3.89 | 4.83 → 1.63 (−66 %) |
+| night-lit | 6.92 | 4.93 | 4.66 → 2.67 (−43 %) |
+
+The rounds agreed within 0.07 ms. The clouds weigh more here than the
+first bench's 34–47 %, because the rim, glass and text work around them
+got cheaper in phase 2. The night saves less, its stars, chart and lit
+lighthouse staying.
+
+The screenshots (`--diff --gpu`, 1512×982, normal and `--light` of each
+scene) are `.preview/5b-*.png` in the worktree, not committed. They show
+no difference but the clouds.
+
+### What it does not show
+
+Whether Ghostty agrees, in device points and mW, is a row for phase 4 if
+Vincent wants one: `scenes.sh` writes the scenes without `LIGHT`, so a
+light row needs a scene written with it. The preview's own weak spots (see
+phase 2) apply as before.
