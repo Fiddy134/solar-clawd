@@ -1,6 +1,7 @@
 // A run of tools/measure/gpu.sh as markdown: its machine, every row, and
-// the three tables the questions need (what each animation setting really
-// draws, what the sky costs over the floor, the branch against main).
+// the tables the questions need (what each animation setting really draws,
+// what the sky costs over the floor, the branch against main, gpu against
+// that baseline, the lighter sky against the whole).
 //   node tools/measure/report.mjs .preview/measure/out/<run>
 // powermetrics*.log, when the run had sudo, is cut into the rows by time:
 // the instance's own GPU time (ms/s, Activity Monitor's "% GPU" is a tenth
@@ -189,22 +190,49 @@ if (scenes.length) {
     }),
   )
 
-  const pairs = scenes.filter(key => key.startsWith('ljus-himmel:')).map(key => [key, key.replace(/^ljus-himmel:/, 'main:')]).filter(([, other]) => groups.has(other))
-  if (pairs.length) {
-    say('## Grenen mot main', '')
+  // Two shaders in the same state side by side, `from` → `to`: each
+  // reading, the sky's own cost over the floor, and how much of that cost
+  // is left (F4's target is half or less, in device points and in mW).
+  const compare = (title, words, pairs) => {
+    if (!pairs.length) return
+    say(`## ${title}`, '', words, '')
+    const digits = field => (field === 'power' || field === 'frequency' ? 0 : 1)
+    const both = (from, to, field) => `${fixed(avg(from, field), digits(field))} → ${fixed(avg(to, field), digits(field))}`
+    const own = (key, field) => {
+      const base = floorOf(key), value = avg(key, field), floor = base ? avg(base, field) : null
+      return value === null || floor === null ? null : value - floor
+    }
+    // Below 5 device points or 500 mW over the floor (an unfocused window
+    // under true) what is left is the noise's share, not the sky's.
+    const least = { device_mean: 5, power: 500 }
+    const left = (from, to, field) => {
+      const [a, b] = [own(from, field), own(to, field)]
+      return a === null || b === null || a < least[field] ? '–' : `${Math.round((100 * b) / a)} %`
+    }
+    const ownBoth = (from, to, field) => `${fixed(own(from, field), digits(field))} → ${fixed(own(to, field), digits(field))}`
     table(
-      ['scen', 'animation', 'fokus', 'aktivitet', 'flik', 'device % main → gren', ...(hasGpuTime ? ['GPU ms/s main → gren'] : []), 'mW main → gren', ...(hasClock ? ['MHz main → gren', 'residens % main → gren'] : [])],
-      pairs.map(([branch, base]) => {
-        const [shader, animation, focus, activity, mark] = branch.split(' ')
-        const digits = field => (field === 'power' || field === 'frequency' ? 0 : 1)
-        const both = field => `${fixed(avg(base, field), digits(field))} → ${fixed(avg(branch, field), digits(field))}`
+      ['scen', 'animation', 'fokus', 'aktivitet', 'flik', 'device %', 'över golvet', 'kvar', ...(hasGpuTime ? ['GPU ms/s'] : []), 'mW', 'över golvet', 'kvar', ...(hasClock ? ['MHz', 'residens %'] : [])],
+      pairs.map(([from, to]) => {
+        const [shader, animation, focus, activity, mark] = to.split(' ')
         return [
-          shader.split(':')[1], animation, focus, activity, mark, both('device_mean'), ...(hasGpuTime ? [both('ghostty_gpu')] : []), both('power'),
-          ...(hasClock ? [both('frequency'), both('residency')] : []),
+          shader.split(':')[1], animation, focus, activity, mark,
+          both(from, to, 'device_mean'), ownBoth(from, to, 'device_mean'), left(from, to, 'device_mean'),
+          ...(hasGpuTime ? [both(from, to, 'ghostty_gpu')] : []),
+          both(from, to, 'power'), ownBoth(from, to, 'power'), left(from, to, 'power'),
+          ...(hasClock ? [both(from, to, 'frequency'), both(from, to, 'residency')] : []),
         ]
       }),
     )
   }
+  // The same scene and state on two refs: `to`'s rows against `from`'s.
+  const across = (from, to) => scenes.filter(key => key.startsWith(`${to}:`)).map(key => [key.replace(`${to}:`, `${from}:`), key]).filter(([other]) => groups.has(other))
+  compare('Grenen mot main', 'main → ljus-himmel.', across('main', 'ljus-himmel'))
+  compare('gpu mot baslinjen', 'ljus-himmel → gpu: F4:s mål är att himlens egen kostnad, över golvet, är högst 50 % av baslinjens i day-clear och night-lit, `true`, fokuserad.', across('ljus-himmel', 'gpu'))
+  compare(
+    'Den lättare himlen mot den hela',
+    'Scenen → samma scen med `--light`, den himmel som skrivs på batteri och när personen är borta.',
+    scenes.filter(key => /^[^ ]+-light /.test(key)).map(key => [key.replace(/-light /, ' '), key]).filter(([other]) => groups.has(other)),
+  )
 }
 
 const lives = rows.filter(r => r.shader === 'live')

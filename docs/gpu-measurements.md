@@ -88,6 +88,7 @@ battery, beside a process over 20 % CPU, or with Finder windows open.
 
 ```
 sudo -v && tools/measure/gpu.sh plan --twice          # the whole list, ABBA, ~75 min, leave the Mac
+sudo -v && tools/measure/gpu.sh plan f4 --twice       # F4 phase 4: that and the same on gpu, ~105 min
 sudo -v && tools/measure/gpu.sh row probe true focused idle          # one controlled row
 sudo -v && tools/measure/gpu.sh row ljus-himmel:day-clear true focused spinner
 sudo -v && tools/measure/gpu.sh live "solar-12:30 ofokus"            # the running Ghostty, as it is
