@@ -400,6 +400,8 @@ vec3 maypole(vec3 sky, vec2 p, float u, float k) {
   float foot = 0.62 * iResolution.y;
   float x = 0.72 * iResolution.x;
   float h = 5.5 * u;
+  // Pole, bar and rings all lie within 1.8u of the pole and between its top and foot, with a pixel's margin.
+  if (abs(p.x - x) > 1.8 * u + 1.0 || p.y < foot - h - 1.0 || p.y > foot + 1.0) return sky;
   vec3 green = lift(INK_GREEN, k);
   sky = ink(sky, green, box(p - vec2(x, foot - h * 0.5), vec2(0.12 * u, h * 0.5)), 0.95);
   sky = ink(sky, green, box(p - vec2(x, foot - h * 0.78), vec2(1.3 * u, 0.1 * u)), 0.95);
