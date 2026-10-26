@@ -6,13 +6,13 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 - **Arbetsplanen för åtta frågor:** `docs/superpowers/plans/2026-10-26-arbetsplan-atta-fragor.md`. Ordning F1 auto mode → F2 GPU-mätning → F3 fisk + löv/fåglar → F4 GPU-optimering → F5 motor/tema → F6 installation → F7 två teman → F8 community.
 - **F1 klar** (23d36f2 på `main`).
-- **F2 klar på grenen `gpu-matning`**, inte sammanslagen med `main` och inte pushad. Commits i sessionen:
+- **F2 klar**, sammanslagen med `main` (fast-forward) och pushad som `Fiddy134` till `83fb633`, tillsammans med F1:s commits. Grenen `gpu-matning` finns kvar lokalt. Commits i sessionen:
   - `9b8fa29`: `docs/gpu-measurements.md`, mätdokumentet.
   - `0e4c2d2`: Vincents beslut i uppgift 6, skrivna i dokumentet och i F4-planen, plus Ghostty-utkastet.
   - Före dem: `28eedac`, `b85f58c` och `eed15bd` (mätverktygen), och `721e0bc` (förra handoffen).
 - `docs/gpu-measurements.md` är skrivet av fable/high och granskat av opus/medium. Varje tabellcell är kontrollerad mot `rows.tsv` och powermetrics-loggarna, med 0 avvikelser. Prosans fynd (ett tjugotal) är rättade. Dokumentet är levande, med en sektion per körning; avsnitten "How the numbers are made" och "How to rerun" ligger överst.
 - **Steg 0:** den ljusa himlen ligger på grenen `ljus-himmel` (0bae2fb). `main` har samma modd-kod som 3cef45e. Den levande himlen (spegeln) är main-himlen.
-- **Inget är pushat** sedan 3cef45e.
+- `origin/main` = `83fb633`. Ingen modd-kod har ändrats sedan 3cef45e, så ingen versionsbump gjordes.
 
 ## Vad F2 visade (kort; detaljerna och förbehållen står i dokumentet)
 
@@ -49,7 +49,7 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 ## Nästa steg
 
-1. **Vincent:** pröva reprorutan i Ghostty-utkastet. Säg sedan om `gpu-matning` ska slås ihop med `main` och pushas (finishing-a-development-branch; push som `Fiddy134`). F2 ändrade inte modden, så ingen versionsbump behövs.
+1. **Vincent:** pröva reprorutan i Ghostty-utkastet, och redigera och skicka det om den håller.
 2. **F3 enligt planen** (kontext-fisk och löv/fåglar, planens rad 136 och framåt, workflow `fisk-lov`): börja med att läsa F3-avsnittet och husreceptet. Alternativt F4 först, om Vincent vill byta ordning; F4 har nu baslinjen och besluten den behövde.
 3. Före F4 uppgift 6: Vincents omkörning med `--twice` och 60 Hz-raderna med mW. Kontrollera efteråt att `powermetrics-*.log` finns och att `gpu.sh report <mapp>` visar mW.
 
