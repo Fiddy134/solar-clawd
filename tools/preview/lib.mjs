@@ -91,24 +91,26 @@ export function cellsSvg(base64, columns, rows, cell, top = 0, terminal = 0x282c
 const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
 // Its own empty profile, so it never reaches for the person's.
 const HEADLESS = ['--headless', '--hide-scrollbars', `--user-data-dir=${join(OUT, 'chrome')}`, '--no-first-run', '--no-default-browser-check']
-// WebGL without a GPU: SwiftShader.
+// WebGL without a GPU: SwiftShader, the same on every machine. With
+// `webgl` 'gpu', the Mac's own GPU through ANGLE's Metal backend, which
+// headless Chrome gives as readily as a windowed one: for timing the
+// shader on real hardware rather than for its pixels.
 const WEBGL = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
+const WEBGL_GPU = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
+const flagsFor = webgl => (webgl === 'gpu' ? WEBGL_GPU : webgl ? WEBGL : ['--disable-gpu'])
 
 // A page (an .svg or .html in .preview/) laid down as a PNG at exactly
 // width × height.
-export function screenshot(file, width, height, name, isWebGl = false) {
+export function screenshot(file, width, height, name, webgl = false) {
   const png = join(OUT, `${name}.png`)
-  const flags = isWebGl ? WEBGL : ['--disable-gpu']
-  execFileSync(CHROME, [...HEADLESS, ...flags, '--virtual-time-budget=4000', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${file}`], { stdio: 'ignore' })
+  execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${file}`], { stdio: 'ignore' })
 
   return png
 }
 
 // The page's DOM once its scripts have run, for what a page reports back.
-export function dumpDom(file, isWebGl = false) {
-  const flags = isWebGl ? WEBGL : ['--disable-gpu']
-
-  return execFileSync(CHROME, [...HEADLESS, ...flags, '--virtual-time-budget=4000', '--dump-dom', `file://${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+export function dumpDom(file, webgl = false) {
+  return execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', '--dump-dom', `file://${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
 }
 
 // An SVG laid down as a PNG at exactly width × height, by headless Chrome.

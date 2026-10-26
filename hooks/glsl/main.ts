@@ -180,6 +180,12 @@ float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky) {
   return near * (gap < 0.0 ? SHADE : mix(SHADE_NEAR, SHADE, smoothstep(SHADE_GAP.x, SHADE_GAP.y, gap)));
 }
 
+// The sky with the rim laid over it, a stage like the others so the
+// preview's --without shaded can leave it out.
+vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit) {
+  return mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky));
+}
+
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
   vec4 term = texture(iChannel0, uv);
@@ -255,7 +261,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = weather(sky, p, unit);
   sky = basket(sky, p, unit, k);
   // No rim under glass.
-  if (pane == 0.0) sky = mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky));
+  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit);
 
   fragColor = vec4(mix(sky, ink, mask), 1.0);
 }

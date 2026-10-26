@@ -8,6 +8,7 @@
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
 //   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff with a grey comment, a prompt row, a shell row, and a line of its dimmest text)
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
+//   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -53,7 +54,10 @@ const whole = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind
 // --without clouds,beacon: mainImage without those stages, to see what each costs (with --bench).
 const left = o.without ? String(o.without).split(',') : []
 const sky = whole.split('\n').filter(line => !left.some(name => new RegExp(`sky = ${name}\\(`).test(line))).join('\n')
-const source = sky + (o.broken ? '\nint broken = ;\n' : '')
+// --passthrough: the terminal as it is and no sky, the floor a bench of
+// the sky is read against.
+const passthrough = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(texture(iChannel0, fragCoord / iResolution.xy).rgb, 1.0); }'
+const source = (o.passthrough ? passthrough : sky) + (o.broken ? '\nint broken = ;\n' : '')
 writeFileSync(join(OUT, 'sky.glsl'), source)
 
 // Ghostty's frame, as WebGL can give it: y from the top, iChannel0 the
@@ -106,6 +110,7 @@ const bandSvg = o.band
 
 const page = `<!doctype html><html><body style="margin:0;background:#000">
 <canvas id="c" width="${width}" height="${height}" style="display:block"></canvas>
+<pre id="renderer" hidden></pre>
 <pre id="log" style="position:absolute;top:0;left:0;margin:8px;color:#f66;font:12px Menlo;white-space:pre-wrap"></pre>
 <script>
 const log = document.getElementById('log')
@@ -198,6 +203,10 @@ if (${!!o.p3}) {
 const render = () => {
 const gl = document.getElementById('c').getContext('webgl2', { preserveDrawingBuffer: true })
 if (!gl) fail('no WebGL2')
+// What it ran on, said with every run: a bench on SwiftShader and one on
+// the GPU are not the same kind of number.
+const info = gl && gl.getExtension('WEBGL_debug_renderer_info')
+if (gl) document.getElementById('renderer').textContent = gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)
 const shader = (type, text) => {
   const s = gl.createShader(type); gl.shaderSource(s, text); gl.compileShader(s)
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s))
@@ -229,14 +238,15 @@ try {
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
-  // --bench n: the time a frame takes, over n frames (SwiftShader, on the CPU).
+  // --bench n: the time a frame takes, over n frames, each read back so
+  // the next waits for it (SwiftShader on the CPU, or with --gpu the GPU).
   const runs = ${Number(o.bench ?? 0)}
   if (runs > 0) {
     const pixel = new Uint8Array(4)
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     const begin = performance.now()
     for (let i = 0; i < runs; i++) { gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel) }
-    document.title = 'ok ' + ((performance.now() - begin) / runs).toFixed(1)
+    document.title = 'ok ' + ((performance.now() - begin) / runs).toFixed(2)
   } else document.title = 'ok'
 } catch (error) { fail(String(error.message || error)) }
 }
@@ -250,7 +260,10 @@ if (bandSvg) {
 const html = join(OUT, `${o.out ?? 'shader'}.html`)
 writeFileSync(html, page)
 
-const dom = dumpDom(html, true)
+const webgl = o.gpu ? 'gpu' : true
+const dom = dumpDom(html, webgl)
+const renderer = /<pre id="renderer"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1]
+console.log('renderer:', renderer ? renderer.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : 'unknown')
 const failed = /<title>fail<\/title>/.test(dom) || !/<title>ok( [\d.]+)?<\/title>/.test(dom)
 if (failed) {
   const text = /<pre id="log"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1] ?? dom.slice(0, 2000)
@@ -261,5 +274,5 @@ if (o.bench) {
   console.log(`${/<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]} ms a frame`)
   process.exit(0)
 }
-console.log(screenshot(html, width, height, o.out ?? 'shader', true))
+console.log(screenshot(html, width, height, o.out ?? 'shader', webgl))
 console.log(`${source.length} chars, scene`, JSON.stringify(params.scene))
