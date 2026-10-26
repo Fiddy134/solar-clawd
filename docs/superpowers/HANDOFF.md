@@ -1,6 +1,6 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-26 kl 17:10, session `ecb98de8` (Opus 5.5, high, auto mode) → nästa.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-26 kl 17:20, session efter `ecb98de8` (Opus 5.5, high, auto mode) → nästa.
 
 ## Läge
 
@@ -14,7 +14,9 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 - **Verifierat utan fönster:** alla fjorton scenfiler finns i `.preview/measure/23d36f2/` (main) och `.preview/measure/0bae2fb/` (grenen), är deterministiska, dag och natt skiljer sig, bara grenen har `SHADE_DISC`, och händelserna syns som konstanter. Proben avkodas exakt ur WebGL-renderingar (0, 1, 4097, 12345, 16383, och 20000 slår runt till 3616), och andra bilder ger `-`. `plan --dry-run` ger 45 rader, cirka 37 minuter (`--twice`: 90 rader, andra varvet baklänges). Provtagningen mot den levande Ghostty ger rimliga tal. Rapporten fungerar på en syntetisk körning.
 - **Granskad** av en Opus-agent före körningen. Rättat: att stoppa powermetrics kunde hänga för evigt (sudo 1.9.17 kör den som rot i egen pty, så skalet kan inte signalera den; nu `sudo -n kill` med gränser och `-n` så den slutar själv), en scen som inte renderas blev en rad utan shader, WindowServers CPU-tid tappade decimalerna, tillstånd som macOS frågar om frågas nu i förflygningen, öppna Finder-fönster vägras eftersom "ofokuserad" är Finder framme, städningen tar tillbaka himlarna först och tål att köras två gånger, och HUP städar också.
-- **Inte verifierat (kräver Vincent):** start av instansen, System Events, skärmbilder, täckt/minimerad/flik, och powermetrics riktiga textformat. Rapportens tolkning bygger på formatet `Name ID CPU ms/s … GPU ms/s` med GPU sist och `GPU Power: N mW`; granskaren bedömde det till ungefär 70 respektive 65 procents säkerhet. Rapporten varnar om något saknas. Den första riktiga raden visar det.
+- **Första riktiga raden (17:14, `probe true focused idle`) fungerade:** 119,8 fps, 38,4 % device, 834 mW, Ghostty 18 % och WindowServer 61 % CPU; start, System Events och skärmbilder fungerar. `GPU Power: N mW` tolkas rätt. **Men powermetrics på macOS 27 ger `GPU ms/s` 0.00 för alla processer, även `ALL_TASKS`,** fast GPU:n är aktiv 77 %. Rapporten läser rätt; källan är tom. Ghosttys egen GPU-tid finns alltså inte; himlens kostnad får stå på device % och mW över golvet (hela maskinen) plus fps. Kolumnerna Ghostty/WindowServer GPU ms/s ska bort ur rapporten och dokumentet.
+- **Fallgropar från första försöket:** en powermetrics från ett avbrutet försök (fönstret stängdes) blev kvar som rot och fick nästa rad att vägra (`sudo pkill powermetrics`). Förkontrollen kan säga `busy: duetexpertd` en stund; vänta en minut. Claude-sessionen själv drar ~20 % CPU även i vila, så den ska vara stängd under `plan`.
+- **Fortfarande overifierat:** täckt/minimerad/flik; det visar `plan`.
 - Täckt görs med en andra, ogenomskinlig Ghostty över mätfönstret, inte med ett Finder-fönster vars sidopanel släpper igenom skrivbordet.
 
 ## Regler som gäller nu
@@ -42,7 +44,7 @@ tools/measure/gpu.sh row probe true focused idle
 tools/measure/gpu.sh report
 ```
 
-Den raden tar en minut. Titta på den: ett maximerat svart-vitt randigt fönster, sedan en rad i `.preview/measure/out/latest/rows.tsv` med fps omkring 120 och tal i kolumnerna för GPU ms/s och mW i rapporten. Saknas de är powermetrics format ett annat än väntat: spara `.preview/measure/out/latest/powermetrics.log` och låt nästa session anpassa `report.mjs`.
+Den raden är körd (se ovan).
 
 Sedan själva körningen, när Vincent lämnar datorn i 40 minuter (75 med `--twice`):
 
@@ -52,7 +54,7 @@ sudo -v && tools/measure/gpu.sh plan
 
 Efteråt, med Claude: nivå B-raderna (`gpu.sh live "<läge>"` från terminalen medan Vincent ställt den levande fliken i läget) och 60 Hz-raden, sedan uppgift 5: läs `.preview/measure/out/latest/report.md` och skriv `docs/gpu-measurements.md` (agentroll fable/high enligt planen), granskning (opus/medium) och uppgift 6 som en fråga till Vincent.
 
-Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Jag har kört första raden och planen; tolka rapporten och skriv docs/gpu-measurements.md."*
+Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Planen är körd; tolka rapporten och skriv docs/gpu-measurements.md."*
 
 ## Hur handoffen används
 
