@@ -39,21 +39,16 @@ Then, in a Claude Code session in Ghostty, run `/solar ghostty` once. It adds on
 
 ### Developing
 
-Clone the repository and load it as a plugin folder, which the session reloads as you save:
+Clone the repository, and let the session load a mirror of the clone rather than the clone itself:
 
 ```sh
 git clone https://github.com/Fiddy134/solar-clawd ~/solar-clawd
+~/solar-clawd/tools/dev/bootstrap.sh
 ```
 
-```json
-{
-  "env": {
-    "CLAUDE_CODE_PLUGIN_DIRS": "~/solar-clawd"
-  }
-}
-```
+The bootstrap keeps a copy of what the engine loads (the manifest, `hooks/`, `assets/`, `types/`) at `~/solar-clawd-live`, names it in `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, and adds hooks to `.claude/settings.local.json` that run `.claude/hooks/mirror.sh` after each of Claude's edits and shell commands, so the session reloads the mod as you save; git hooks do the same after a switch, a merge, a rebase, a stash or a reset, and `tools/dev/watch.sh` (needs `fswatch`) after saves from an editor. The mirror follows the clone alone: work in a worktree reaches the sky once it is merged. The mirror is there for auto mode: Claude Code treats a loaded plugin folder as a protected path, so an edit inside one is never approved there and auto mode ends; editing the clone and loading the mirror keeps it on. The mirror script sits under `.claude/`, itself protected, so nothing the session can rewrite unasked runs after its tool calls. Start a new Claude session after the bootstrap, and run the bootstrap yourself rather than through Claude.
 
-That goes in `~/.claude/settings.json`. `claude plugin test .` runs the tests; `tools/preview/run.sh shader` and `tools/preview/run.sh band` render the sky and the band to PNGs without Ghostty (their flags are listed at the top of each file in `tools/preview/`), and `tools/preview/gif.sh` makes the GIF above.
+`claude plugin test .` runs the tests; `tools/preview/run.sh shader` and `tools/preview/run.sh band` render the sky and the band to PNGs without Ghostty (their flags are listed at the top of each file in `tools/preview/`), and `tools/preview/gif.sh` makes the GIF above.
 
 ## Linux
 

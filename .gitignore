@@ -1,4 +1,4 @@
-.claude-plugin/types/
+.claude-plugin/types
 runtime/
 node_modules/
 .preview/
