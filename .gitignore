@@ -2,3 +2,4 @@
 runtime/
 node_modules/
 .preview/
+.worktrees/
