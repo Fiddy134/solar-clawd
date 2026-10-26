@@ -181,11 +181,15 @@ vec3 rainbow(vec3 sky, vec2 p, float k) {
 vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
   vec2 anchor = vec2(iResolution.x * (0.2 + 0.2 * seeded(seed, 1)), iResolution.y);
   vec2 at = vec2(iResolution.x * (0.35 + 0.2 * seeded(seed, 2)) + sin(iTime * 0.7) * 1.5 * u, iResolution.y * (0.22 + 0.1 * seeded(seed, 3)) + sin(iTime * 1.1) * 0.8 * u);
+  float cord = segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u;
+  // Off the string, the kite and its bows sit within 1.5u across and from 1.5u above to 4.9u below it.
+  vec2 off = p - at;
+  if (cord > 0.5 && (abs(off.x) > 1.5 * u + 1.0 || off.y < -1.5 * u - 1.0 || off.y > 4.9 * u + 1.0)) return sky;
   float tilt = sin(iTime * 0.9) * 0.25;
-  vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * (p - at);
+  vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * off;
   float diamond = (abs(q.x) / (0.9 * u) + abs(q.y) / (1.3 * u) - 1.0) * 0.9 * u;
   vec3 color = (q.x < 0.0) == (q.y < 0.0) ? INK_PINK : INK_YELLOW;
-  sky = ink(sky, lift(INK_INDIGO, k), segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u, 0.5);
+  sky = ink(sky, lift(INK_INDIGO, k), cord, 0.5);
   for (int j = 0; j < 6; j++) {
     vec2 bow = at + vec2(sin(iTime * 2.0 + float(j)) * 0.5 * u, (float(j) + 1.6) * 0.7 * u);
     sky = ink(sky, lift(j % 2 == 0 ? INK_BLUE : INK_PINK, k), length((p - bow) / vec2(1.6, 1.0)) - 0.16 * u, 1.0);
