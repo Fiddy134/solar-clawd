@@ -244,6 +244,8 @@ Summan av 1–5 och 7 i en vanlig dagscen: grovt −30–40 % av grenens egen ko
 
 ### Uppgifter
 
+**Läge 2026-10-26 kväll (grenen `gpu`, `ff85241`, inte på `main`):** uppgift 0 klar (`--gpu`, renderaren skrivs ut, `--without shaded`, `--passthrough`); fas 1 rangordnade om efter benchen (kanten och molnen störst, stjärnkartan 21 % av natten, glaset litet). Fas 2 inne: post 1 (13 grannar; 9 sprack vid 3456×2234), 2, 3, 5, 7 och 10, alla granskade. Utelämnade: post 4 (korset gav mörka prickar i feta bokstäver, backad), post 6 (Vincent nej, grenen `post6-moln-avvisad`), post 8 (grå text bleknade ofokuserat, Vincent tog bort den). Förhandsvisningen: himlens egen kostnad −37 till −43 %, alltså 57–63 % av baslinjen; målet ≤ 50 % avgörs i fas 4. Kvar: uppgift 5b, fas 4 (Vincents omkörning med `--twice`, sedan den sammanslagna shadern), ljusbeslutet med siffror, uppgift 7. Detaljerna: `docs/gpu-measurements.md`, "F4 phase 2".
+
 0. **Bench på riktig GPU (grind):** `tools/preview/lib.mjs` `--gpu` (`--use-angle=metal --enable-gpu --ignore-gpu-blocklist` i stället för SwiftShader; `.preview/shader-gpu.bundle.mjs` från idag 14:40 antyder att det redan provats), `shader.mjs` skriver `UNMASKED_RENDERER_WEBGL`, kanten får en egen rad `sky = shaded(sky, …)` så `--without shaded` fungerar; `--bench 200 --gpu` per `--without` {clouds, shaded, beacon, keeper, stars, realStars, events, basket, aurora} vid 3024×1964 för `day-clear` och `night-lit`; blir det SwiftShader ändå: relativa tal, sagt rakt ut.
 1. **Kanten från färre grannar** (post 1): 13, sedan 9 om diffen håller; ny `tools/preview/diff.mjs` (ffmpeg raw + node, efter `spike/still-test.sh`) rapporterar max och antal ändrade pixlar.
 2. **Billiga avvisningar för text** (post 2, 3, 4) + `--unmarked`; en commit var.

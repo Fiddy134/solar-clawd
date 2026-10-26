@@ -463,9 +463,11 @@ What Vincent decided (task 6, 2026-10-26):
 2. A report to Ghostty (an "Issue Triage" discussion) is drafted in
    `docs/superpowers/ghostty-discussion-draft.md`; Vincent checks the repro
    himself, edits it and posts it.
-3. The sweep keeps `always` for five minutes and gets an unfocused path in
-   the shader (F4 post 8: `iFocus == 0` skips the rim and the text test);
-   Vincent approves the visible difference on screenshots.
+3. The sweep keeps `always` for five minutes and was to get an unfocused
+   path in the shader (F4 post 8: `iFocus == 0` skips the rim). On the
+   screenshots Claude Code's grey text faded without the rim on a bright
+   day sky, in any window out of focus that redraws, so Vincent dropped
+   it; see "F4 phase 2" below.
 4. F4 starts now from this single pass. Its bench and rim work (tasks 0–1)
    use the preview and need no new run; the harness is run again with
    `--twice` on a quiet machine, the 60 Hz rows with mW, before F4's
@@ -711,8 +713,9 @@ is skipped under glass.
   cost model describes better than the drawing of a few clouds. F4's
   order puts the glass (changes 2 and 4) before the clouds (change 5,
   −5–8 % of the upper half); by this bench the clouds belong next to the
-  rim, and changes 5 and 6 may be worth more than the plan expects. Neither scene is overcast, so the bench says nothing
-  about a full sky of clouds.
+  rim, and changes 5 and 6 may be worth more than the plan expects.
+  Neither scene is overcast, so the bench says nothing about a full sky
+  of clouds.
 - **The glass is small:** at most 0.6–0.7 ms of 6.7–7.9 (7–11 %) even with
   a screen full of text, gradient and mask included. That is in line with
   F4's −2–3 % for change 2 and −2–4 % for change 4, but it puts the glass
@@ -751,3 +754,98 @@ is skipped under glass.
   bench. The spread above is what that left.
 - **Interaction between stages** makes single-stage costs overlap by up
   to ~10 % (see above).
+
+## F4 phase 2, 2026-10-26: the changes, each checked and benched in the preview
+
+The changes from F4's ranked list that went into the branch `gpu`
+(merge `ff85241`), what each was checked against, and what it saved in
+the preview bench above (`--gpu --bench 200`, 3024×1964). Three agents
+made them in parallel and benched at the same time, on a machine at load
+6–18, so the per-change numbers are back-to-back pairs read through that
+noise and only the large effects stand out. The merged shader was benched
+once more against `cbc9a0e` afterwards, with nothing else benching.
+Every change was reviewed by a fourth agent, who derived each bound from
+the code, rendered the cases the authors had not, and merged the three
+branches in a throwaway tree (clean, 99 tests, tsc).
+
+### What went in
+
+| change (F4 post) | commit | parity | bench |
+|---|---|---|---|
+| the rim reads 13 places, not 21, and the pixel's own mask (1) | `ce0367f` | `near` identical; `brightest` loses the 2.24 px places, so pixels within 1 px of text move up to 43/255; away from text ≤ 2/255 at 3024×1964, ≤ 5/255 at 3456×2234 | day 9.28 → 7.37 ms, night 10.68 → 8.87 (medians under load) |
+| glass turns light text away by its lightness (2) | `0924b99` | identical | below the noise |
+| an unmarked tab gets the terminal before any text work (3) | `32ba69c` | marked identical; unmarked equals the terminal | unmarked, text-heavy: 4.1 → 3.05 ms, the empty shader's 3.0 at the time |
+| clouds are placed before their kind is chosen (5) | `fc338dd` | identical, three scenes × three times, `--ufo`, 3456×2234 | day-clear 8.93 → 7.89, overcast 10.28 → 8.72, night 10.34 → 9.48; the cloud stage by day 3.0 → 2.0 ms |
+| the star chart reads a row of tiles as one run (10) | `180019e` | identical, with the cursor on a star and on a window wider than the tile grid | `realStars` about 2.5 → 1 ms at night (noisy) |
+| events leave alone the pixels they cannot reach (7) | `78d6029` … `9318afb` | identical for all eight, with the cursor on a leaf, a feather and a piece of confetti, at 420×240 and 3456×2234 | during the event: leaves and confetti −15–25 % of the frame, kite −6–7 %, comet unproven |
+
+The rim at 9 places (3×3) passed the 8/255 budget at 3024×1964 but not
+at 3456×2234, where the rim is widest: 95 477 pixels away from text moved
+by more than 8/255. It stays at 13. The places past 2 pixels weigh nothing
+in the rim's reach, but they did feed the brightest neighbour, which sets
+its strength; that is the whole visible change, and side by side it is
+hard to find.
+
+The only pixels over budget in the rim's parity sat in column 0, where
+the preview's texture wraps (WebGL's default REPEAT) and picks up the
+stand-in text at the right edge; cropping that column removes them all.
+`tools/preview/diff.mjs` does not wrap and counts every non-background
+terminal pixel as text, so changes inside diff fields never count as
+away from text.
+
+### What was tried and left out
+
+- **The cross pretest for text on glass (post 4).** Eight places looked
+  at before the sixteen gave up on text pixels that touch a field only
+  diagonally or two places off, such as the inside of a bold g's tail: a
+  dark speck of the field on glass, 77–128/255, with a bold 24–30 px font
+  at 3024×1964. With the stand-in's 22 px font it moved 19 pixels by
+  4/255, which is why the authors' check passed. Its saving did not show
+  in the bench. Reverted (`52fc2dc`).
+- **One hash per cloud slot (post 6).** It changes the clouds' speeds and
+  heights, so the sky looks different; in the before/after pairs the
+  clouds bunched behind the text in the upper left, and the saving was
+  5–9 % of the sky's own cost on one or two clean rounds. Vincent said
+  no; it is kept on the branch `post6-moln-avvisad`.
+- **The unfocused path (post 8).** Out of focus, skipping the rim (and,
+  first, the text-on-glass test) saved 30–40 % of the frame, but an
+  unfocused window is drawn not only during the sweep under `always`; it
+  is drawn whenever its terminal changes, under any setting. Without the
+  rim Claude Code's grey text fades on a bright day sky, the case the rim
+  is there for, so a session in a window beside the one in use would be
+  hard to read. Vincent dropped it (`e34b2ef`); the preview's
+  `--unfocused` stays for trying a cheaper rim out of focus later.
+
+### The merged shader against where phase 2 began
+
+`gpu` at `ff85241` against `cbc9a0e`, three rounds per scene, A B / B A,
+23:3x on 2026-10-26, load 5, nothing else benching; medians in ms a
+frame, the empty shader 2.28:
+
+| scene | before | after | the sky's own cost |
+|---|---|---|---|
+| day-clear | 9.12 | 6.32 | 6.8 → 4.0 (−41 %) |
+| day-overcast | 10.27 | 7.31 | 8.0 → 5.0 (−37 %) |
+| night-lit | 10.63 | 7.04 | 8.4 → 4.8 (−43 %) |
+
+Rounds agreed within 0.3 ms after and 1.8 ms before (one slow first
+round by day).
+
+### Where that leaves F4's target
+
+F4 aims at the sky's own cost at or under half the branch's baseline. In
+the preview the merged shader is at 57–63 % of it, so not yet there.
+Whether Ghostty agrees is for phase 4: the target is measured in device
+points and mW over the floor, and since power rises faster than clock,
+work that lets the GPU drop a clock step may save more in mW than in ms
+(an inference from the first run's clocks, not a measurement). What is
+left on the table, in the plan's terms: the light decision's option (b),
+the rim only where text is light and the sky bright, which would make the
+night's rim free; and the rim by day, still the largest stage after the
+clouds lost a third of theirs. The lighter shader for the still and
+battery rules (task 5b) saves where it applies but does not count towards
+this target, which is measured with `true`, focused.
+
+The baseline for phase 4 is the first run's table above; the harness
+runs again with `--twice` on a quiet machine, against the same scenes
+written from `gpu`.
