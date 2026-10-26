@@ -99,14 +99,13 @@ float glass(vec3 term, vec2 uv) {
 }
 
 // The places a coloured field and the core of a letter are looked for
-// round a pixel of text, in pixels: 1 and 4 away either side and above and
-// below, then the rest of the ring of 8 next to it and 2 away either side
-// and above and below, the middle of a stroke being up to 4 from the
-// field.
-const vec2 TEXT_NEAR[16] = vec2[16](vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0),
-                                    vec2(-4.0, 0.0), vec2(4.0, 0.0), vec2(0.0, -4.0), vec2(0.0, 4.0),
-                                    vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 1.0), vec2(1.0, 1.0),
-                                    vec2(-2.0, 0.0), vec2(2.0, 0.0), vec2(0.0, -2.0), vec2(0.0, 2.0));
+// round a pixel of text, in pixels: the ring of 8 next to it, and 2 and 4
+// away either side and above and below, the middle of a stroke being up
+// to 4 from the field.
+const vec2 TEXT_NEAR[16] = vec2[16](vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0, -1.0), vec2(-1.0, 0.0),
+                                    vec2(1.0, 0.0), vec2(-1.0, 1.0), vec2(0.0, 1.0), vec2(1.0, 1.0),
+                                    vec2(-2.0, 0.0), vec2(2.0, 0.0), vec2(0.0, -2.0), vec2(0.0, 2.0),
+                                    vec2(-4.0, 0.0), vec2(4.0, 0.0), vec2(0.0, -4.0), vec2(0.0, 4.0));
 
 // Whether term is text on a coloured field, answering the field's colour,
 // the text's (the place near that is furthest from the field's) and how
@@ -117,18 +116,9 @@ bool isTextOnGlass(vec3 term, vec2 uv, out vec3 field, out vec3 text, out float 
   if (luminance(iBackgroundColor) > 0.5) return false;
   // The darkest place near, a field being darker than the text on it; then
   // whether it is a coloured field's colour, asked once, out of the loop,
-  // which otherwise unrolls into hundreds of compares. Text with no
-  // coloured place darker than it among the first 8, as the light text on
-  // the sky and on the grey fields has none, is done with halfway.
+  // which otherwise unrolls into hundreds of compares.
   field = term;
-  bool isColourNear = false;
-  for (int i = 0; i < 8; i++) {
-    vec3 c = textureLod(iChannel0, uv + TEXT_NEAR[i] / iResolution.xy, 0.0).rgb;
-    if (luminance(c) < luminance(field)) field = c;
-    if (luminance(c) < luminance(term) && chroma(c) >= 0.05) isColourNear = true;
-  }
-  if (!isColourNear) return false;
-  for (int i = 8; i < 16; i++) {
+  for (int i = 0; i < 16; i++) {
     vec3 c = textureLod(iChannel0, uv + TEXT_NEAR[i] / iResolution.xy, 0.0).rgb;
     if (luminance(c) < luminance(field)) field = c;
   }
