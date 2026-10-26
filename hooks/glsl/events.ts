@@ -207,6 +207,8 @@ vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
     float b = seeded(seed, i * 4 + 1);
     float span = iResolution.x + 4.0 * u;
     float x = mod(a * span + iTime * (2.0 + WIND * 0.6) * u * (0.6 + 0.8 * b), span) - 2.0 * u;
+    // A leaf is drawn within u of its place, which the cursor shoves at most 3u.
+    if (abs(p.x - x) > 4.0 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.9 * u * (0.5 + a), iResolution.y + 4.0 * u) - 2.0 * u + sin(iTime * 1.7 + a * 9.0) * u;
     vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > u * u) continue;
@@ -316,6 +318,8 @@ vec3 confetti(vec3 sky, vec2 p, float u, float seed, float k) {
     float a = seeded(seed, i * 3);
     float b = seeded(seed, i * 3 + 1);
     float x = a * iResolution.x + sin(iTime * (1.0 + b) + a * 7.0) * 1.2 * u;
+    // A piece is drawn within u of its column.
+    if (abs(p.x - x) > u) continue;
     float y = mod(b * fall + iTime * (2.5 + 3.0 * a) * u, fall) - 2.0 * u;
     vec2 q = p - vec2(x, y);
     if (dot(q, q) > u * u) continue;
@@ -361,6 +365,8 @@ vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
     float a = seeded(seed, i * 4 + 50);
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
+    // A feather is drawn within 1.23u of its place, which the cursor shoves at most 3u.
+    if (abs(p.x - x) > 4.3 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
     vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > 1.5 * u * u) continue;
