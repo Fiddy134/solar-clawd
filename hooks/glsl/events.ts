@@ -182,7 +182,8 @@ vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
   vec2 anchor = vec2(iResolution.x * (0.2 + 0.2 * seeded(seed, 1)), iResolution.y);
   vec2 at = vec2(iResolution.x * (0.35 + 0.2 * seeded(seed, 2)) + sin(iTime * 0.7) * 1.5 * u, iResolution.y * (0.22 + 0.1 * seeded(seed, 3)) + sin(iTime * 1.1) * 0.8 * u);
   float cord = segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u;
-  // Off the string, the kite and its bows sit within 1.5u across and from 1.5u above to 4.9u below it.
+  // Off the string, the kite and its bows sit within 1.5u across and from
+  // 1.5u above to 4.9u below it.
   vec2 off = p - at;
   if (cord > 0.5 && (abs(off.x) > 1.5 * u + 1.0 || off.y < -1.5 * u - 1.0 || off.y > 4.9 * u + 1.0)) return sky;
   float tilt = sin(iTime * 0.9) * 0.25;
@@ -287,7 +288,8 @@ vec3 constellation(vec3 sky, vec2 p, float u, float seed) {
   float s = 1.7 * u;
   // Left of the arc and below where a comet would hang.
   vec2 o = iResolution.xy * vec2(0.08 + 0.22 * seeded(seed, 1), 0.34 + 0.12 * seeded(seed, 2));
-  // The figure spans -0.2 to 7.2 across and 0 to 4.4 down, in s; its lines, stars and eyes reach 0.3u + 1 past it.
+  // The figure spans -0.2 to 7.2 across and 0 to 4.4 down, in s; its lines,
+  // stars and eyes reach less than 0.3u + 1 past it.
   vec2 off = p - o;
   float m = 0.3 * u + 1.0;
   if (off.x < -0.2 * s - m || off.x > 7.2 * s + m || off.y < -m || off.y > 4.4 * s + m) return sky;
@@ -365,7 +367,8 @@ vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
     float a = seeded(seed, i * 4 + 50);
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
-    // A feather is drawn within 1.23u of its place, which the cursor shoves at most 3u.
+    // A feather is drawn within 1.23u of its place, which the cursor shoves
+    // at most 3u.
     if (abs(p.x - x) > 4.3 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
     vec2 q = p - shy(vec2(x, y), u);
@@ -400,7 +403,8 @@ vec3 maypole(vec3 sky, vec2 p, float u, float k) {
   float foot = 0.62 * iResolution.y;
   float x = 0.72 * iResolution.x;
   float h = 5.5 * u;
-  // Pole, bar and rings all lie within 1.8u of the pole and between its top and foot, with a pixel's margin.
+  // Pole, bar and rings all lie within 1.8u of the pole and between its top
+  // and foot, with a pixel's margin.
   if (abs(p.x - x) > 1.8 * u + 1.0 || p.y < foot - h - 1.0 || p.y > foot + 1.0) return sky;
   vec3 green = lift(INK_GREEN, k);
   sky = ink(sky, green, box(p - vec2(x, foot - h * 0.5), vec2(0.12 * u, h * 0.5)), 0.95);
