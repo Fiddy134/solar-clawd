@@ -100,8 +100,10 @@ if [ -n "$dry" ]; then
 fi
 
 if [ -n "$now" ]; then
-  if ! (exec 3</dev/tty) 2>/dev/null; then
-    echo "solar-clawd mirror: --now is for a person at a terminal, and this shell has none (nor has Claude's ! prompt). From a terminal window, arm the mirror: .claude/hooks/arm.sh" >&2
+  # A person at a terminal: a terminal on stdin and at /dev/tty, and not a
+  # shell a session opened (CLAUDECODE is set in those, and in the ! prompt).
+  if [ -n "${CLAUDECODE:-}" ] || ! [ -t 0 ] || ! (exec 3</dev/tty) 2>/dev/null; then
+    echo "solar-clawd mirror: --now is for a person at a terminal window, and this shell is not one. From a terminal window, arm the mirror: .claude/hooks/arm.sh" >&2
     exit 1
   fi
 else

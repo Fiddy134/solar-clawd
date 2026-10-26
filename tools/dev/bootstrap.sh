@@ -23,8 +23,8 @@ command -v rsync >/dev/null 2>&1 || { echo "bootstrap: rsync is needed" >&2; exi
 command -v node >/dev/null 2>&1 || { echo "bootstrap: node is needed to edit the settings files" >&2; exit 1; }
 [ -x "$script" ] || { echo "bootstrap: $script is missing or not executable" >&2; exit 1; }
 [ -d "$root/.git" ] || { echo "bootstrap: $root is a worktree, not the clone; run this from the clone" >&2; exit 1; }
-if ! (exec 3</dev/tty) 2>/dev/null; then
-  echo "bootstrap: run this yourself from a terminal window; a session's shell has no terminal, and Claude's ! prompt has none either" >&2
+if [ -n "${CLAUDECODE:-}" ] || ! [ -t 0 ] || ! (exec 3</dev/tty) 2>/dev/null; then
+  echo "bootstrap: run this yourself from a terminal window; a session's own shell is not one, and neither is Claude's ! prompt" >&2
   exit 1
 fi
 
