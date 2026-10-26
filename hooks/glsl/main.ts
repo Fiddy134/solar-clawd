@@ -274,11 +274,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = weather(sky, p, unit);
   sky = basket(sky, p, unit, k);
   // No rim under glass. Without glass, mask is still the terminal's own,
-  // text on a coloured field being glass or else done with above. No rim
-  // out of focus either, where the sky is drawn while the lighthouse sweeps
-  // and whenever the terminal changes: the rim costs nearly as much as the
-  // rest of the sky, and light text on it still reads without one.
-  if (pane == 0.0 && iFocus != 0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
+  // text on a coloured field being glass or else done with above.
+  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
 
   fragColor = vec4(mix(sky, ink, mask), 1.0);
 }
