@@ -3,13 +3,14 @@
 # makes the mirror, hands the engine's type declarations over to it, points
 # CLAUDE_CODE_PLUGIN_DIRS in ~/.claude/settings.json at it, adds the hooks
 # in .claude/settings.local.json that keep it current, and gives git hooks
-# that do the same. Run it yourself from a shell (or as
-# "! tools/dev/bootstrap.sh" at Claude's prompt), never through Claude in
-# auto mode: the settings files and .git are protected paths on purpose.
-# Safe to run again; it changes only what is not yet as it should be, and
-# keeps a copy of each settings file it changes.
+# that do the same. Run it yourself from a terminal window, never through
+# Claude: the settings files and .git are protected paths on purpose, and
+# it refuses a shell with no terminal, which a session's tool calls and
+# Claude's ! prompt both are. Safe to run again; it changes only what is
+# not yet as it should be, and keeps a copy of each settings file it
+# changes.
 #   tools/dev/bootstrap.sh            the mirror at ~/solar-clawd-live
-#   SOLAR_CLAWD_MIRROR=<folder> tools/dev/bootstrap.sh   elsewhere (baked into the hooks)
+#   SOLAR_CLAWD_MIRROR=<folder> tools/dev/bootstrap.sh   elsewhere (recorded in .git/solar-clawd/mirror)
 set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 mirror=${SOLAR_CLAWD_MIRROR:-$HOME/solar-clawd-live}
@@ -22,9 +23,15 @@ command -v rsync >/dev/null 2>&1 || { echo "bootstrap: rsync is needed" >&2; exi
 command -v node >/dev/null 2>&1 || { echo "bootstrap: node is needed to edit the settings files" >&2; exit 1; }
 [ -x "$script" ] || { echo "bootstrap: $script is missing or not executable" >&2; exit 1; }
 [ -d "$root/.git" ] || { echo "bootstrap: $root is a worktree, not the clone; run this from the clone" >&2; exit 1; }
+if ! (exec 3</dev/tty) 2>/dev/null; then
+  echo "bootstrap: run this yourself from a terminal window; a session's shell has no terminal, and Claude's ! prompt has none either" >&2
+  exit 1
+fi
 
 echo "1. The mirror at $mirror"
-env -u CLAUDECODE "$script" "$mirror"
+mkdir -p "$root/.git/solar-clawd"
+printf '%s\n' "$mirror" > "$root/.git/solar-clawd/mirror"
+"$script" --now "$mirror"
 
 echo "2. The engine's type declarations"
 if [ -d "$root/.claude-plugin/types" ] && [ ! -L "$root/.claude-plugin/types" ]; then
@@ -126,6 +133,6 @@ JS
 echo
 echo "Done. Start a new Claude session in $root: it loads the mod from $mirror, and in auto mode"
 echo "edits in the clone go through. They reach the live sky while the mirror is armed: run"
-echo "  ! tools/dev/arm.sh"
-echo "at the start of a session of work on the mod (8 hours; give a number of hours, or off)."
-echo "For saves from an editor, run tools/dev/watch.sh (needs fswatch)."
+echo "  $root/.claude/hooks/arm.sh"
+echo "from a terminal window at the start of a session of work on the mod (8 hours; give a number of hours, or off)."
+echo "For saves from an editor, run tools/dev/watch.sh (needs fswatch) while armed."

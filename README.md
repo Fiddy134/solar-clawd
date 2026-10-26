@@ -43,12 +43,12 @@ Clone the repository, and let the session load a mirror of the clone rather than
 
 ```sh
 git clone https://github.com/Fiddy134/solar-clawd ~/solar-clawd
-~/solar-clawd/tools/dev/bootstrap.sh
+~/solar-clawd/tools/dev/bootstrap.sh    # from a terminal window, not through Claude
 ```
 
 The bootstrap keeps a copy of what the engine loads (the manifest, `hooks/`, `assets/`, `types/`) at `~/solar-clawd-live`, names it in `CLAUDE_CODE_PLUGIN_DIRS` in `~/.claude/settings.json`, and adds hooks to `.claude/settings.local.json` that run `.claude/hooks/mirror.sh` after each of Claude's edits and shell commands, so the session reloads the mod as you save; git hooks do the same after a switch, a merge, a rebase, a stash or a reset, and `tools/dev/watch.sh` (needs `fswatch`) after saves from an editor. The mirror follows the clone alone: work in a worktree reaches the sky once it is merged. The mirror is there for auto mode: Claude Code treats a loaded plugin folder as a protected path, so an edit inside one is never approved there and auto mode ends; editing the clone and loading the mirror keeps it on.
 
-That protection exists so that code the engine runs is not changed with nobody reading it, and the mirror respects it: after Claude's own tool calls it copies only while you have armed it with `tools/dev/arm.sh` (run as `! tools/dev/arm.sh` at the prompt; eight hours, or a number of hours, or `off`), while your own git commands and `watch.sh` copy regardless. Unarmed, it says so once an hour when there is something to copy. The mirror script sits under `.claude/`, itself protected, so nothing the session can rewrite unasked runs after its tool calls. Start a new Claude session after the bootstrap, and run the bootstrap and `arm.sh` yourself rather than through Claude.
+That protection exists so that code the engine runs is not changed with nobody reading it, and the mirror keeps to it: it copies only while you have armed it, by running `.claude/hooks/arm.sh` in a terminal window (eight hours, or a number of hours, or `off`). Unarmed, nothing copies, and it says so once an hour when there is something to copy. Arming, the bootstrap and the mirror's `--now` refuse a shell with no terminal, which is what a session's own tool calls are, and Claude's `!` prompt too; and the scripts and their stamps live under `.claude/` and `.git/`, both protected, so nothing the session can rewrite unasked runs after its tool calls. Start a new Claude session after the bootstrap.
 
 `claude plugin test .` runs the tests; `tools/preview/run.sh shader` and `tools/preview/run.sh band` render the sky and the band to PNGs without Ghostty (their flags are listed at the top of each file in `tools/preview/`), and `tools/preview/gif.sh` makes the GIF above.
 

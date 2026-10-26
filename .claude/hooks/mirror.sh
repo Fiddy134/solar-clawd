@@ -7,57 +7,68 @@
 # keeps auto mode on.
 #
 # That protection is there so that code the engine runs is not changed
-# with nobody reading it, and the mirror would undo it if it copied after
-# every one of Claude's tool calls. So Claude's own calls (the settings
-# hooks, and git run from its shell, where CLAUDECODE is set) copy only
-# while the person has armed the mirror with tools/dev/arm.sh, for a few
-# hours at a time; the person's own commands (git from a terminal,
-# tools/dev/watch.sh) always copy. Unarmed, with something to copy, it
-# says so once an hour.
+# with nobody reading it, and the mirror would undo it if it copied on its
+# own. So it copies only while the person has armed it with
+# .claude/hooks/arm.sh, whoever asks (the settings hooks after Claude's
+# tool calls, git's hooks, tools/dev/watch.sh), for a few hours at a time.
+# Unarmed, with something to copy, it says so once an hour. --now copies
+# regardless, and only for a person at a terminal: arm.sh and the bootstrap
+# use it, and a session's own shell has no terminal to offer. (A shell that
+# fakes one, say with script(1), is a deliberate step round the gate,
+# which auto mode's reviewer sees as such; the gate stops the unprompted
+# flow, it is not a lock.)
 #
 # It lives under .claude/, a protected path too, because the hooks run it
 # after every tool call: a script the session could rewrite unasked would
-# be a way round the permission system.
-#   .claude/hooks/mirror.sh [--dry-run] [--hook] [mirror]
-# The mirror is the argument, else $SOLAR_CLAWD_MIRROR, else ~/solar-clawd-live.
+# be a way round the permission system. Its stamps live in .git/, protected
+# the same way.
+#   .claude/hooks/mirror.sh [--dry-run] [--now] [mirror]
+# The mirror is the argument, else the one the bootstrap recorded in
+# .git/solar-clawd/mirror, else $SOLAR_CLAWD_MIRROR, else ~/solar-clawd-live.
 set -u
 src=$(cd "$(dirname "$0")/../.." && pwd)
 dry=
-byhook=
+now=
 while [ $# -gt 0 ]; do
   case $1 in
     --dry-run) dry=1 ;;
-    --hook) byhook=1 ;;
+    --now) now=1 ;;
+    --hook) ;;
     --) shift; break ;;
     -*) echo "solar-clawd mirror: unknown option $1" >&2; exit 2 ;;
     *) break ;;
   esac
   shift
 done
-dst=${1:-${SOLAR_CLAWD_MIRROR:-$HOME/solar-clawd-live}}
+# A worktree of the clone (its .git is a file, not a folder) is not the
+# clone: git runs the hooks there too, and the mirror follows the clone alone.
+[ -d "$src/.git" ] || exit 0
+stamps=$src/.git/solar-clawd
+recorded=
+[ -f "$stamps/mirror" ] && recorded=$(cat "$stamps/mirror")
+dst=${1:-${recorded:-${SOLAR_CLAWD_MIRROR:-$HOME/solar-clawd-live}}}
 case $dst in /*) ;; *) dst=$PWD/$dst ;; esac
 dst=${dst%/}
 state=${XDG_STATE_HOME:-$HOME/.local/state}/solar-clawd/dev
 [ -d "$HOME/Library/Application Support" ] && state="$HOME/Library/Application Support/solar-clawd/dev"
 log=$state/mirror.log
 lock=${TMPDIR:-/tmp}/solar-clawd-mirror.lock
-# A worktree of the clone (its .git is a file, not a folder) is not the
-# clone: git runs the hooks there too, and the mirror follows the clone alone.
-[ -d "$src/.git" ] || exit 0
 case $dst in
   "$src"|"$src"/*|/|"$HOME") echo "solar-clawd mirror: refusing to mirror into $dst" >&2; exit 1 ;;
 esac
 case $src in
   "$dst"/*) echo "solar-clawd mirror: the clone must not sit inside its mirror ($dst)" >&2; exit 1 ;;
 esac
-mkdir -p "$dst" "$state" 2>/dev/null
+mkdir -p "$dst" "$state" "$stamps" 2>/dev/null
 
 # Only what the engine loads: the manifest, the hooks module and what it
 # imports, the assets it reads, the state's types, and the tsconfig the
 # engine would otherwise write. A save of anything else (docs, previews,
 # git's own files) would reload the mod for no reason. The engine writes
 # .claude-plugin/types into the mirror; in the clone that is a link to it,
-# so it stays out of the copy and --delete never touches it.
+# so it stays out of the copy and --delete never touches it. The one file
+# on its own is compared byte for byte: openrsync lists a lone file as sent
+# on every dry run, which would make an unchanged mirror look behind.
 failed=
 one() {
   if out=$(rsync -a --delete "$@" 2>&1); then
@@ -67,9 +78,6 @@ one() {
 $out"
   fi
 }
-# The one file on its own is compared byte for byte: openrsync lists a lone
-# file as sent on every dry run, which would make an unchanged mirror look
-# behind.
 copies() {
   for part in hooks assets types; do
     [ -d "$src/$part" ] && one "$@" "$src/$part/" "$dst/$part/"
@@ -91,21 +99,25 @@ if [ -n "$dry" ]; then
   exit 1
 fi
 
-if [ -n "$byhook" ] || [ -n "${CLAUDECODE:-}" ]; then
+if [ -n "$now" ]; then
+  if ! (exec 3</dev/tty) 2>/dev/null; then
+    echo "solar-clawd mirror: --now is for a person at a terminal, and this shell has none (nor has Claude's ! prompt). From a terminal window, arm the mirror: .claude/hooks/arm.sh" >&2
+    exit 1
+  fi
+else
   armed=
-  if [ -f "$state/mirror-armed" ]; then
-    until=$(cat "$state/mirror-armed" 2>/dev/null || echo 0)
-    now=$(date +%s)
-    [ "$until" -gt "$now" ] 2>/dev/null && armed=1
+  if [ -f "$stamps/armed" ]; then
+    until=$(cat "$stamps/armed" 2>/dev/null || echo 0)
+    [ "$until" -gt "$(date +%s)" ] 2>/dev/null && armed=1
   fi
   if [ -z "$armed" ]; then
     pending=$(copies --dry-run -i)
     [ -z "$pending" ] && exit 0
-    now=$(date +%s)
-    last=$(cat "$state/mirror-notice" 2>/dev/null || echo 0)
-    [ $((now - last)) -lt 3600 ] 2>/dev/null && exit 0
-    echo "$now" > "$state/mirror-notice"
-    echo "solar-clawd mirror: not armed, so this session's edits stay out of the live sky; to let them in for a while, run: ! tools/dev/arm.sh" >&2
+    now_s=$(date +%s)
+    last=$(cat "$stamps/notice" 2>/dev/null || echo 0)
+    [ $((now_s - last)) -lt 3600 ] 2>/dev/null && exit 0
+    echo "$now_s" > "$stamps/notice"
+    echo "solar-clawd mirror: not armed, so changes in the clone stay out of the live sky; to let them in for a while, run from a terminal window: .claude/hooks/arm.sh" >&2
     exit 1
   fi
 fi
