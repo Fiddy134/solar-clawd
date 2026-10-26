@@ -106,6 +106,11 @@ const vec2 TEXT_NEAR[16] = vec2[16](vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0,
                                     vec2(1.0, 0.0), vec2(-1.0, 1.0), vec2(0.0, 1.0), vec2(1.0, 1.0),
                                     vec2(-2.0, 0.0), vec2(2.0, 0.0), vec2(0.0, -2.0), vec2(0.0, 2.0),
                                     vec2(-4.0, 0.0), vec2(4.0, 0.0), vec2(0.0, -4.0), vec2(0.0, 4.0));
+// Half of them, 1 and 4 away either side and above and below, looked at
+// first: text with no coloured field darker than it among these has none
+// near, as the light text on the sky and on the grey fields has not.
+const vec2 TEXT_CROSS[8] = vec2[8](vec2(-1.0, 0.0), vec2(1.0, 0.0), vec2(0.0, -1.0), vec2(0.0, 1.0),
+                                   vec2(-4.0, 0.0), vec2(4.0, 0.0), vec2(0.0, -4.0), vec2(0.0, 4.0));
 
 // Whether term is text on a coloured field, answering the field's colour,
 // the text's (the place near that is furthest from the field's) and how
@@ -114,6 +119,12 @@ const vec2 TEXT_NEAR[16] = vec2[16](vec2(-1.0, -1.0), vec2(0.0, -1.0), vec2(1.0,
 // lighter glass. Only on a dark background, as glass.
 bool isTextOnGlass(vec3 term, vec2 uv, out vec3 field, out vec3 text, out float cover) {
   if (luminance(iBackgroundColor) > 0.5) return false;
+  bool isColourNear = false;
+  for (int i = 0; i < 8; i++) {
+    vec3 c = textureLod(iChannel0, uv + TEXT_CROSS[i] / iResolution.xy, 0.0).rgb;
+    if (luminance(c) < luminance(term) && chroma(c) >= 0.05) isColourNear = true;
+  }
+  if (!isColourNear) return false;
   // The darkest place near, a field being darker than the text on it; then
   // whether it is a coloured field's colour, asked once, out of the loop,
   // which otherwise unrolls into hundreds of compares.
