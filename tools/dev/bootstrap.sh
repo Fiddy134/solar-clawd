@@ -24,7 +24,7 @@ command -v node >/dev/null 2>&1 || { echo "bootstrap: node is needed to edit the
 [ -d "$root/.git" ] || { echo "bootstrap: $root is a worktree, not the clone; run this from the clone" >&2; exit 1; }
 
 echo "1. The mirror at $mirror"
-"$script" "$mirror"
+env -u CLAUDECODE "$script" "$mirror"
 
 echo "2. The engine's type declarations"
 if [ -d "$root/.claude-plugin/types" ] && [ ! -L "$root/.claude-plugin/types" ]; then
@@ -77,13 +77,13 @@ if (next.join(':') !== dirs.join(':')) {
   s.env.CLAUDE_CODE_PLUGIN_DIRS = next.join(':')
   changed.push('CLAUDE_CODE_PLUGIN_DIRS = ' + next.join(':'))
 }
-// The classifier's picture of what is trusted. A list /auto-mode-setup
-// wrote spells the defaults out, so nothing is spliced in; one entry names
-// this repo, which such a list otherwise leaves out.
-const line = `Trusted repo (personal project): ${root}, its mirror ${mirror}, and github.com/Fiddy134/solar-clawd (public, pushed as the personal GitHub account Fiddy134)`
-if (s.autoMode && Array.isArray(s.autoMode.environment) && !s.autoMode.environment.includes(line)) {
-  s.autoMode.environment.push(line)
-  changed.push('autoMode.environment names solar-clawd and its mirror as a trusted repo')
+// The classifier's picture of what is trusted is left as it is: a line an
+// earlier bootstrap added about this repo and its mirror is taken out again,
+// so that writes touching the mod's code keep their ordinary review.
+if (s.autoMode && Array.isArray(s.autoMode.environment)) {
+  const before = s.autoMode.environment.length
+  s.autoMode.environment = s.autoMode.environment.filter(e => !String(e).startsWith(`Trusted repo (personal project): ${root}`))
+  if (s.autoMode.environment.length !== before) changed.push('autoMode.environment no longer names this repo and its mirror')
 }
 if (changed.length) {
   if (fs.existsSync(file)) fs.copyFileSync(file, `${file}.bak-${stamp}`)
@@ -100,7 +100,7 @@ const path = require('path')
 const [file, script, mirror, stamp] = process.argv.slice(2)
 const text = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '{}'
 const s = JSON.parse(text)
-const command = `"${script}" "${mirror}"`
+const command = `"${script}" --hook "${mirror}"`
 s.hooks = s.hooks ?? {}
 let changed = false
 // After a tool call that succeeded, and after one that failed (a shell
@@ -124,5 +124,8 @@ else {
 JS
 
 echo
-echo "Done. Start a new Claude session in $root: it loads the mod from $mirror,"
-echo "and in auto mode edits in the clone go through. For saves from an editor, run tools/dev/watch.sh (needs fswatch)."
+echo "Done. Start a new Claude session in $root: it loads the mod from $mirror, and in auto mode"
+echo "edits in the clone go through. They reach the live sky while the mirror is armed: run"
+echo "  ! tools/dev/arm.sh"
+echo "at the start of a session of work on the mod (8 hours; give a number of hours, or off)."
+echo "For saves from an editor, run tools/dev/watch.sh (needs fswatch)."
