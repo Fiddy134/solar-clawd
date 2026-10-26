@@ -77,6 +77,11 @@ bool isFieldColour(vec3 term) {
   return false;
 }
 
+// Lighter than any of the field colours, the lightest being diffAddedWord
+// in Display P3 at 0.56: anything lighter, as most text is, is not a field
+// and needs none of the compares.
+const float FIELD_LIGHTEST = 0.6;
+
 // How much of the sky shows through a terminal pixel that is not its
 // background: GLASS where it is in one of Claude Code's own fields, of
 // their colour and of their shape; none anywhere else. Text on a field,
@@ -88,7 +93,7 @@ bool isFieldColour(vec3 term) {
 // are the text.
 float glass(vec3 term, vec2 uv) {
   if (luminance(iBackgroundColor) > 0.5) return 0.0;
-  if (!isFieldColour(term)) return 0.0;
+  if (luminance(term) > FIELD_LIGHTEST || !isFieldColour(term)) return 0.0;
   if (chroma(term) < 0.05 && !isField(term, uv)) return 0.0;
   return GLASS;
 }
