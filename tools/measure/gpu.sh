@@ -314,7 +314,7 @@ start_powermetrics() {
   [[ -z $(powermetrics_pids) ]] || die 'powermetrics is already running; stop it first'
   # It stops by itself after the seconds the run should take, and some.
   sudo -n /usr/bin/env LC_ALL=C /usr/bin/powermetrics --samplers tasks,gpu_power --show-process-gpu \
-    -i 1000 -n $(( ${1:-3600} + 600 )) -o $dir/powermetrics.log > /dev/null 2>&1 &!
+    -i 1000 -n $(( ${1:-3600} + 600 )) -o $dir/powermetrics.part > /dev/null 2>&1 &!
   pm_pid=started
   # sudo forgets after five minutes; a long run keeps it fresh.
   { while kill -0 $$ 2>/dev/null; do sudo -n -v 2>/dev/null; sleep 60; done } &!
@@ -331,6 +331,9 @@ stop_powermetrics() {
     for i in {1..30}; do [[ -z $(powermetrics_pids) ]] && break; zselect -t 10; done
   done
   [[ -n $(powermetrics_pids) ]] && note 'powermetrics is still running; stop it with: sudo pkill powermetrics'
+  # Each row of a folder that gathers several (live, row) adds its stretch
+  # to the one log, which powermetrics itself would write over.
+  [[ -f $dir/powermetrics.part ]] && { cat $dir/powermetrics.part >> $dir/powermetrics.log; rm -f $dir/powermetrics.part }
   [[ -n $keep_pid ]] && kill $keep_pid 2>/dev/null
   keep_pid='' pm_pid=''
 }
