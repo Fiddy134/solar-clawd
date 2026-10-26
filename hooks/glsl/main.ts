@@ -155,21 +155,25 @@ const vec3 SHADE_TINT = vec3(0.03, 0.06, 0.16);
 // The rim's width, in units, at most 1.75 pixels: it fades out by half a
 // pixel past that, inside SHADE_DISC.
 const float SHADE_RADIUS = 0.05;
-// The disc looked at, as a fixed list (x, y, distance) rather than a
-// square with the corners skipped: a loop the compiler can lay out whole.
-const vec3 SHADE_DISC[21] = vec3[21](vec3(0.0, 0.0, 0.0),
+// The disc looked at round a pixel, as a fixed list (x, y, distance) rather
+// than a square with the corners skipped: a loop the compiler can lay out
+// whole. The pixel itself is not in it, being the terminal's own texel,
+// read already. Nothing past 2 pixels: at 2.24, the next places out, the
+// rim has faded to nothing by 1.65 pixels wide (a Retina window) and to a
+// four-thousandth at its widest.
+const vec3 SHADE_DISC[12] = vec3[12](
   vec3(-1.0, 0.0, 1.0), vec3(1.0, 0.0, 1.0), vec3(0.0, -1.0, 1.0), vec3(0.0, 1.0, 1.0),
   vec3(-1.0, -1.0, 1.4142), vec3(1.0, -1.0, 1.4142), vec3(-1.0, 1.0, 1.4142), vec3(1.0, 1.0, 1.4142),
-  vec3(-2.0, 0.0, 2.0), vec3(2.0, 0.0, 2.0), vec3(0.0, -2.0, 2.0), vec3(0.0, 2.0, 2.0),
-  vec3(-2.0, -1.0, 2.2361), vec3(2.0, -1.0, 2.2361), vec3(-2.0, 1.0, 2.2361), vec3(2.0, 1.0, 2.2361),
-  vec3(-1.0, -2.0, 2.2361), vec3(1.0, -2.0, 2.2361), vec3(-1.0, 2.0, 2.2361), vec3(1.0, 2.0, 2.2361));
+  vec3(-2.0, 0.0, 2.0), vec3(2.0, 0.0, 2.0), vec3(0.0, -2.0, 2.0), vec3(0.0, 2.0, 2.0));
 
-float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky) {
+// term and mask are the pixel's own: the terminal's colour there and how
+// much of it is not the background, as mainImage has them.
+float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky, vec3 term, float mask) {
   if (luminance(iBackgroundColor) > 0.5) return 0.0;
   float radius = clamp(unit * SHADE_RADIUS, 1.5, 1.75);
-  float near = 0.0;
-  float brightest = 0.0;
-  for (int i = 0; i < 21; i++) {
+  float near = mask;
+  float brightest = mask > 0.5 ? luminance(term) : 0.0;
+  for (int i = 0; i < 12; i++) {
     float weight = 1.0 - smoothstep(radius - 1.0, radius + 0.5, SHADE_DISC[i].z);
     vec3 c = textureLod(iChannel0, (fragCoord + SHADE_DISC[i].xy) / iResolution.xy, 0.0).rgb;
     float text = smoothstep(0.02, 0.12, min(distance(c, iBackgroundColor), distance(c, linearBackground)));
@@ -182,8 +186,8 @@ float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky) {
 
 // The sky with the rim laid over it, a stage like the others so the
 // preview's --without shaded can leave it out.
-vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit) {
-  return mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky));
+vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit, vec3 term, float mask) {
+  return mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky, term, mask));
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -260,8 +264,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
   sky = basket(sky, p, unit, k);
-  // No rim under glass.
-  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit);
+  // No rim under glass. Without glass, mask is still the terminal's own,
+  // text on a coloured field being glass or else done with above.
+  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
 
   fragColor = vec4(mix(sky, ink, mask), 1.0);
 }
