@@ -78,6 +78,10 @@ export type ShaderParams = {
   // The width of the strip at the right where the lighthouse stands, in
   // pixels; 0 while it is not known.
   stagePx: number
+  // The lighter sky, without its clouds, for a Mac on battery or a person
+  // away: Ghostty draws a focused window at every frame whatever the
+  // animation setting says, so a still sky costs as much as a moving one.
+  isLight: boolean
 }
 
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
@@ -166,6 +170,7 @@ export function shaderParams(
     basket?: ShaderParams['basket']
     isYUp?: boolean
     stagePx?: number
+    isLight?: boolean
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -196,6 +201,7 @@ export function shaderParams(
     basket: options.basket ?? null,
     isYUp: !!options.isYUp,
     stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
+    isLight: !!options.isLight,
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -396,6 +402,7 @@ export function skyShader(params: ShaderParams): string {
     `const int BASKET = ${params.basket ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
+    `const float LIGHT = ${params.isLight ? '1.0' : '0.0'};`,
     `const int FIELD_COUNT = ${fieldsSeen(params.isYUp).length};`,
     `const vec3 FIELD_COLOURS[${fieldsSeen(params.isYUp).length}] = vec3[${fieldsSeen(params.isYUp).length}](${fieldsSeen(params.isYUp).join(', ')});`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,

@@ -9,6 +9,7 @@
 //   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff with a grey comment, a prompt row, a shell row, and a line of its dimmest text)
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
+//   --light (the lighter sky of a Mac on battery or a person away: no clouds)
 //   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 
 import { writeFileSync } from 'node:fs'
@@ -45,6 +46,7 @@ const params = shaderParams(
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
     isYUp: !!o['y-up'],
     stagePx: o.stage ? Number(o.stage) : 0,
+    isLight: !!o.light,
     basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )

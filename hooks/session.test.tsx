@@ -95,32 +95,37 @@ test('in Ghostty the sky is a shader, rewritten as the scene moves, still while 
   expect(RELOADS(world.runs)).toBe(2)
 
   // Nothing lively up there: still (drawn as the terminal changes), and
-  // away five minutes, still as it was: no reload.
+  // away five minutes, still and lighter, without its clouds: one reload.
   expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = false')
+  expect(shader?.[0] && world.files.get(shader[0])?.text).toContain('const float LIGHT = 0.0;')
   idle.value = 400
   await clock.advance(11_000)
   expect(include?.[0] && world.files.get(include[0])?.text).toContain('custom-shader-animation = false')
-  expect(RELOADS(world.runs)).toBe(2)
+  expect(shader?.[0] && world.files.get(shader[0])?.text).toContain('const float LIGHT = 1.0;')
+  expect(RELOADS(world.runs)).toBe(3)
 
   // The last session ending takes the sky with it.
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(include?.[0] && world.files.get(include[0])?.text).toBe('')
-  expect(RELOADS(world.runs)).toBe(3)
+  expect(RELOADS(world.runs)).toBe(4)
 })
 
-test('a lively sky animates while the person is there, and stands still while away', async ($, on) => {
+test('a lively sky animates while the person is there, and stands still and lighter while away', async ($, on) => {
   const idle = { value: 1 }
-  const { clock, include } = await waitingWorld($, on, idle)
+  const { clock, include, shader } = await waitingWorld($, on, idle)
   // A storm played: the hat flies, the sky is lively.
   await $.command.run({ command: 'solar', args: 'blåst', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   await clock.advance(11_000)
   expect(include()).toContain('custom-shader-animation = true')
+  expect(shader()).toContain('const float LIGHT = 0.0;')
   idle.value = 400
   await clock.advance(11_000)
   expect(include()).toContain('custom-shader-animation = false')
+  expect(shader()).toContain('const float LIGHT = 1.0;')
   idle.value = 1
   await clock.advance(11_000)
   expect(include()).toContain('custom-shader-animation = true')
+  expect(shader()).toContain('const float LIGHT = 0.0;')
 })
 
 test('another live session keeps the sky up when this one ends', async ($, on) => {
@@ -688,14 +693,17 @@ test('AskUserQuestion lights the orange lighthouse while it waits, and it goes o
   expect(shader()).toContain('const int BEACON = 0;')
 })
 
-test('on battery the sky stands still; a question still sweeps', async ($, on) => {
-  const { clock, world, include, ask } = await waitingWorld($, on, { value: 1 }, () => undefined)
+test('on battery the sky stands still and lighter; a question still sweeps', async ($, on) => {
+  const { clock, world, include, shader, ask } = await waitingWorld($, on, { value: 1 }, () => undefined)
+  expect(shader()).toContain('const float LIGHT = 0.0;')
   world.power.text = "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=1234)\t80%; discharging\n"
   await clock.advance(61_000)
   expect(include()).toContain('custom-shader-animation = false')
+  expect(shader()).toContain('const float LIGHT = 1.0;')
   await ask()
   await clock.advance(100)
   expect(include()).toContain('custom-shader-animation = always')
+  expect(shader()).toContain('const float LIGHT = 1.0;')
 })
 
 test('a pmset that fails counts as mains power', async ($, on) => {

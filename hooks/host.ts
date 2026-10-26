@@ -12,8 +12,8 @@ export async function isLinuxHost($: EngineInterface): Promise<boolean> {
 }
 
 // Whether the computer runs on battery: on battery the Ghostty sky stands
-// still. Anything pmset (or Linux's power supplies) does not say plainly
-// counts as mains power.
+// still, without its clouds. Anything pmset (or Linux's power supplies)
+// does not say plainly counts as mains power.
 export async function isOnBattery($: EngineInterface, isOnLinux: boolean): Promise<boolean> {
   try {
     if (isOnLinux) {

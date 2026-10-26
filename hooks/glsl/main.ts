@@ -269,7 +269,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   if (ISS_UP > 0.5) sky = iss(sky, p, unit);
   sky = beacon(sky, p, unit, k);
   sky = keeper(sky, p, unit, k);
-  sky = clouds(sky, p, s, unit, k);
+  // The lighter sky has no clouds, a third or more of what the sky costs.
+  if (LIGHT < 0.5) sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
   sky = basket(sky, p, unit, k);
