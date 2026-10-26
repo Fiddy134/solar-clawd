@@ -132,6 +132,9 @@ preflight() {
   local test=${TMPDIR:-/tmp}/solar-measure-permission.png
   screencapture -x -R0,0,1,1 $test 2>/dev/null || problems+=('screencapture failed (Screen Recording for this terminal)')
   rm -f $test
+  # Neither the display nor the Mac may sleep while it measures; caffeinate
+  # lets go when this script ends.
+  caffeinate -di -w $$ &!
   if (( ${#problems} )); then
     (( force )) && { note "going on anyway (--force): ${(j:; :)problems}"; return 0 }
     die "${(j:; :)problems} (--force to measure anyway)"
