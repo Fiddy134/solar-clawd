@@ -226,14 +226,24 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   float pulse = 0.9 + 0.1 * sin(iTime * 1.6);
   vec2 q = p - head;
   float along = dot(q, dir);
-  if (along > -2.0 * u) {
+  float a = max(along, 0.0);
+  float bend = a * a * 0.0006 / u;
+  float width = 0.5 * u + a * 0.11;
+  float across = (dot(q, side) - bend) / width;
+  float ionAlong = dot(q, ion);
+  vec2 ionSide = vec2(-ion.y, ion.x);
+  float r = length(q);
+  // What each part can still touch: the dust tail's grains thin out past
+  // 200u and four widths of its spine; the ion tail is screened to nothing
+  // past 80u and its flutter keeps it inside a strip; the coma is gone by 12u.
+  bool isDust = along > -2.0 * u && along < 200.0 * u && abs(across) < 4.0;
+  bool isIon = ionAlong > 0.0 && ionAlong < 80.0 * u && abs(dot(q, ionSide)) < 0.2 * u + 0.026 * ionAlong;
+  bool isComa = r < 12.0 * u;
+  if (!isDust && !isIon && !isComa) return sky;
+  if (isDust) {
     // The dust tail: a broad fan, densest along its spine and fading
     // softly to its edges, yellow printed over pink so the curve's outer
     // edge runs orange.
-    float a = max(along, 0.0);
-    float bend = a * a * 0.0006 / u;
-    float width = 0.5 * u + a * 0.11;
-    float across = (dot(q, side) - bend) / width;
     float fall = exp(-a / (10.0 * u)) * smoothstep(-2.0 * u, 0.8 * u, along);
     float edge = exp(-pow(across - 0.45, 2.0) * 4.0) * fall * smoothstep(0.0, 4.0 * u, a);
     sky = mix(sky, INK_PINK, screen(p, edge * 0.5, pitch, 75.0) * 0.85);
@@ -250,9 +260,7 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
     }
   }
   // The ion tail: straight, narrow, blue, fluttering a little.
-  float ionAlong = dot(q, ion);
-  if (ionAlong > 0.0) {
-    vec2 ionSide = vec2(-ion.y, ion.x);
+  if (isIon) {
     float flutter = sin(iTime * 0.7 + ionAlong * 0.05) * ionAlong * 0.012;
     float ionD = abs(dot(q, ionSide) - flutter);
     float ionCover = exp(-ionAlong / (18.0 * u)) * smoothstep(0.2 * u + ionAlong * 0.012, 0.0, ionD);
@@ -260,7 +268,7 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   }
   // The coma: green, as a comet's is, screened round a bright nucleus
   // that breathes.
-  float r = length(q);
+  if (!isComa) return sky;
   sky = mix(sky, mix(INK_GREEN, vec3(1.0), 0.35), screen(p, exp(-r / (0.75 * u * pulse)) * smoothstep(3.0 * u, 1.0 * u, r) * 0.9, pitch, 30.0) * 0.85);
   sky = mix(sky, vec3(1.0, 0.98, 0.9), 0.55 * exp(-r / (0.35 * u * pulse)));
   return ink(sky, vec3(1.0, 0.98, 0.92), r - 0.25 * u, 1.0);
