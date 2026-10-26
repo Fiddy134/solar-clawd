@@ -8,7 +8,7 @@
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
 //   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff with a grey comment, a prompt row, a shell row, and a line of its dimmest text)
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
-//   --unmarked (a tab Claude has not marked: the terminal as it is)
+//   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 
 import { writeFileSync } from 'node:fs'
@@ -233,7 +233,7 @@ try {
   // --cursor x,y (its centre, y down) and --since s: a cursor that moved s seconds ago.
   gl.uniform4f(gl.getUniformLocation(program, 'iCurrentCursor'), ${cursor[0] - 5}, ${cursor[1] + 10}, 10, 20)
   gl.uniform1f(gl.getUniformLocation(program, 'iTimeCursorChange'), ${Number(o.time) - Number(o.since ?? 100)})
-  gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), 1)
+  gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), ${o.unfocused ? 0 : 1})
   // A tab Claude has marked (register.tsx, markTab), or with --unmarked one
   // it has not, colour 16 as xterm has it.
   gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.basket).map(v => v / 255).join(', ')})

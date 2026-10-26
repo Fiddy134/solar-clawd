@@ -237,7 +237,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // terminal's background, part field and part text as they are: taken
   // for background, they let the dark rim through as dots along every
   // stroke.
-  if (mask > 0.0 && pane == 0.0) {
+  // Out of focus, where the sky is drawn at all only while the lighthouse
+  // sweeps (custom-shader-animation always), neither this nor the rim
+  // below: the rim costs nearly as much as the rest of the sky, and a
+  // window out of focus is not being read.
+  bool isFocused = iFocus != 0;
+  if (mask > 0.0 && pane == 0.0 && isFocused) {
     vec3 field, text;
     float cover;
     if (isTextOnGlass(term.rgb, uv, field, text, cover)) {
@@ -283,7 +288,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = basket(sky, p, unit, k);
   // No rim under glass. Without glass, mask is still the terminal's own,
   // text on a coloured field being glass or else done with above.
-  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
+  if (pane == 0.0 && isFocused) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
 
   fragColor = vec4(mix(sky, ink, mask), 1.0);
 }
