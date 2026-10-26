@@ -454,23 +454,23 @@ for Vincent.
   nothing. What the sky costs while someone looks at it is set by the
   shader, the window's pixels and 120 Hz, and that is F4's ground.
 
-Open questions for Vincent (task 6):
+What Vincent decided (task 6, 2026-10-26):
 
-1. `false` focused draws at vsync. Should the still-sky and battery rules
-   stay as documentation of intent, become "a lighter shader" (fewer
-   samples, no rim, no clouds) instead of "a still one", or be dropped?
-   And should a Ghostty issue be filed with `tools/measure/probe.glsl` as
-   the repro?
-2. The sweep: keep `always` for five minutes, shorten `BEACON_SWEEP_MS`,
-   or give the shader an unfocused path under `always` (F4 post 8,
-   `iFocus == 0`: skip the rim and the text test)? `always` also draws
-   covered windows at full rate; is that acceptable for the five minutes?
-3. Should F4's targets be restated now in mW over the floor and device
-   points over the floor, with MHz and residency, since per-process GPU
-   time is gone on macOS 27?
-4. Should the run be repeated with ABBA and an idle machine (and the
-   60 Hz rows with mW) before F4 is dimensioned, or is one pass enough to
-   start?
+1. `animationOf` stays as it is. In F4 the still-sky and battery rules get
+   a lighter shader (no rim, no clouds, fewer samples) instead of a still
+   one, measured with the same harness, since that is what saves GPU while
+   the window is in front.
+2. A report to Ghostty (an "Issue Triage" discussion) is drafted in
+   `docs/superpowers/ghostty-discussion-draft.md`; Vincent checks the repro
+   himself, edits it and posts it.
+3. The sweep keeps `always` for five minutes and gets an unfocused path in
+   the shader (F4 post 8: `iFocus == 0` skips the rim and the text test);
+   Vincent approves the visible difference on screenshots.
+4. F4 starts now from this single pass. Its bench and rim work (tasks 0–1)
+   use the preview and need no new run; the harness is run again with
+   `--twice` on a quiet machine, the 60 Hz rows with mW, before F4's
+   merged shader is compared. F4's targets are stated in device points and
+   mW over the floor, with mean MHz and residency alongside.
 
 ### The baseline F4 measures against
 

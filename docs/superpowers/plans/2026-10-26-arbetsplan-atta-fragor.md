@@ -122,7 +122,7 @@ Klart när: Vincent startar en ny session i auto mode i `~/solar-clawd`, ber om 
 3. `tools/measure/gpu.sh` (`context`, `row`, `live`, `plan --twice`, `report`; `--no-sudo`, `--interactive`, `--settle 10 --sample 30`; `trap` som dödar instansen, stoppar powermetrics, tar bort `hidden`, återställer fokus) + `tools/measure/report.mjs`; verifiera `zsh -n`, `--dry-run`, en riktig rad medan Vincent tittar.
 4. Första körningen [Vincent startar, går därifrån]; agenten väntar på `done`-markören, kör `report`; Vincent gör nivå B och 60 Hz-raden.
 5. `docs/gpu-measurements.md`: kontext, tabeller, svaren på 1–6 i prosa, 20/75-förklaringen, vad det betyder för `animationOf`, baslinjen F4 mäts mot. Commit i husstil ("What the sky costs, measured: focused, unfocused, hidden, and the frame rate under each animation setting").
-6. Policy-uppföljning bara om fråga 1 kräver: `hooks/beacon.ts` `animationOf` + testet `hooks/sky.test.tsx:296-307`, eller Ghostty-ärendet.
+6. Policy-uppföljning bara om fråga 1 kräver: `hooks/beacon.ts` `animationOf` + testet `hooks/sky.test.tsx:296-307`, eller Ghostty-ärendet. **Avgjord 2026-10-26:** `false` ritar vid vsync fokuserad; `animationOf` lämnas, stilla- och batteriregeln får en lättare shader i F4 (uppgift 5b), svepet får ofokuserad väg (F4 uppgift 5), Ghostty-rapporten ligger som utkast i `docs/superpowers/ghostty-discussion-draft.md` för Vincent att pröva, redigera och skicka. Beslutet står också i `docs/gpu-measurements.md`.
 
 ### Workflow `gpu-matning` (4 agenter)
 
@@ -225,6 +225,8 @@ Summan av 1–5 och 7 i en vanlig dagscen: grovt −30–40 % av grenens egen ko
 
 `always` gäller redan bara medan fyren sveper. Resten beror på F2-fråga 1: ritar `false` verkligen bara vid uppdatering är policyn rätt och gapet är svepet (post 8, ev. kortare `BEACON_SWEEP_MS`); ritar `false` ändå vid vsync i 1.3.1 köper `livelyAt` ingenting på macOS, batteriregeln bör bli "en lättare shader" i stället för "en stilla", och ett Ghostty-ärende är på sin plats. Post 3 görs oavsett (inkluderingen är global; en synlig vanlig flik betalar shadern). Ingen ändring i `animationOf` förrän siffrorna finns (testet `hooks/sky.test.tsx:296-307` pinnar tabellen).
 
+**F2 svarade (2026-10-26, `docs/gpu-measurements.md`):** `false` ritar 118–120 fps fokuserad, alltså vsync. Vincents beslut: `animationOf` lämnas som den är; stilla- och batteriregeln blir "en lättare shader" (uppgift 5b); svepet behåller `always` i fem minuter och får post 8 (uppgift 5); Ghostty-rapporten skickas av Vincent ur utkastet.
+
 ### Ljus mot läsbarhet mot GPU **[Vincents beslut, med siffror från F2-fråga 6]**
 
 `shade()` finns för att `LUMINANCE` gick 0.36 → 0.8. Tre mätta alternativ: (a) 0.8 med 13/9-samplingskanten; (b) 0.8 med kanten bara där texten är ljus och himlen ljus (`gap`-grindad: `luminance(sky)` först, hoppa samplingarna när himlen är mörkare än ~0.45 – gratis natt och skymning); (c) ett mellanvärde 0.5–0.6 utan kant. Rekommendation (a)+(b) om kanten ändå mäter under ~5 p device-utnyttjande; annars är (c) på bordet.
@@ -235,8 +237,8 @@ Summan av 1–5 och 7 i en vanlig dagscen: grovt −30–40 % av grenens egen ko
 
 ### Mål (mätt med F2-protokollet, M1 Pro, inbyggd skärm, färsk instans, `true`, fokuserad, `idle` och `spinner`)
 
-- Himlens egen kostnad (device-utnyttjande minus passthrough, GPU-effekt minus passthrough) i `day-clear` och `night-lit` ≤ 50 % av grenens baslinje, och Ghosttys GPU ms/s likaså (det är siffran Vincents "20 % → 10–13 %" mappar på).
-- `true` + ofokus på `none`-nivå; en omarkerad synlig flik inom 5 p från passthrough; `always` + ofokus inom 10 p från fokuserat (post 8 bara om första körningen visar större gap).
+- Himlens egen kostnad (device-utnyttjande minus passthrough, GPU-effekt minus passthrough) i `day-clear` och `night-lit` ≤ 50 % av grenens baslinje, redovisad med medel-MHz och aktiv residens bredvid så att en klockändring inte läses som mindre arbete. Ghosttys GPU ms/s finns inte på macOS 27 (powermetrics ger 0.00 per process), så målet står i device-punkter och mW över golvet (beslut 2026-10-26); baslinjen är tabellen i `docs/gpu-measurements.md`.
+- `true` + ofokus på `none`-nivå; en omarkerad synlig flik inom 5 p från passthrough; `always` + ofokus inom 10 p från fokuserat, och efter post 8 klart lägre i mW än fokuserat (F2: grenen ofokuserad under `always` drar 87–88 % av fokuserad mW).
 - Ingen paritets-PNG skiljer mer än 8/255 utanför ett 1-px-band kring text, utom där en ändring är deklarerat visuell (post 6, 8).
 - Resultatdokumentet säger att ~40 % device-golvet vid 120 Hz är Ghosttys loop + compositing och inte nås från shaderkod.
 
@@ -247,8 +249,9 @@ Summan av 1–5 och 7 i en vanlig dagscen: grovt −30–40 % av grenens egen ko
 2. **Billiga avvisningar för text** (post 2, 3, 4) + `--unmarked`; en commit var.
 3. **Molnen frågar var innan vem** (post 5, sedan 6 om mätt): paritet pixelidentisk vid `--time 0, 37, 120` för `day-clear`, `day-overcast`, `--ufo`.
 4. **Varje händelse slutar där den tonar** (post 7): en commit per händelse eller en för de drivande.
-5. **Ofokuserad under `always`** (post 8, bara efter F2-fråga 3): minimal först; `--unfocused` sätter `iFocus = 0`; skärmbilder till Vincent.
-6. **Sammanfoga, mät, ljusbeslutet:** worktrees i ordning 1 → 2 → 5 (alla `main.ts`), 3 och 4 parallellt; F2-selen på den sammanslagna shadern; alternativ a/b/c till Vincent med siffror; ny sektion i `docs/gpu-measurements.md`.
+5. **Ofokuserad under `always`** (post 8, beslutad 2026-10-26): minimal först; `--unfocused` sätter `iFocus = 0`; skärmbilder till Vincent.
+5b. **En lättare shader för stilla- och batteriregeln** (beslut 2026-10-26, eftersom `false` ritar vid vsync fokuserad): när `isLively` är falskt eller datorn går på batteri skrivs en himmel utan kant och moln och med färre samplingar i stället för en stilla; `animationOf` och dess test lämnas. Mät med F2-selen mot den vanliga himlen; skärmbilder till Vincent. Modden ändras, alltså versionsbump.
+6. **Sammanfoga, mät, ljusbeslutet:** worktrees i ordning 1 → 2 → 5 (alla `main.ts`), 3 och 4 parallellt; före jämförelsen kör Vincent om F2-selen med `--twice` på en lugn dator (och 60 Hz-raderna med mW), så baslinjen står på två varv; F2-selen på den sammanslagna shadern; alternativ a/b/c till Vincent med siffror; ny sektion i `docs/gpu-measurements.md`.
 7. **Domen i skrift:** `docs/gpu-measurements.md` ("What a scene language would and would not change"), README ett kort "What it costs" (per-process-siffran, 120 Hz-noten, att ofokuserat är gratis under `true`).
 
 ### Workflow `gpu` (8 agenter)
