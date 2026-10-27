@@ -16,8 +16,8 @@ const int CONTEXT_GAINED = 3;
 // The fish he has caught, a tenth of the context window each, and what the
 // window is doing, from the tab's mark; none where the band shows the
 // context itself.
-int contextFish() { return BASKET == 1 ? clamp(int(iPalette[16].g * 255.0 + 0.5), 0, 10) : 0; }
-int contextState() { return BASKET == 1 ? int(iPalette[16].r * 255.0 + 0.5) : CONTEXT_IDLE; }
+int contextFish() { return CONTEXT == 1 ? clamp(int(iPalette[16].g * 255.0 + 0.5), 0, 10) : 0; }
+int contextState() { return CONTEXT == 1 ? int(iPalette[16].r * 255.0 + 0.5) : CONTEXT_IDLE; }
 
 // A fish as a cartoon draws one, \`q\` from its mouth down its length along
 // y, in pixels for a fish \`s\` long: a plump body tapering to the tail and
@@ -79,7 +79,7 @@ float slotX(int i, Lighthouse l) { return l.x + (0.53 + 0.1444 * float(i)) * l.s
 // grill burns, and the newest blinking cream as it is landed while he is
 // not there to land it.
 vec3 fishLine(vec3 sky, vec2 p, Lighthouse l, int fish, int state, float k) {
-  if (BASKET == 0) return sky;
+  if (CONTEXT == 0) return sky;
   float s = l.s;
   vec2 a = lineFrom(l);
   vec2 b = lineTo(l);

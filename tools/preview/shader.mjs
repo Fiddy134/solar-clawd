@@ -33,6 +33,9 @@ const weather = o.weather ? weatherOf(o.weather) : null
 const forced = o.event ? String(o.event).split(',').map(kind => ({ kind, at: ms })) : []
 const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null)
 const events = eventsAt(ms, context, forced)
+// --fish 7 or 7,catch or 7,grill or 0,embers: the tab's mark for its context
+// window, the keeper's line of fish (--basket the old name, burn the old grill).
+const [fish, fishState] = (o.fish ?? o.basket) === undefined ? [] : String(o.fish ?? o.basket).split(',')
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
   {
@@ -43,14 +46,11 @@ const params = shaderParams(
     beacon: o.beacon ? { mode: o.beacon, isUrgent: !!o.urgent } : null,
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
-    // --basket 6 or 9,burn or 0,embers: the wastebasket in the corner.
-    // --fish 7 or 7,catch or 7,grill or 0,embers: the same mark as the keeper's catch (grill is burn).
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
     isYUp: !!o['y-up'],
     stagePx: o.stage ? Number(o.stage) : 0,
     isLight: !!o.light,
-    basket: o.fish !== undefined ? { balls: Number(String(o.fish).split(',')[0]), fire: { grill: 'burn' }[String(o.fish).split(',')[1]] ?? String(o.fish).split(',')[1] ?? null }
-      : o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
+    context: fish === undefined ? null : { fish: Number(fish), state: fishState === 'burn' ? 'grill' : fishState ?? 'idle' },
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
@@ -85,7 +85,7 @@ void main() { mainImage(outColor, ${o['y-up'] ? 'gl_FragCoord.xy' : 'vec2(gl_Fra
 `
 
 // --band: Clawd's band above the prompt as the mod draws it, the sky
-// showing through it (with --paper, --reaction kind,age, --sky-basket;
+// showing through it (with --paper, --reaction kind,age, --sky-context;
 // --cell 16 for a Retina window's cells, 8 by default).
 const CELL = o.cell ? Number(o.cell) : 8
 const bandColumns = Math.floor(width / CELL)
@@ -102,7 +102,7 @@ const bandSvg = o.band
         weather,
         isClear: true,
         paper: o.paper === undefined ? null : Number(o.paper),
-        isBasketInSky: !!o['sky-basket'],
+        isContextInSky: !!(o['sky-context'] ?? o['sky-basket']),
         reaction: reactionKind ? { kind: reactionKind, age: Number(reactionAge ?? 0) } : null,
         event: null,
       }),
@@ -241,7 +241,7 @@ try {
   gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), ${o.unfocused ? 0 : 1})
   // A tab Claude has marked (register.tsx, markTab), or with --unmarked one
   // it has not, colour 16 as xterm has it.
-  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.basket).map(v => v / 255).join(', ')})
+  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.context).map(v => v / 255).join(', ')})
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
