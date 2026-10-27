@@ -15,6 +15,7 @@ import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
 import { clamp, INKS, rand } from './paint'
 import { COMMON } from './glsl/common'
+import { PROTOTYPES } from './glsl/prototypes'
 import { SKY } from './glsl/sky'
 import { CLOUDS } from './glsl/clouds'
 import { SEA } from './glsl/sea'
@@ -25,6 +26,7 @@ import { NIGHT } from './glsl/night'
 import { ROUTINE } from './glsl/routine'
 import { UFO } from './glsl/ufo'
 import { CATCH } from './glsl/catch'
+import { CONTEXT_MARK } from './glsl/context'
 import { MAIN } from './glsl/main'
 
 // Where the sky stands at one moment.
@@ -121,8 +123,9 @@ const EVENT_INDEX: Record<EventKind, number> = {
   christmasStar: 18,
   sleigh: 19,
   fireworks: 20,
-  dolphin: 21,
-  pinkDolphin: 22,
+  // The island's own, drawn by its themeEvent() as 0 and 1.
+  dolphin: 100,
+  pinkDolphin: 101,
   // The shader schedules these itself; they are never drawn as events.
   abduction: 23,
   surf: 24,
@@ -432,7 +435,9 @@ export function skyShader(params: ShaderParams): string {
 
 // Everything but the constants. Coordinates are x right and y down from the
 // top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
-// flipped from OpenGL's y up (Linux) when Y_UP is set. The wastebasket
-// (glsl/basket.ts) is not in it: the keeper's catch shows the context
-// window instead, drawn with him, so before him.
-const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, KEEPER, SURF, NIGHT, ROUTINE, CATCH, UFO, MAIN].join('\n')
+// flipped from OpenGL's y up (Linux) when Y_UP is set. The engine comes
+// first, the four functions a theme defines declared right after COMMON,
+// and the island's parts last, after mainImage, so they can call anything
+// of the engine's. The wastebasket (glsl/basket.ts) is not in it: the
+// keeper's catch shows the context window instead.
+const BODY = [COMMON, PROTOTYPES, SKY, CLOUDS, EVENTS, CONTEXT_MARK, MAIN, SEA, KEEPER, SURF, NIGHT, ROUTINE, CATCH, UFO].join('\n')

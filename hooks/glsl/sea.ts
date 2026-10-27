@@ -27,7 +27,7 @@ float seaRow(vec2 p, float u) { return sqrt((p.y - ARC.w * iResolution.y + 1.0) 
 // The lantern room: its middle, and half its width and height.
 vec4 lanternRoom(Lighthouse l) { return vec4(l.x, l.deck - 0.35 * l.s, 0.36 * l.s, 0.28 * l.s); }
 
-// Whether p is on the lighthouse's head, as beacon() prints it: the lantern
+// Whether p is on the lighthouse's head, as scenery() prints it: the lantern
 // room, its dome and the finial on top, a pixel round them too.
 bool isLanternHead(vec2 p, Lighthouse l) {
   vec4 room = lanternRoom(l);
@@ -85,7 +85,7 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
 // left or right as long as it points across, and flashes in the lantern
 // as it comes round toward you. Any moment of the turn looks right, so
 // iTime's unknown start never shows.
-vec3 beacon(vec3 sky, vec2 p, float u, float k) {
+vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   Lighthouse tower = lighthouse(u);
   float s = tower.s;
   float foot = tower.foot;
@@ -253,4 +253,14 @@ vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   sky = ink(sky, keyInk(k), length(b - eye) * s - max(1.6, 0.1 * s), 1.0);
   return ink(sky, CREAM, length(b - eye - vec2(0.03, 0.035)) * s - max(0.8, 0.035 * s), 1.0);
 }
+
+// The theme's events: the dolphin (0) and the pink one (1), both in front
+// of the clouds.
+vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind) {
+  if (isBehind || kind > 1) return sky;
+  return dolphin(sky, p, u, seed, k, kind == 1);
+}
+
+// The island is all outdoors.
+float themeWindow(vec2 p, float u) { return 1.0; }
 `

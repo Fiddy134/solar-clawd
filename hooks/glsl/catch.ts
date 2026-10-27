@@ -5,19 +5,10 @@
 export const CATCH = `
 // --- His catch ---------------------------------------------------------------
 
-// What this tab's mark (tabMark) says its context window is doing: nothing
-// new, clearing as the conversation compacts, just cleared, and a tenth
-// just gained. The keeper's words for them: his grill, its embers, a catch.
-const int CONTEXT_IDLE = 0;
-const int CONTEXT_CLEARING = 1;
-const int CONTEXT_CLEARED = 2;
-const int CONTEXT_GAINED = 3;
-
-// The fish he has caught, a tenth of the context window each, and what the
-// window is doing, from the tab's mark; none where the band shows the
-// context itself.
-int contextFish() { return CONTEXT == 1 ? clamp(int(iPalette[16].g * 255.0 + 0.5), 0, 10) : 0; }
-int contextState() { return CONTEXT == 1 ? int(iPalette[16].r * 255.0 + 0.5) : CONTEXT_IDLE; }
+// The context window as the engine reads it from the tab's mark
+// (context.ts): a fish for every tenth of it that is full, and what it is
+// doing in his words: clearing his grill, cleared its embers, gained a
+// catch.
 
 // A fish as a cartoon draws one, \`q\` from its mouth down its length along
 // y, in pixels for a fish \`s\` long: a plump body tapering to the tail and
@@ -269,7 +260,7 @@ vec3 grill(vec3 sky, vec2 p, Lighthouse l, int grilled, int state, float k) {
 // up past the gallery, the further the harder it blows: thick while the
 // fire burns, thin over the embers. It leaves the fish on the grate
 // clear, and a gale lays it over until it fades out short of the edge of
-// keeper()'s box.
+// resident()'s box.
 vec3 grillSmoke(vec3 sky, vec2 p, Lighthouse l, int state, float u, float k) {
   if (state != CONTEXT_CLEARING && state != CONTEXT_CLEARED) return sky;
   float s = l.s;

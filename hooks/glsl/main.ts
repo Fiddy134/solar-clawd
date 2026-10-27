@@ -277,12 +277,21 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, pitch(unit), k, s.elevation);
   sky = events(sky, p, unit, k, true);
   if (ISS_UP > 0.5) sky = iss(sky, p, unit);
-  sky = beacon(sky, p, unit, k);
-  sky = keeper(sky, p, unit, k);
-  // The lighter sky has no clouds, a third or more of what the sky costs.
-  if (LIGHT < 0.5) sky = clouds(sky, p, s, unit, k);
-  sky = events(sky, p, unit, k, false);
-  sky = weather(sky, p, unit);
+  // The theme's ground and props, and who lives there.
+  sky = scenery(sky, p, unit, k);
+  sky = resident(sky, p, unit, k);
+  // The clouds, the events in front and the weather, wherever the theme
+  // shows the outdoors: everywhere outside, through a window partly, and
+  // not at all behind its walls.
+  float window = themeWindow(p, unit);
+  if (window > 0.0) {
+    vec3 indoor = sky;
+    // The lighter sky has no clouds, a third or more of what the sky costs.
+    if (LIGHT < 0.5) sky = clouds(sky, p, s, unit, k);
+    sky = events(sky, p, unit, k, false);
+    sky = weather(sky, p, unit);
+    if (window < 1.0) sky = mix(indoor, sky, window);
+  }
   // No rim under glass. Without glass, mask is still the terminal's own,
   // text on a coloured field being glass or else done with above.
   if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);

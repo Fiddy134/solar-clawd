@@ -1,7 +1,8 @@
 // The sky shader's GLSL: the wastebasket in the bottom right corner, the
-// context window as balls of paper. Not in hooks/shader.ts's BODY since the
-// keeper's catch (catch.ts) shows the context instead; kept for a sky that
-// does not show it itself. Its fire and smoke are COMMON's.
+// context window as balls of paper, read through the engine's mark
+// (context.ts). Not in hooks/shader.ts's BODY since the keeper's catch
+// (catch.ts) shows the context instead; kept for a sky that does not show
+// it itself. Its fire and smoke are COMMON's.
 export const BASKET = `
 // --- The wastebasket -------------------------------------------------------
 
@@ -29,9 +30,9 @@ const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0
   vec2(-0.55, -1.85), vec2(0.05, -1.8), vec2(0.6, -1.85), vec2(-0.3, -2.55), vec2(0.4, -2.6));
 vec3 basket(vec3 sky, vec2 p, float u, float k) {
   if (CONTEXT == 0) return sky;
-  // This tab's own, from its mark (tabMark).
-  int balls = int(iPalette[16].g * 255.0 + 0.5);
-  int state = int(iPalette[16].r * 255.0 + 0.5);
+  // This tab's own, from its mark.
+  int balls = contextFish();
+  int state = contextState();
   float dots = pitch(u);
   // Its own unit, a little smaller than the sky's.
   u *= 0.85;

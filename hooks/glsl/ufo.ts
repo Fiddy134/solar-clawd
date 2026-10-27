@@ -156,7 +156,7 @@ vec3 ufo(vec3 sky, vec2 p, Abduction a, float u, float k) {
 // keeperMode and keeperAt stay the same for every tab. A fish landed
 // while he fishes is on his rod, not yet on the line. His snore rises
 // behind the line, so that its z never covers a fish.
-vec3 keeper(vec3 sky, vec2 p, float u, float k) {
+vec3 resident(vec3 sky, vec2 p, float u, float k) {
   Lighthouse l = lighthouse(u);
   float s = l.s;
   if (abs(p.x - l.x) > 4.0 * s || p.y > l.foot + 1.0 * s) return sky;

@@ -759,6 +759,12 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
     int kind = EVENT_KIND[i];
     float seed = EVENT_SEED[i];
     float t = fract(iTime / EVENT_SECONDS[i] + seed * 0.001);
+    // The theme's own, numbered from 100 in its manifest's order: it draws
+    // them, in front or behind as it says.
+    if (kind >= 100) {
+      sky = themeEvent(sky, p, u, k, kind - 100, seed, t, isBehind);
+      continue;
+    }
     if (isBehind) {
       if (kind == 1) sky = satellite(sky, p, u, seed, t);
       if (kind == 5) sky = rainbow(sky, p, k);
@@ -780,7 +786,6 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
     if (kind == 17) sky = luciaTrain(sky, p, u, t);
     if (kind == 19) sky = sleigh(sky, p, u, seed, t, k);
     if (kind == 20) sky = fireworks(sky, p, u, k);
-    if (kind == 21 || kind == 22) sky = dolphin(sky, p, u, seed, k, kind == 22);
   }
   return sky;
 }

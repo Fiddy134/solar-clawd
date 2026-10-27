@@ -63,7 +63,7 @@ if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', ')
 // --broken: a shader that cannot compile, to see the check catch it.
 // --ufo: every cloud a saucer, to see one.
 const whole = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params)
-// --without clouds,beacon: mainImage without those stages, to see what each costs (with --bench).
+// --without clouds,scenery: mainImage without those stages, to see what each costs (with --bench).
 const left = o.without ? String(o.without).split(',') : []
 const sky = whole.split('\n').filter(line => !left.some(name => new RegExp(`sky = ${name}\\(`).test(line))).join('\n')
 // --passthrough: the terminal as it is and no sky, the floor a bench of

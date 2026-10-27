@@ -7,6 +7,7 @@ import { swedish } from './test-kit'
 import { activityAt, activityOn, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { fromBase64 } from './paint'
 import { CATCH } from './glsl/catch'
+import { CONTEXT_MARK } from './glsl/context'
 import { MAIN } from './glsl/main'
 import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
@@ -99,8 +100,12 @@ test("in Ghostty the context window hangs on the keeper's line, each tab's own c
 
 test("the keeper's catch reads the tab's mark, and the shader's tab test lets every state of it through", () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context: { fish: 7, state: 'idle' } }))
-  expect(CATCH).toContain('iPalette[16]')
+  // The engine reads the mark; the keeper's catch only asks it.
+  expect(CONTEXT_MARK).toContain('iPalette[16]')
+  expect(text).toContain(CONTEXT_MARK)
   expect(text).toContain(CATCH)
+  expect(CATCH).not.toContain('iPalette')
+  expect(text).toContain('int fish = contextFish();')
   // Red up to 3, a tenth just filled; 4 is no mark of ours.
   expect(MAIN).toContain('iPalette[16].r > 3.5 / 255.0')
   expect(Math.max(...(['idle', 'grill', 'embers', 'catch'] as const).map(state => tabMark({ fish: 10, state })[0]))).toBe(3)

@@ -14,6 +14,7 @@ import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
 import { BASKET } from './glsl/basket'
 import { COMMON } from './glsl/common'
+import { PROTOTYPES } from './glsl/prototypes'
 import { contextFor, ISS_OMM, ISS_REFERENCE, ISS_PASS, swedish, DAY_KINDS, daysAt, kindsAt, someMinute } from './test-kit'
 
 test('Swedish time follows summer and winter time', () => {
@@ -407,6 +408,22 @@ test('the parts share pitch, night, keyInk and the key plate from COMMON, each d
   for (const copy of ['max(3.0, u * 0.24)', 'max(3.0, unit * 0.24)', 'nightness(sceneNow().elevation)', 'lift(INK_INDIGO, k)']) {
     expect(outside).not.toContain(copy)
   }
+})
+
+test('the sky draws its scenery, resident and theme events through four prototypes', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(text).toContain(`${COMMON}\n${PROTOTYPES}`)
+  const main = /void mainImage\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  expect(main).not.toMatch(/\b(beacon|keeper)\(/)
+  // Behind the clouds, the theme, then the outdoors where its window shows it.
+  const order = ['events(sky, p, unit, k, true)', 'scenery(', 'resident(', 'themeWindow(', 'clouds(', 'events(sky, p, unit, k, false)', 'weather(', 'shaded(']
+  for (let i = 1; i < order.length; i++) expect(main.indexOf(order[i]!)).toBeGreaterThan(main.indexOf(order[i - 1]!))
+  const events = /vec3 events\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  expect(events).toContain('themeEvent(')
+  expect(events).not.toContain('dolphin(')
+  // The island comes after mainImage: the engine reaches it through the four alone.
+  expect(text.indexOf('vec3 scenery(vec3 sky, vec2 p, float u, float k) {')).toBeGreaterThan(text.indexOf('void mainImage('))
+  expect(text.indexOf('vec3 dolphin(')).toBeGreaterThan(text.indexOf('void mainImage('))
 })
 
 test('the birds are printed in lifted inks, so they dim with the sky', () => {
