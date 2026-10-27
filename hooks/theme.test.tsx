@@ -3,10 +3,12 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { STOCKHOLM } from './astro'
+import { STOCKHOLM, swedishOffsetMs } from './astro'
 import { EVENTS, kindOf, wordsOf } from './events'
 import type { EventContext } from './events'
 import { shaderParams, skyShader, THEME_SIGNALS } from './shader'
+import type { Weather } from './sky'
+import { swedish } from './test-kit'
 import { COMMON } from './glsl/common'
 import { PROTOTYPES } from './glsl/prototypes'
 import { BASE_THEME, THEMES } from './themes/index'
@@ -155,9 +157,27 @@ test('the contract is what contract 1 says it is', () => {
     'INK_BLUE', 'INK_PINK', 'INK_YELLOW', 'INK_GREEN', 'INK_ORANGE', 'INK_VIOLET', 'INK_INDIGO',
     'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'WAITING', 'WAITING_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
     'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
+    'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
   ])
   const text = skyShader(params, FYR)
   for (const signal of THEME_SIGNALS) expect(text).toMatch(new RegExp(`\\bconst \\w+ ${signal}\\b`))
+})
+
+test("a theme reads the local hour, the day, the weather's temperature and Clawd's day", () => {
+  const text = (ms: number, weather: Weather | null) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather, offsetMs: swedishOffsetMs(ms) }, {}), FYR)
+  const frosty = { temperature: -2.4, code: 71, cloudCover: 60, wind: 3 }
+  // A Saturday evening in October, half past nine: vibing.
+  const evening = text(swedish(2026, 10, 24, 21, 30), frosty)
+  for (const line of ['const float LOCAL_HOUR = 21.5;', 'const int WEEKDAY = 6;', 'const int MONTH = 10;', 'const int DAY = 24;', 'const float TEMPERATURE = -2.0;', 'const int CLAWD_ACTIVITY = 3;']) {
+    expect(evening).toContain(line)
+  }
+  // Four on a Monday morning, the weather unknown: asleep, and a mild day.
+  const night = text(swedish(2026, 10, 26, 4, 10), null)
+  for (const line of ['const float LOCAL_HOUR = 4.1667;', 'const int WEEKDAY = 1;', 'const float TEMPERATURE = 10.0;', 'const int CLAWD_ACTIVITY = 5;', 'const float CLAWD_ASLEEP = 1.0;']) {
+    expect(night).toContain(line)
+  }
+  // From early bird to asleep, in the band's own order.
+  expect([6, 9, 13, 17, 23, 4].map(hour => /const int CLAWD_ACTIVITY = (\d);/.exec(text(swedish(2026, 10, 27, hour), null))![1])).toEqual(['0', '1', '2', '3', '4', '5'])
 })
 
 test("whenOf says what every engine event's own condition says", () => {

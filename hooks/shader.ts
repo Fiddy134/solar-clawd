@@ -10,7 +10,8 @@ import type { ChartStar } from './chart'
 import { domePoint } from './dome'
 import type { DomePoint } from './dome'
 import type { ActiveEvent, EngineEventKind, EventKind } from './events'
-import { activityOn } from './hours'
+import { ACTIVITIES, activityOn } from './hours'
+import type { Activity } from './hours'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
 import { clamp, INKS, rand } from './paint'
@@ -74,9 +75,14 @@ export type ShaderParams = {
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
-  // Clawd's day: asleep at night (CLAWD_ASLEEP), as the band has him; fyr's
-  // keeper sleeps with him.
-  clawd: { isAsleep: boolean }
+  // Clawd's day as the band has him (CLAWD_ACTIVITY), and whether he is
+  // asleep (CLAWD_ASLEEP); fyr's keeper sleeps with him.
+  clawd: { activity: Activity; isAsleep: boolean }
+  // The local clock and calendar: the hour with its minutes, 0 to 24, the
+  // weekday from 0 on Sunday, the month from 1 and the day of the month.
+  time: { hour: number; weekday: number; month: number; day: number }
+  // The air in °C, whole degrees; a mild 10 while the weather is unknown.
+  temperature: number
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
   // The width of the strip at the right where the theme stands its scenery
@@ -185,6 +191,9 @@ export function shaderParams(
   const scene = demo ? demo.scenes[0]! : sceneAt(ms, place)
   const chart = demo || scene.elevation < -4 ? chartAt(ms, place) : { stars: [], lines: [] }
   const comet = options.events?.find(event => event.kind === 'comet')
+  // The clock as the scene has it, and Clawd's day by it.
+  const time = localTime(ms, input.offsetMs)
+  const activity = activityOn(time)
 
   return {
     // In a demo the day plays from its table: a fixed scene keeps the text,
@@ -214,7 +223,9 @@ export function shaderParams(
       .filter(event => event.kind !== 'shootingStar')
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
-    clawd: { isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep' },
+    clawd: { activity, isAsleep: activity === 'sleep' },
+    time: { hour: time.hour + time.minute / 60, weekday: time.weekday, month: time.month, day: time.day },
+    temperature: weather ? Math.round(weather.temperature) : 10,
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -354,13 +365,15 @@ function chartConstants(chart: ShaderParams['chart']): string[] {
 
 // The constants a theme may read, as the shader declares them: the scene,
 // the weather, the inks, the events, Claude waiting, the context window's
-// mark and the stage. Contract 1 (themes/theme.ts).
+// mark, the stage, the local clock and calendar, and Clawd's day. Contract
+// 1 (themes/theme.ts).
 export const THEME_SIGNALS = [
   'ELEVATION', 'PROGRESS', 'IS_DAY', 'MOON_ILLUMINATION', 'MOON_WAXING', 'MOON_AT', 'MOON_UP', 'CLOUDINESS', 'COVER', 'WIND',
   'PRECIPITATION', 'AURORA', 'AURORA_FLOOR', 'DEMO_COUNT', 'DEMO_SECONDS', 'DEMO_ELEVATION', 'DEMO_PROGRESS', 'DEMO_DAY',
   ...Object.keys(INKS).map(name => `INK_${name.toUpperCase()}`),
   'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'WAITING', 'WAITING_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
   'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
+  'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
 ] as const
 
 // The whole shader for these constants, drawn with `theme`: the same text
@@ -418,6 +431,12 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
     `const float FIREWORKS = ${f(params.fireworks)};`,
     `const float FLAG_DAY = ${shown.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
     `const float CLAWD_ASLEEP = ${params.clawd.isAsleep ? '1.0' : '0.0'};`,
+    `const float LOCAL_HOUR = ${f(params.time.hour)};`,
+    `const int WEEKDAY = ${params.time.weekday};`,
+    `const int MONTH = ${params.time.month};`,
+    `const int DAY = ${params.time.day};`,
+    `const float TEMPERATURE = ${f(params.temperature)};`,
+    `const int CLAWD_ACTIVITY = ${ACTIVITIES.indexOf(params.clawd.activity)};`,
     `const int THEME_FORCE = ${force};`,
     `const int EVENT_COUNT = ${shown.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => eventIndex(e.kind, theme)).join(', ')});`,

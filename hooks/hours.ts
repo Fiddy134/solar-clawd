@@ -6,7 +6,11 @@
 import { occasionAt } from './astro'
 import type { LocalTime } from './astro'
 
-export type Activity = 'earlyBird' | 'coffee' | 'work' | 'vibe' | 'nightOwl' | 'sleep'
+// What Clawd does, in the order of his day; the sky's CLAWD_ACTIVITY is the
+// place in it, 0 early bird to 5 asleep.
+export const ACTIVITIES = ['earlyBird', 'coffee', 'work', 'vibe', 'nightOwl', 'sleep'] as const
+
+export type Activity = (typeof ACTIVITIES)[number]
 
 // The same day every day: up with the birds at six, coffee till noon, work
 // till four, then vibing, a night owl from ten, and asleep from three.
