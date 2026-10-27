@@ -145,9 +145,11 @@ float widthShown(float turn, float least) { return (turn < 0.0 ? -1.0 : 1.0) * m
 // A thing spun by \`spin\` and turned over to show \`flip\` of its width, as
 // widthShown gives it: q in the thing's own frame, x along it and y
 // across, the across axis stretched as it goes edge-on and mirrored while
-// its back is up. A distance measured in that frame is up to 1 / abs(flip)
-// times the real one, so a shape's goes back through abs(flip) before it is
-// inked, or its edge would blur and its outline thin as it turns.
+// its back is up. A distance measured across it in that frame is up to
+// 1 / abs(flip) times the real one, so a shape's goes back through
+// abs(flip) before it is inked, or its edges would sharpen and its outline
+// thin as it turns. Along it the distance was right and comes out short,
+// so near edge-on the tips soften and their outline thickens a little.
 vec2 tumble(vec2 q, float spin, float flip) {
   q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
   return vec2(q.x, q.y / flip);

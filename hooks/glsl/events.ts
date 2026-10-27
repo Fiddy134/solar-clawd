@@ -337,7 +337,8 @@ float blossomShape(vec2 q, bool isFlower) {
 float driftShape(vec2 q, int kind) { return kind >= PETAL ? blossomShape(q, kind == FLOWER) : leafShape(q, kind); }
 
 // Which of the eighteen piece i is, and its size: the leaves run through
-// their three kinds by threes, so each kind comes in each ink; every
+// their three kinds by threes, so a maple or a birch comes in each ink
+// (an oak is always russet); every
 // fourth piece of blossom is a whole flower, 1.4 times a petal's size.
 int pieceKind(int i, bool isBlossom) { return isBlossom ? (i % 4 == 0 ? FLOWER : PETAL) : (i / 3) % 3; }
 float pieceSize(int i, int kind, float u, float seed) { return u * (1.15 + 0.35 * seeded(seed, i * 4 + 2)) * (kind == FLOWER ? 1.4 : 1.0); }
