@@ -47,7 +47,7 @@ float abductionStart(float slot, float period) {
 // the top left (27.5 to 31.5).
 Abduction abductionAt(float time, Lighthouse l) {
   Abduction a = Abduction(false, -1.0, vec2(0.0), 0.0, 0.0, false);
-  float period = KEEPER_FORCE == 1 ? 60.0 : (nightness(sceneNow().elevation) > 0.6 ? 1800.0 : 5400.0);
+  float period = KEEPER_FORCE == 1 ? 60.0 : (night() > 0.6 ? 1800.0 : 5400.0);
   float slot = floor(time / period);
   float start = -1.0;
   for (int i = 0; i < 2; i++) {
@@ -100,8 +100,8 @@ vec3 ufoBeam(vec3 sky, vec2 p, Abduction a, float u, float k) {
     float w = mix(0.3, 0.75, h) * s;
     float side = abs(q.x - a.saucer.x) - w;
     float fade = a.beam * smoothstep(1.0, 0.85, h);
-    if (i == 0) sky = ink(sky, lift(INK_INDIGO, k), abs(side) - 0.5, 0.5 * fade);
-    else if (side < 0.0) sky = mix(sky, lift(INK_GREEN, k), screen(p, fade * (0.3 - 0.35 * side / w), max(3.0, u * 0.24), 75.0) * 0.9);
+    if (i == 0) sky = ink(sky, keyInk(k), abs(side) - 0.5, 0.5 * fade);
+    else if (side < 0.0) sky = mix(sky, lift(INK_GREEN, k), screen(p, fade * (0.3 - 0.35 * side / w), pitch(u), 75.0) * 0.9);
   }
   return sky;
 }
@@ -113,7 +113,7 @@ vec3 ufoBeam(vec3 sky, vec2 p, Abduction a, float u, float k) {
 vec3 ufo(vec3 sky, vec2 p, Abduction a, float u, float k) {
   if (!a.isOn) return sky;
   float px = 0.5 * lighthouse(u).s;
-  float pitch = max(3.0, u * 0.24);
+  float dots = pitch(u);
   vec2 v = p - a.saucer;
   if (abs(v.x) > 4.5 * px || abs(v.y) > 4.0 * px) return sky;
   float shake = a.isInside ? pow(max(0.0, sin(1.3 * a.age)), 12.0) : 0.0;
@@ -122,8 +122,8 @@ vec3 ufo(vec3 sky, vec2 p, Abduction a, float u, float k) {
   float hull = (length(v / vec2(3.6, 0.95)) - px) * 0.95;
   float dome = v.y < -0.3 * px ? length(v - vec2(0.0, -0.55 * px)) - 1.55 * px : 1e9;
   vec3 steel = mix(vec3(0.82, 0.84, 0.9), INK_BLUE, 0.15);
-  vec3 body = mix(steel, mix(steel, INK_INDIGO, 0.45), screen(p, clamp(0.15 + v.y / px * 0.45, 0.0, 1.0), pitch, 45.0));
-  vec3 glass = mix(mix(INK_BLUE, CREAM, 0.45), CREAM, screen(p, clamp(0.5 - (v.x + v.y) / px * 0.3, 0.0, 1.0), pitch, 15.0) * 0.7);
+  vec3 body = mix(steel, mix(steel, INK_INDIGO, 0.45), screen(p, clamp(0.15 + v.y / px * 0.45, 0.0, 1.0), dots, 45.0));
+  vec3 glass = mix(mix(INK_BLUE, CREAM, 0.45), CREAM, screen(p, clamp(0.5 - (v.x + v.y) / px * 0.3, 0.0, 1.0), dots, 15.0) * 0.7);
   sky = ink(sky, lift(glass, k), dome, 1.0);
   sky = ink(sky, lift(body, k), hull, 1.0);
   // The hatch, open in the underside as he drops out.
@@ -134,9 +134,9 @@ vec3 ufo(vec3 sky, vec2 p, Abduction a, float u, float k) {
     sky = ink(sky, isLit ? INK_YELLOW : lift(INK_PINK, k), length(v - vec2(float(j - 2) * 1.25 * px, 0.25 * px)) - 0.3 * px, 1.0);
   }
   // The key plate, a little off register.
-  vec2 w = v - vec2(0.12, 0.1) * px;
+  vec2 w = v - keyShift(px);
   float key = min(abs((length(w / vec2(3.6, 0.95)) - px) * 0.95), w.y < -0.3 * px ? abs(length(w - vec2(0.0, -0.55 * px)) - 1.55 * px) : 1e9);
-  return ink(sky, lift(INK_INDIGO, k), key - 0.06 * px, 0.6);
+  return ink(sky, keyInk(k), key - 0.06 * px, 0.6);
 }
 
 // --- The keeper, drawn -------------------------------------------------------

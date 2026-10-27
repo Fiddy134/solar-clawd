@@ -274,7 +274,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   if (s.isDay < 0.5 && MOON_UP > 0.5) sky = moonAt(sky, p, domeToPixel(MOON_AT), unit * 2.0, (0.35 + 0.65 * night) * (1.0 - CLOUDINESS * 0.8));
 
   sky = tone(sky, k);
-  if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, max(3.0, unit * 0.24), k, s.elevation);
+  if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, pitch(unit), k, s.elevation);
   sky = events(sky, p, unit, k, true);
   if (ISS_UP > 0.5) sky = iss(sky, p, unit);
   sky = beacon(sky, p, unit, k);

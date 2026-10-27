@@ -12,6 +12,8 @@ import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } f
 import { elementsOf, issAt, issVisible } from './iss'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
+import { BASKET } from './glsl/basket'
+import { COMMON } from './glsl/common'
 import { contextFor, ISS_OMM, ISS_REFERENCE, ISS_PASS, swedish, DAY_KINDS, daysAt, kindsAt, someMinute } from './test-kit'
 
 test('Swedish time follows summer and winter time', () => {
@@ -393,6 +395,20 @@ test('the dolphin, the leaves and the feathers share one smin and one tumble, in
   expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
 })
 
+test('the parts share pitch, night, keyInk and the key plate from COMMON, each defined once', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const helpers = ['float pitch(', 'float night(', 'vec3 keyInk(', 'vec2 keyShift(', 'vec3 keyPlate(', 'float box(', 'vec3 nightInk(']
+  for (const helper of [...helpers, 'float noise2(', 'float fbm(', 'float steam(', 'vec3 lamp(', 'int spriteAt(', 'vec3 sprite(']) {
+    expect(COMMON).toContain(helper)
+    expect(text.split(helper)).toHaveLength(2)
+  }
+  // Written out anywhere else, each would be a copy that can drift.
+  const outside = text.replace(COMMON, '') + BASKET
+  for (const copy of ['max(3.0, u * 0.24)', 'max(3.0, unit * 0.24)', 'nightness(sceneNow().elevation)', 'lift(INK_INDIGO, k)']) {
+    expect(outside).not.toContain(copy)
+  }
+})
+
 test('the birds are printed in lifted inks, so they dim with the sky', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
   // The skein finds which birds box the pixel, and birdPrint inks them.
@@ -419,9 +435,10 @@ test('every plate of a leaf, a feather or a bird is a lifted ink', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
   for (const name of ['driftPrint', 'featherPrint', 'birdPrint']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
-    const inks = body.match(/ink\(sky, [^,]*/g) ?? []
+    // The key plate is lifted too: keyInk and keyPlate are lift(INK_INDIGO, k).
+    const inks = body.match(/\bink\(sky, [^,]*|\bkeyPlate\(/g) ?? []
     expect(inks.length).toBeGreaterThan(1)
-    for (const ink of inks) expect(ink).toMatch(/^ink\(sky, lift\(/)
+    for (const ink of inks) expect(ink).toMatch(/^(ink\(sky, (lift|keyInk)\(|keyPlate\()/)
   }
 })
 

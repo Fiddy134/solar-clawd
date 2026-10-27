@@ -39,13 +39,13 @@ vec3 fishInk(vec3 sky, vec2 q, vec2 key, float s, float smoked, float burnt, flo
   float off = fish(key, s);
   float d = fish(q, s);
   if (min(off, d) > 1.0 + blink * 0.04 * s) return sky;
-  sky = ink(sky, lift(INK_INDIGO, k), off, 0.45);
+  sky = ink(sky, keyInk(k), off, 0.45);
   vec3 body = mix(lift(mix(mix(INK_BLUE, CREAM, 0.7), INK_INDIGO, 0.5 * smoked), k), tone(INK_INDIGO, k) * 0.55, burnt);
   if (blink > 0.0) return ink(sky, keeperInk(CREAM, k), d - max(1.0, 0.04 * s), 1.0);
   sky = ink(sky, body, d, 1.0);
   if (d > 0.0) return sky;
   sky = ink(sky, mix(CREAM, body, 0.3), segment(q, vec2(-0.08, 0.3) * s, vec2(-0.08, 0.48) * s) - 0.35, 0.9);
-  return ink(sky, lift(INK_INDIGO, k), length(q - vec2(0.05, 0.17) * s) - 0.5, 1.0 - 0.6 * burnt);
+  return ink(sky, keyInk(k), length(q - vec2(0.05, 0.17) * s) - 0.5, 1.0 - 0.6 * burnt);
 }
 
 // A fish hung by the mouth from a short cream loop at \`from\`, \`hang\`
@@ -98,11 +98,11 @@ vec3 fishLine(vec3 sky, vec2 p, Lighthouse l, int fish, int state, float k) {
   // plate under it off register.
   float slope = (lineY(p.x + 1.0, l, fish) - lineY(p.x - 1.0, l, fish)) * 0.5;
   sky = ink(sky, keeperInk(CREAM, k), abs(p.y - y) / sqrt(1.0 + slope * slope) - 0.5, 0.7);
-  sky = ink(sky, lift(INK_INDIGO, k), length(p - a) - max(1.0, 0.2 * c), 1.0);
+  sky = ink(sky, keyInk(k), length(p - a) - max(1.0, 0.2 * c), 1.0);
   float off = max(1.0, floor(0.4 * c));
   float mid = 0.5 * (slotX(4, l) + slotX(5, l));
   vec2 knot = vec2(mid, lineY(mid, l, fish));
-  sky = ink(sky, lift(INK_INDIGO, k), length(p - vec2(off) - knot) - bead, 0.55);
+  sky = ink(sky, keyInk(k), length(p - vec2(off) - knot) - bead, 0.55);
   sky = ink(sky, keeperInk(CREAM, k), length(p - knot) - bead, 1.0);
   // The two slots either side of p: a fish swings less than half the way
   // to the next.
@@ -192,8 +192,8 @@ vec3 grillStone(vec3 sky, vec2 p, vec2 at, int i, float s, float fine, float off
   vec2 v = (p - c) / vec2(1.0, 0.75);
   float d = (length(v) - r) * 0.75;
   if (d > off + 1.0) return sky;
-  sky = ink(sky, lift(INK_INDIGO, k), (length((p - vec2(off) - c) / vec2(1.0, 0.75)) - r) * 0.75, 0.6);
-  vec3 stone = mix(lift(mix(INK_INDIGO, CREAM, 0.62), k), lift(INK_INDIGO, k), screen(p, clamp(0.25 + 0.7 * v.y / r, 0.0, 1.0), fine, 60.0));
+  sky = ink(sky, keyInk(k), (length((p - vec2(off) - c) / vec2(1.0, 0.75)) - r) * 0.75, 0.6);
+  vec3 stone = mix(lift(mix(INK_INDIGO, CREAM, 0.62), k), keyInk(k), screen(p, clamp(0.25 + 0.7 * v.y / r, 0.0, 1.0), fine, 60.0));
   return ink(sky, stone, d, 1.0);
 }
 
@@ -278,7 +278,7 @@ vec3 grillSmoke(vec3 sky, vec2 p, Lighthouse l, int state, float u, float k) {
   float edge = l.x + 4.0 * s;
   if (p.x < from.x - 1.7 * s || p.x > min(edge, from.x + drift + 1.9 * s) || p.y < from.y - 7.0 * s || p.y > from.y + 0.5 * s) return sky;
   vec3 color = keeperInk(mix(CREAM, INK_INDIGO, 0.2), k);
-  vec3 smoked = smoke(sky, p, from, 5.4 * s, drift, 0.36 * s, 0.15, state == CONTEXT_CLEARING ? 0.9 : 0.45, color, max(3.0, u * 0.24));
+  vec3 smoked = smoke(sky, p, from, 5.4 * s, drift, 0.36 * s, 0.15, state == CONTEXT_CLEARING ? 0.9 : 0.45, color, pitch(u));
   return mix(sky, smoked, smoothstep(edge, edge - 0.6 * s, p.x) * smoothstep(from.y + 0.5 * s, from.y + 0.2 * s, p.y));
 }
 `

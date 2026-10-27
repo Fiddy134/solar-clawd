@@ -55,7 +55,7 @@ vec3 binoculars(vec3 sky, vec2 p, Keeper kp, Lighthouse l, float k) {
   float e = radians(42.0 + 16.0 * sin(2.0 * PI * iTime / 20.0));
   vec2 dir = vec2(kp.facing * cos(e), -sin(e));
   vec2 across = vec2(-dir.y, dir.x) * 0.3 * c;
-  sky = ink(sky, lift(INK_INDIGO, k), limb(p, eye + across, eye + across + 1.8 * c * dir, 0.3 * c, 0.4 * c), 1.0);
+  sky = ink(sky, keyInk(k), limb(p, eye + across, eye + across + 1.8 * c * dir, 0.3 * c, 0.4 * c), 1.0);
   return ink(sky, keeperInk(mix(INK_INDIGO, CREAM, 0.4), k), limb(p, eye - across, eye - across + 1.8 * c * dir, 0.3 * c, 0.4 * c), 1.0);
 }
 
@@ -72,12 +72,12 @@ vec3 fishingLantern(vec3 sky, vec2 p, Lighthouse l, float u, float k) {
     float onRow = smoothstep(0.2, 0.0, abs(fract(row) - 0.5));
     float column = exp(-abs(p.x - at.x) / (0.2 * s)) * smoothstep(l.foot + 0.4 * s, l.foot + 0.5 * s, p.y);
     float glint = column * onRow * smoothstep(0.2, 0.7, sin(p.x / (0.4 * u) + floor(row) * 1.7 - iTime * 1.1));
-    return mix(sky, lift(INK_YELLOW, k), screen(p, glint, max(3.0, u * 0.24), 0.0) * 0.85);
+    return mix(sky, lift(INK_YELLOW, k), screen(p, glint, pitch(u), 0.0) * 0.85);
   }
   vec2 v = p - at;
   if (abs(v.x) > 3.0 * c || abs(v.y) > 3.0 * c) return sky;
   sky = mix(sky, lift(INK_YELLOW, k), screen(p, 0.6 * exp(-length(v) / (0.8 * c)), max(2.0, 0.4 * c), 15.0));
-  vec3 frame = lift(INK_INDIGO, k);
+  vec3 frame = keyInk(k);
   sky = ink(sky, frame, abs(length(v + vec2(0.0, 0.8 * c)) - 0.3 * c) - 0.5, v.y < -0.8 * c ? 1.0 : 0.0);
   sky = ink(sky, frame, box(v, vec2(0.5 * c, 0.75 * c)), 1.0);
   return ink(sky, INK_YELLOW, box(v, vec2(0.3 * c, 0.5 * c)), 1.0);
@@ -109,14 +109,14 @@ vec3 hammock(vec3 sky, vec2 p, Lighthouse l, float k) {
   float end = l.foot - 0.6 * s;
   sky = keeperLine(sky, p, ring, vec2(bed.x - bed.z, end), keeperInk(CREAM, k), 1.0, 0.7);
   sky = keeperLine(sky, p, post, vec2(bed.x + bed.z, end), keeperInk(CREAM, k), 1.0, 0.7);
-  sky = ink(sky, lift(INK_INDIGO, k), length(p - ring) - max(1.0, 0.2 * c), 1.0);
+  sky = ink(sky, keyInk(k), length(p - ring) - max(1.0, 0.2 * c), 1.0);
   float q = (p.x - bed.x) / bed.z;
   if (abs(q) >= 1.0) return sky;
   float sag = 1.0 - q * q;
   float under = mix(end, bed.y, sag);
   float lip = under - mix(0.05 * s, 0.13 * s, sag);
   float off = max(1.0, floor(0.4 * c));
-  if (p.y > under && p.y < under + off) sky = mix(sky, lift(INK_INDIGO, k), 0.55);
+  if (p.y > under && p.y < under + off) sky = mix(sky, keyInk(k), 0.55);
   if (p.y < lip || p.y > under) return sky;
   bool isBlue = fract((p.x - bed.x) / (0.16 * s)) < 0.5;
   return mix(sky, keeperInk(isBlue ? INK_BLUE : CREAM, k), 0.95);

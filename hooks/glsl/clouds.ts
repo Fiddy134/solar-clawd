@@ -19,7 +19,7 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
   float h = iResolution.y;
   int count = int(floor(5.0 + COVER * 4.0 + 0.5));
   float baseSize = unit * 3.2;
-  float pitch = max(3.0, unit * 0.24);
+  float dots = pitch(unit);
   float speed = (w / 1400.0) * (1.0 + WIND / 5.0);
   // Clouds keep to the upper half: below the lowest a cloud could reach,
   // none of them is worth asking about.
@@ -30,7 +30,7 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
   vec3 topInk = tone(mix(mix(INK_VIOLET, INK_PINK, day), INK_ORANGE, golden * 0.6), k);
   vec3 underInk = tone(mix(INK_INDIGO, INK_BLUE, day), k);
   float inkStrength = 0.45 + 0.35 * day;
-  vec2 shift = vec2(pitch * 0.45, pitch * 0.3);
+  vec2 shift = vec2(dots * 0.45, dots * 0.3);
 
   float margin = baseSize * 6.0;
   float span = w + margin * 2.0;
@@ -67,8 +67,8 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
       float hull = (length(v / vec2(3.6, 0.95)) - px) * 0.95;
       float dome = v.y < -0.3 * px ? length(v - vec2(0.0, -0.55 * px)) - 1.55 * px : 1e9;
       vec3 steel = mix(vec3(0.82, 0.84, 0.9), INK_BLUE, 0.15);
-      vec3 body = mix(steel, mix(steel, INK_INDIGO, 0.45), screen(p, clamp(0.15 + v.y / px * 0.45, 0.0, 1.0), pitch, 45.0));
-      vec3 glass = mix(mix(INK_BLUE, vec3(1.0), 0.35), vec3(1.0), screen(p, clamp(0.5 - (v.x + v.y) / px * 0.3, 0.0, 1.0), pitch, 15.0) * 0.6);
+      vec3 body = mix(steel, mix(steel, INK_INDIGO, 0.45), screen(p, clamp(0.15 + v.y / px * 0.45, 0.0, 1.0), dots, 45.0));
+      vec3 glass = mix(mix(INK_BLUE, vec3(1.0), 0.35), vec3(1.0), screen(p, clamp(0.5 - (v.x + v.y) / px * 0.3, 0.0, 1.0), dots, 15.0) * 0.6);
       sky = ink(sky, lift(glass, k), dome, 1.0);
       sky = ink(sky, lift(body, k), hull, 1.0);
       for (int j = 0; j < 5; j++) {
@@ -76,9 +76,9 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
         sky = ink(sky, isLit ? INK_YELLOW : lift(INK_PINK, k), length(v - vec2(float(j - 2) * 1.25 * px, 0.25 * px)) - 0.3 * px, 1.0);
       }
       // The key plate, a little off register.
-      vec2 w = v - vec2(0.12, 0.1) * px;
+      vec2 w = v - keyShift(px);
       float key = min(abs((length(w / vec2(3.6, 0.95)) - px) * 0.95), w.y < -0.3 * px ? abs(length(w - vec2(0.0, -0.55 * px)) - 1.55 * px) : 1e9);
-      sky = ink(sky, lift(INK_INDIGO, k), key - 0.06 * px, 0.6);
+      sky = ink(sky, keyInk(k), key - 0.06 * px, 0.6);
       continue;
     }
 
@@ -129,9 +129,9 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
 
     // Printed: a pale body, then the two plates in halftone.
     sky = mix(sky, color, clamp(cover * opacity * 0.55, 0.0, 1.0));
-    float topDots = screen(p, cover * (1.0 - lower) * 0.65, pitch, 75.0);
+    float topDots = screen(p, cover * (1.0 - lower) * 0.65, dots, 75.0);
     sky = mix(sky, topInk, clamp(topDots * inkStrength * opacity, 0.0, 1.0));
-    float underDots = screen(p - shift, cover * lower * 0.6, pitch, 15.0);
+    float underDots = screen(p - shift, cover * lower * 0.6, dots, 15.0);
     sky = mix(sky, underInk, clamp(underDots * inkStrength * opacity, 0.0, 1.0));
   }
   return sky;

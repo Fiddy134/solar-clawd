@@ -47,13 +47,13 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
   float depth = (p.y - level) / iResolution.y;
   float cover = smoothstep(0.62, 0.78, p.x / iResolution.x) * smoothstep(0.08, 0.025, depth);
   if (cover <= 0.0) return sky;
-  float pitch = max(3.0, u * 0.24);
-  vec3 water = mix(sky * 0.8, tone(mix(INK_BLUE, INK_INDIGO, 0.5), k) * (1.0 - 0.7 * nightness(sceneNow().elevation)), 0.45);
+  float dots = pitch(u);
+  vec3 water = mix(sky * 0.8, tone(mix(INK_BLUE, INK_INDIGO, 0.5), k) * (1.0 - 0.7 * night()), 0.45);
   // Ripples: short dashes on rows that crowd together toward the horizon.
   float row = seaRow(p, u);
   float onRow = smoothstep(0.2, 0.0, abs(fract(row) - 0.5));
   float dash = smoothstep(0.35, 0.9, sin(p.x / (0.7 * u) + floor(row) * 2.3 + iTime * 0.7) * sin(p.x / (2.9 * u) - floor(row) * 1.1 + iTime * 0.3));
-  water = mix(water, mix(water, sky * 1.25 + 0.05, 0.6), screen(p, onRow * dash * 0.8, pitch, 0.0));
+  water = mix(water, mix(water, sky * 1.25 + 0.05, 0.6), screen(p, onRow * dash * 0.8, dots, 0.0));
   // The sun low over it glitters in a broken column beneath it.
   Scene sc = sceneNow();
   if (sc.isDay > 0.5 && sc.elevation < 25.0) {
@@ -61,18 +61,18 @@ vec3 sea(vec3 sky, vec2 p, float u, float k, vec3 glow, float glowStrength) {
     float column = exp(-abs(p.x - sun.x) / (0.8 * u * (1.0 + depth * 12.0)));
     float glint = column * onRow * smoothstep(0.2, 0.7, sin(p.x / (0.6 * u) + floor(row) * 1.7 - iTime * 1.3));
     vec3 gold = mix(INK_YELLOW, INK_ORANGE, smoothstep(12.0, 2.0, sc.elevation));
-    water = mix(water, gold, screen(p, glint, pitch, 0.0) * 0.9);
+    water = mix(water, gold, screen(p, glint, dots, 0.0) * 0.9);
   }
   // The moon glitters in it too, pale cream, as brightly as it is full.
   if (sc.isDay < 0.5 && MOON_UP > 0.5) {
     float column = exp(-abs(p.x - domeToPixel(MOON_AT).x) / (0.8 * u * (1.0 + depth * 12.0)));
     float glint = column * onRow * smoothstep(0.2, 0.7, sin(p.x / (0.6 * u) + floor(row) * 1.7 - iTime * 1.3));
-    water = mix(water, CREAM, screen(p, glint, pitch, 0.0) * 0.9 * MOON_ILLUMINATION);
+    water = mix(water, CREAM, screen(p, glint, dots, 0.0) * 0.9 * MOON_ILLUMINATION);
   }
   // A lit lantern's light on the water below it.
   if (glowStrength > 0.0) {
     float column = exp(-abs(p.x - lighthouse(u).x) / (0.5 * u * (1.0 + depth * 10.0)));
-    water = mix(water, glow, screen(p, column * onRow * glowStrength, pitch, 15.0) * 0.9);
+    water = mix(water, glow, screen(p, column * onRow * glowStrength, dots, 15.0) * 0.9);
   }
   return mix(sky, water, cover);
 }
@@ -122,7 +122,7 @@ vec3 beacon(vec3 sky, vec2 p, float u, float k) {
 
   // Far off, everything takes some of the sky's colour, and the night's dark.
   float haze = 0.3;
-  float dark = 1.0 - 0.6 * nightness(sceneNow().elevation);
+  float dark = 1.0 - 0.6 * night();
   vec3 indigo = mix(tone(INK_INDIGO, k) * dark, sky, haze);
   // The rocks it stands on, lighter on top, the water lapping at them.
   float rocks = min(min(length((p - vec2(x - 0.7 * s, foot - 0.05 * s)) / vec2(1.5, 0.6)), length((p - vec2(x + 0.9 * s, foot + 0.05 * s)) / vec2(1.2, 0.45))),
@@ -239,18 +239,18 @@ vec3 dolphin(vec3 sky, vec2 p, float u, float seed, float k, bool isPink) {
   // screened; the flipper and the flukes in its skin.
   vec3 skin = isPink ? lift(mix(INK_PINK, vec3(1.0, 0.88, 0.92), 0.35), k) : lift(mix(INK_BLUE, vec3(0.62, 0.7, 0.82), 0.55), k);
   float belly = (1.0 - smoothstep(-0.2, 0.0, b.y)) * smoothstep(-0.95, -0.7, b.x) * step(0.0, limb(b, vec2(0.2, -0.28), vec2(-0.12, -0.6), 0.1, 0.04));
-  vec3 color = mix(skin, mix(skin, vec3(0.95), 0.6), screen(p, belly, max(3.0, u * 0.24), 45.0));
+  vec3 color = mix(skin, mix(skin, vec3(0.95), 0.6), screen(p, belly, pitch(u), 45.0));
   sky = ink(sky, color, shape, 1.0);
   // The key plate a little off register, round the whole of it.
   vec2 off = d - vec2(0.1, 0.08) * u;
   vec2 b2 = dolphinBend(vec2(dot(off, vel), dot(off, back)) / s, beat);
-  sky = ink(sky, lift(INK_INDIGO, k), abs(dolphinShape(b2) * s) - 0.05 * u, 0.6);
+  sky = keyPlate(sky, dolphinShape(b2) * s, 0.05 * u, 0.6, k);
   // Its smile, from the beak's tip curling up toward the eye, and the eye
   // with a glint of the paper in it.
   float smile = abs(length(b - vec2(1.0, 0.18)) - 0.33) * s;
-  if (b.x > 0.76 && b.x < 1.16 && b.y < 0.18) sky = ink(sky, lift(INK_INDIGO, k), smile - max(0.9, 0.05 * s), 0.9);
+  if (b.x > 0.76 && b.x < 1.16 && b.y < 0.18) sky = ink(sky, keyInk(k), smile - max(0.9, 0.05 * s), 0.9);
   vec2 eye = vec2(0.62, 0.06);
-  sky = ink(sky, lift(INK_INDIGO, k), length(b - eye) * s - max(1.6, 0.1 * s), 1.0);
+  sky = ink(sky, keyInk(k), length(b - eye) * s - max(1.6, 0.1 * s), 1.0);
   return ink(sky, CREAM, length(b - eye - vec2(0.03, 0.035)) * s - max(0.8, 0.035 * s), 1.0);
 }
 `

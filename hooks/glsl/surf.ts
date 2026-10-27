@@ -21,7 +21,7 @@ const float SURF_LOOP = 40.0;
 float surfTime(float time) {
   if (BEACON != 0) return -1.0;
   if (KEEPER_FORCE == 2) return mod(time, SURF_LOOP);
-  if (KEEPER_ASLEEP > 0.5 || nightness(sceneNow().elevation) > 0.6) return -1.0;
+  if (KEEPER_ASLEEP > 0.5 || night() > 0.6) return -1.0;
   float n = floor(time / DAY_LOOP);
   float t = time - n * DAY_LOOP;
   return t < SURF_LOOP && isSurfLoop(n) ? t : -1.0;
@@ -116,23 +116,23 @@ vec3 surf(vec3 sky, vec2 p, Lighthouse l, float u, float k) {
   float s = l.s;
   float c = keeperCell(s);
   float off = max(1.0, floor(0.4 * c));
-  float dark = 1.0 - 0.6 * nightness(sceneNow().elevation);
+  float dark = 1.0 - 0.6 * night();
   float wave = surfWave(p, iTime, l);
   vec2 crest = surfCrest(t, l);
   if (wave > 0.0) {
-    float pitch = max(3.0, u * 0.24);
+    float dots = pitch(u);
     float v = clamp((surfLevel(l) - p.y) / crest.y, 0.0, 1.0);
     bool isFace = p.x > crest.x;
-    sky = mix(sky, lift(INK_BLUE, k) * dark, screen(p, 0.3 + 0.4 * v + (isFace ? 0.15 : 0.0), pitch, 75.0) * wave);
+    sky = mix(sky, lift(INK_BLUE, k) * dark, screen(p, 0.3 + 0.4 * v + (isFace ? 0.15 : 0.0), dots, 75.0) * wave);
     float froth = max(smoothstep(0.55, 0.9, v), isFace ? 0.6 * smoothstep(22.0, 30.0, t) * smoothstep(-0.1, 0.3, v) : 0.0);
-    sky = mix(sky, lift(vec3(0.94, 0.97, 1.0), k) * dark, screen(p, froth, pitch, 15.0) * wave);
+    sky = mix(sky, lift(vec3(0.94, 0.97, 1.0), k) * dark, screen(p, froth, dots, 15.0) * wave);
   }
-  if (surfWave(p - vec2(off), iTime, l) > 0.0 && p.y - off < surfLevel(l)) sky = ink(sky, lift(INK_INDIGO, k), abs(surfShape(p - vec2(off), t, l)) - 0.5, 0.5);
+  if (surfWave(p - vec2(off), iTime, l) > 0.0 && p.y - off < surfLevel(l)) sky = keyPlate(sky, surfShape(p - vec2(off), t, l), 0.5, 0.5, k);
   vec4 board = surfBoard(t, l);
   if (board.w <= 0.0) return sky;
   vec2 along = 0.4 * s * normalize(vec2(1.0, board.z));
   float show = screen(p, board.w, max(2.0, 0.5 * c), 45.0);
-  sky = ink(sky, lift(INK_INDIGO, k), segment(p - vec2(off), board.xy - along, board.xy + along) - 0.5 * c, 0.55 * show);
+  sky = ink(sky, keyInk(k), segment(p - vec2(off), board.xy - along, board.xy + along) - 0.5 * c, 0.55 * show);
   return ink(sky, keeperInk(INK_YELLOW, k), segment(p, board.xy - along, board.xy + along) - 0.5 * c, show);
 }
 `

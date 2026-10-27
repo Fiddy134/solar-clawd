@@ -27,6 +27,32 @@ float noise(float x, int seed) {
   return mix(a, b, smoothstep(0.0, 1.0, x - i));
 }
 
+// Smooth 2D value noise in [0, 1].
+float noise2(vec2 x, int seed) {
+  vec2 i = floor(x);
+  vec2 f = smoothstep(0.0, 1.0, x - i);
+  int n = int(i.x) * 374761 + int(i.y) * 668265 + seed * 1274126;
+  float a = mix(rand(n), rand(n + 374761), f.x);
+  float b = mix(rand(n + 668265), rand(n + 374761 + 668265), f.x);
+  return mix(a, b, f.y);
+}
+
+// noise2 in \`octaves\` layers, at most four, each twice as fine and half as
+// strong as the one before: in [0, 1].
+float fbm(vec2 x, int seed, int octaves) {
+  float sum = 0.0;
+  float weight = 0.5;
+  float total = 0.0;
+  for (int i = 0; i < 4; i++) {
+    if (i >= octaves) break;
+    sum += noise2(x, seed + i) * weight;
+    total += weight;
+    x *= 2.0;
+    weight *= 0.5;
+  }
+  return total > 0.0 ? sum / total : 0.0;
+}
+
 float luminance(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
 vec3 grey(vec3 c) { return vec3(luminance(c)); }
 // Pushes a colour away from its grey (k > 1).
@@ -136,6 +162,10 @@ float smin(float a, float b, float r) {
   return min(a, b) - h * h * r * 0.25;
 }
 
+// A box's edge from q, the box's middle at 0 and b half its size: below 0
+// inside.
+float box(vec2 q, vec2 b) { vec2 d = abs(q) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
+
 // How much of its width a thing tumbling on the air shows as it turns
 // over, for \`turn\` running from -1 to 1: all of it at either end, never
 // less than \`least\` of it edge-on in the middle, and signed as turn is,
@@ -200,5 +230,68 @@ vec3 smoke(vec3 sky, vec2 p, vec2 from, float rise, float drift, float r, float 
     tone = max(tone, puff * smoothstep(0.0, 0.1, age) * pow(1.0 - age, 0.6) * strength);
   }
   return mix(sky, color, screen(p, tone, pitch, 45.0) * 0.8);
+}
+
+// Steam or a thin smoke rising from \`foot\`, \`h\` tall and \`w\` wide at its
+// base, wavering \`speed\` times as fast as a second goes and widening and
+// thinning out as it rises: how much of it covers p.
+float steam(vec2 p, vec2 foot, float h, float w, float speed, int seed) {
+  float f = (foot.y - p.y) / h;
+  if (f < 0.0 || f > 1.0) return 0.0;
+  float sway = (noise(f * 3.0 - iTime * speed, seed) - 0.5) * 2.0 * w * f;
+  float width = w * (0.5 + f);
+  return smoothstep(width, width * 0.3, abs(p.x - foot.x - sway)) * (1.0 - f) * smoothstep(0.0, 0.1, f);
+}
+
+// --- The print -------------------------------------------------------------
+
+// How far apart the halftone's dots are for the unit u.
+float pitch(float u) { return max(3.0, u * 0.24); }
+
+// How far into the night the sky is now: 0 by day, 1 in the dark.
+float night() { return nightness(sceneNow().elevation); }
+
+// The key plate's indigo, lifted as the inks under it are.
+vec3 keyInk(float k) { return lift(INK_INDIGO, k); }
+
+// How far off register the key plate is, down and to the right, for the
+// unit u.
+vec2 keyShift(float u) { return vec2(0.12, 0.1) * u; }
+
+// The key plate: an outline \`width\` either side of a shape's edge, its
+// distance \`sdShifted\` taken from where the plate is, off register.
+vec3 keyPlate(vec3 sky, float sdShifted, float width, float alpha, float k) { return ink(sky, keyInk(k), abs(sdShifted) - width, alpha); }
+
+// One of a character's inks, half dimmed as the sun is so that it stays
+// visible, and under the indigo plate at night as the band's Clawd is.
+vec3 nightInk(vec3 c, float k) { return mix(lift(c, k), tone(INK_INDIGO, k) * 0.55, 0.45 * night()); }
+
+// A lamp's light round \`at\` in \`color\`, fading over \`radius\`, as
+// strong at its middle as \`strength\` says.
+vec3 lamp(vec3 sky, vec2 p, vec2 at, float radius, vec3 color, float strength) {
+  return mix(sky, color, clamp(strength * exp(-length(p - at) / radius), 0.0, 1.0));
+}
+
+// Cell c of a sprite \`size\` cells across and down, at most 8 by 8,
+// counted from its top left: four bits a cell, a row a uint, its first
+// cell in the lowest bits. 0 is nothing, 1 to 8 a colour of its palette.
+// \`flip\` mirrors it, for a sprite facing the other way.
+int spriteAt(uint rows[8], ivec2 size, ivec2 c, bool flip) {
+  int across = min(size.x, 8);
+  if (c.x < 0 || c.y < 0 || c.x >= across || c.y >= min(size.y, 8)) return 0;
+  int x = flip ? across - 1 - c.x : c.x;
+  return int((rows[c.y] >> uint(4 * x)) & 15u);
+}
+
+// A sprite printed with its top left at \`origin\`, \`cell\` pixels a cell:
+// each cell in its colour lifted, and the key plate a cell off register
+// down and to the right.
+vec3 sprite(vec3 sky, vec2 p, vec2 origin, float cell, uint rows[8], ivec2 size, bool flip, vec3 palette[8], float k) {
+  vec2 v = (p - origin) / cell;
+  if (v.x < 0.0 || v.y < 0.0 || v.x > float(size.x) + 1.0 || v.y > float(size.y) + 1.0) return sky;
+  int index = spriteAt(rows, size, ivec2(floor(v)), flip);
+  if (index > 0) return mix(sky, lift(palette[min(index, 8) - 1], k), 0.97);
+  if (spriteAt(rows, size, ivec2(floor(v - 1.0)), flip) > 0) return mix(sky, keyInk(k), 0.55);
+  return sky;
 }
 `

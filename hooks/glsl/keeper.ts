@@ -41,9 +41,7 @@ const vec3 WOOD = mix(INK_ORANGE, INK_INDIGO, 0.35);
 
 // One of his inks, half dimmed as the sun is so that he stays visible, and
 // under the indigo plate at night as the band's Clawd is.
-vec3 keeperInk(vec3 c, float k) {
-  return mix(lift(c, k), tone(INK_INDIGO, k) * 0.55, 0.45 * nightness(sceneNow().elevation));
-}
+vec3 keeperInk(vec3 c, float k) { return nightInk(c, k); }
 
 // The keeper at one moment: \`at\` his feet in pixels, \`facing\` 1 right and
 // -1 left, \`door\` the tower's door from 0 shut to 1 open. \`isOutside\` says
@@ -148,7 +146,7 @@ vec3 keeperSprite(vec3 sky, vec2 p, Keeper kp, vec2 rise, float k) {
   vec3 body = keeperInk(CORAL, k);
   // His legs in a deeper tone, screened as the band dithers them.
   vec3 legs = mix(body, keeperInk(mix(CORAL, INK_INDIGO, 0.22), k), screen(p, 0.6, max(2.0, 0.5 * c), 45.0));
-  vec3 eye = lift(INK_INDIGO, k);
+  vec3 eye = keyInk(k);
 
   if (kp.pose == POSE_FISH) {
     // Every few seconds, now and then, a fish tugs the bob under.
@@ -177,7 +175,7 @@ vec3 keeperSprite(vec3 sky, vec2 p, Keeper kp, vec2 rise, float k) {
   if (cell != 0) return mix(sky, cell == 2 ? eye : cell == 3 ? legs : body, 0.97);
   // The key plate, off register.
   float off = max(1.0, floor(0.4 * c));
-  if (keeperGridAt(p - vec2(off), origin, c, kp, stride) != 0) sky = mix(sky, lift(INK_INDIGO, k), 0.55);
+  if (keeperGridAt(p - vec2(off), origin, c, kp, stride) != 0) sky = mix(sky, keyInk(k), 0.55);
   return sky;
 }
 
@@ -190,13 +188,13 @@ vec3 keeperDoor(vec3 sky, vec2 p, Lighthouse l, float open, float k) {
   float spring = 0.9 * s - w;
   float d = max(v.y < -spring ? length(v + vec2(0.0, spring)) - w : abs(v.x) - w, v.y);
   if (d > 2.0) return sky;
-  float dark = 1.0 - 0.6 * nightness(sceneNow().elevation);
+  float dark = 1.0 - 0.6 * night();
   vec3 indigo = mix(tone(INK_INDIGO, k) * dark, sky, 0.3);
   // The leaf, narrower as it swings open, and the dark inside beside it.
   float edge = 2.0 * w * cos(open * 0.5 * PI) - w;
   sky = ink(sky, v.x < edge ? mix(sky, indigo, 0.85) : tone(INK_INDIGO, k) * 0.55, d, 1.0);
   // The leaf's edge against the dark, in the key plate.
-  if (open > 0.0) sky = ink(sky, lift(INK_INDIGO, k), max(d, abs(v.x - edge) - 0.5), 0.5);
+  if (open > 0.0) sky = ink(sky, keyInk(k), max(d, abs(v.x - edge) - 0.5), 0.5);
   return sky;
 }
 `

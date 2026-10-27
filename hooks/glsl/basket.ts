@@ -18,7 +18,7 @@ vec3 paperBall(vec3 sky, vec2 p, vec2 at, float r, int seed, float k, float burn
   float crease = abs(dot(v, vec2(cos(a), sin(a)))) - 0.04 * r;
   c = mix(c, mix(c, INK_INDIGO, 0.45), smoothstep(1.0, 0.0, crease) * step(length(v), r * 0.8));
   sky = ink(sky, c, d, 1.0);
-  return ink(sky, lift(INK_INDIGO, k), abs(length(v - vec2(0.12, 0.1) * r) - r) - 0.5, 0.6);
+  return ink(sky, keyInk(k), abs(length(v - keyShift(r)) - r) - 0.5, 0.6);
 }
 
 // The wastebasket in the bottom right corner, wire mesh over a dark inside:
@@ -32,7 +32,7 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   // This tab's own, from its mark (tabMark).
   int balls = int(iPalette[16].g * 255.0 + 0.5);
   int state = int(iPalette[16].r * 255.0 + 0.5);
-  float pitch = max(3.0, u * 0.24);
+  float dots = pitch(u);
   // Its own unit, a little smaller than the sky's.
   u *= 0.85;
   float hgt = 2.6 * u;
@@ -46,7 +46,7 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   float burnt = isBurning ? 0.55 + 0.25 * sin(iTime * 2.0) : 0.0;
 
   // Smoke, behind it all.
-  if (state != 0) sky = smoke(sky, p, base - vec2(0.0, hgt + 0.8 * u), 4.5 * u, 0.0, 0.35 * u, 0.22, isBurning ? 0.6 : 0.4, lift(mix(CREAM, INK_INDIGO, 0.45), k), pitch);
+  if (state != 0) sky = smoke(sky, p, base - vec2(0.0, hgt + 0.8 * u), 4.5 * u, 0.0, 0.35 * u, 0.22, isBurning ? 0.6 : 0.4, lift(mix(CREAM, INK_INDIGO, 0.45), k), dots);
   if (isInside) sky = mix(sky, tone(INK_INDIGO, k) * 0.55, 0.85);
   for (int i = 0; i < 8; i++) {
     if (i >= balls) break;
@@ -63,19 +63,19 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   if (abs(v.x) <= 1.25 * u) sky = ink(sky, steel, abs(v.y + hgt) - 0.11 * u, 1.0);
   if (abs(v.x) <= 0.85 * u) sky = ink(sky, steel, abs(v.y) - 0.09 * u, 1.0);
   // The key plate, a little off register.
-  vec2 w = v - vec2(0.12, 0.1) * u;
+  vec2 w = v - keyShift(u);
   float wr = clamp(-w.y / hgt, 0.0, 1.0);
-  if (w.y <= 0.0 && w.y >= -hgt) sky = ink(sky, lift(INK_INDIGO, k), abs(abs(w.x) - mix(0.85, 1.15, wr) * u) - 0.04 * u, 0.5);
+  if (w.y <= 0.0 && w.y >= -hgt) sky = ink(sky, keyInk(k), abs(abs(w.x) - mix(0.85, 1.15, wr) * u) - 0.04 * u, 0.5);
   for (int i = 8; i < 10; i++) {
     if (i >= balls) break;
     sky = paperBall(sky, p, base + BALL_AT[i] * u, 0.42 * u, i + 3, k, burnt);
   }
 
   // The fire: pink, orange and yellow tongues, each smaller than the last.
-  if (isBurning) sky = fire(sky, p, base + vec2(0.0, -hgt + 0.6 * u), 0.6 * u, u, 0.55 * u, pitch);
+  if (isBurning) sky = fire(sky, p, base + vec2(0.0, -hgt + 0.6 * u), 0.6 * u, u, 0.55 * u, dots);
   // Embers in the bottom of an emptied bin.
   if (state == 2 && isInside && v.y > -0.6 * u) {
-    float glow = step(0.82, rand(int(floor(p.x / pitch)) * 31 + int(floor(p.y / pitch)) * 17 + int(floor(iTime * 4.0))));
+    float glow = step(0.82, rand(int(floor(p.x / dots)) * 31 + int(floor(p.y / dots)) * 17 + int(floor(iTime * 4.0))));
     sky = mix(sky, INK_ORANGE, glow * 0.9);
   }
   return sky;

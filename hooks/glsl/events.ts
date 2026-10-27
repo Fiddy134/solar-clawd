@@ -74,12 +74,11 @@ vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
     gores[2] = SWEDISH_BLUE;
   }
   vec3 color = gores[gore % 3];
-  color = mix(color, mix(color, INK_INDIGO, 0.35), screen(p, clamp(q.x / r * 0.6 + 0.2, 0.0, 1.0), max(3.0, u * 0.24), 45.0));
+  color = mix(color, mix(color, INK_INDIGO, 0.35), screen(p, clamp(q.x / r * 0.6 + 0.2, 0.0, 1.0), pitch(u), 45.0));
   sky = ink(sky, lift(color, k), envelope, 1.0);
   sky = ink(sky, lift(mix(INK_ORANGE, INK_INDIGO, 0.4), k), min(basket, ropes), 1.0);
   // The key plate, a little off register.
-  float key = abs(length((q - vec2(0.12, 0.1) * u) / vec2(1.0, 1.15)) - r) - 0.08 * u;
-  return ink(sky, lift(INK_INDIGO, k), key, 0.7);
+  return keyPlate(sky, length((q - keyShift(u)) / vec2(1.0, 1.15)) - r, 0.08 * u, 0.7, k);
 }
 
 // A bird's wing in its frame (x ahead, y down, in units of its size), two
@@ -132,8 +131,8 @@ vec3 birdPrint(vec3 sky, vec2 q, float s, int i, float back, bool isCrane, float
   vec2 b = q * turn;
   vec2 far = vec2(-0.12, -0.1);
   sky = ink(sky, lift(INK_BLUE, k), min(birdShape(b2, isCrane, f1, f2), birdWing(b2 - far, f1 + 0.2, f2 + 0.2)) * s, 0.45);
-  sky = ink(sky, lift(INK_INDIGO, k), birdWing(b - far, f1 + 0.2, f2 + 0.2) * s, 0.6);
-  return ink(sky, lift(INK_INDIGO, k), birdShape(b, isCrane, f1, f2) * s, 0.9);
+  sky = ink(sky, keyInk(k), birdWing(b - far, f1 + 0.2, f2 + 0.2) * s, 0.6);
+  return ink(sky, keyInk(k), birdShape(b, isCrane, f1, f2) * s, 0.9);
 }
 
 // A skein of nine, geese or cranes by the seed, in a V behind its leader,
@@ -212,7 +211,7 @@ vec3 plane(vec3 sky, vec2 p, float u, float seed, float t, float k) {
     float fade = 0.6 * exp(-behind / (0.5 * iResolution.x)) * smoothstep(1.4 * s, 3.5 * s, behind);
     float cover = max(smoothstep(width + 0.8, width - 0.8, abs(across - spread)), smoothstep(width + 0.8, width - 0.8, abs(across + spread))) * fade;
     vec3 trail = mix(vec3(1.0), mix(INK_PINK, INK_ORANGE, 0.45), smoothstep(16.0, 4.0, elevation) * 0.8);
-    sky = mix(sky, lift(trail, k), screen(p, cover, max(3.0, u * 0.24), 30.0) * 0.8 + cover * 0.25);
+    sky = mix(sky, lift(trail, k), screen(p, cover, pitch(u), 30.0) * 0.8 + cover * 0.25);
   }
   vec2 d = p - at;
   vec2 q = vec2(dot(d, dir), dot(d, n));
@@ -230,14 +229,13 @@ vec3 plane(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   // The underside pale, screened darker to one side; the engines in the
   // seed's ink.
   vec3 belly = mix(vec3(0.97, 0.96, 0.93), INK_BLUE, 0.08);
-  vec3 color = mix(belly, mix(belly, INK_INDIGO, 0.35), screen(p, clamp(0.3 - q.y / s * 0.35, 0.0, 1.0), max(3.0, u * 0.24), 45.0));
+  vec3 color = mix(belly, mix(belly, INK_INDIGO, 0.35), screen(p, clamp(0.3 - q.y / s * 0.35, 0.0, 1.0), pitch(u), 45.0));
   sky = ink(sky, lift(color, k), frame, 1.0);
   vec3 accents[3] = vec3[3](INK_PINK, INK_ORANGE, INK_BLUE);
   sky = ink(sky, lift(accents[int(seeded(seed, 4) * 3.0) % 3], k), engines, 1.0);
   // The key plate, a little off register.
-  vec2 off = d - vec2(0.12, 0.1) * u;
-  float key = abs(airframe(vec2(dot(off, dir), dot(off, n)), s)) - 0.06 * u;
-  return ink(sky, lift(INK_INDIGO, k), key, 0.7);
+  vec2 off = d - keyShift(u);
+  return keyPlate(sky, airframe(vec2(dot(off, dir), dot(off, n)), s), 0.06 * u, 0.7, k);
 }
 
 // Three inks screened at their own angles: where they overlap the dots
@@ -272,13 +270,13 @@ vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
   vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * off;
   float diamond = (abs(q.x) / (0.9 * u) + abs(q.y) / (1.3 * u) - 1.0) * 0.9 * u;
   vec3 color = (q.x < 0.0) == (q.y < 0.0) ? INK_PINK : INK_YELLOW;
-  sky = ink(sky, lift(INK_INDIGO, k), cord, 0.5);
+  sky = ink(sky, keyInk(k), cord, 0.5);
   for (int j = 0; j < 6; j++) {
     vec2 bow = at + vec2(sin(iTime * 2.0 + float(j)) * 0.5 * u, (float(j) + 1.6) * 0.7 * u);
     sky = ink(sky, lift(j % 2 == 0 ? INK_BLUE : INK_PINK, k), length((p - bow) / vec2(1.6, 1.0)) - 0.16 * u, 1.0);
   }
   sky = ink(sky, lift(color, k), diamond, 1.0);
-  return ink(sky, lift(INK_INDIGO, k), abs(diamond) - 0.06 * u, 0.6);
+  return keyPlate(sky, diamond, 0.06 * u, 0.6, k);
 }
 
 // What the wind carries, each in its own frame: its midrib along x, the
@@ -379,7 +377,7 @@ vec3 driftPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, bool isBlo
       angle = 45.0;
       over = mix(color, INK_INDIGO, 0.7);
     }
-    color = mix(color, over, screen(p, tone, max(3.0, u * 0.24), angle));
+    color = mix(color, over, screen(p, tone, pitch(u), angle));
   }
   sky = ink(sky, lift(color, k), driftShape(f, kind) * scale, 0.95);
   if (kind == FLOWER) sky = ink(sky, lift(INK_YELLOW, k), (length(f) - 0.09) * scale, 0.95);
@@ -387,7 +385,7 @@ vec3 driftPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, bool isBlo
   vec2 f2 = tumble(q - max(vec2(1.0), floor(vec2(0.07, 0.06) * u)), spin, flip) / s;
   float key = abs(driftShape(f2, kind) * scale) - 0.035 * u;
   if (!isBlossom) key = min(key, segment(f2, vec2(LEAF_VEIN[kind].x, 0.0), vec2(LEAF_VEIN[kind].y, 0.0)) * scale - 0.015 * u);
-  return ink(sky, lift(INK_INDIGO, k), key, kind == FLOWER ? 0.4 : isBlossom ? 0.3 : 0.55);
+  return ink(sky, keyInk(k), key, kind == FLOWER ? 0.4 : isBlossom ? 0.3 : 0.55);
 }
 
 // Leaves (or blossom) tumbling across on the wind: eighteen pieces, maple,
@@ -440,7 +438,7 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   vec2 ion = vec2(cos(COMET_AWAY), sin(COMET_AWAY));
   vec2 dir = normalize(ion - vec2(-ion.y, ion.x) * 0.18);
   vec2 side = vec2(-dir.y, dir.x);
-  float pitch = max(3.0, u * 0.24);
+  float dots = pitch(u);
   float pulse = 0.9 + 0.1 * sin(iTime * 1.6);
   vec2 q = p - head;
   float along = dot(q, dir);
@@ -464,9 +462,9 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
     // edge runs orange.
     float fall = exp(-a / (10.0 * u)) * smoothstep(-2.0 * u, 0.8 * u, along);
     float edge = exp(-pow(across - 0.45, 2.0) * 4.0) * fall * smoothstep(0.0, 4.0 * u, a);
-    sky = mix(sky, INK_PINK, screen(p, edge * 0.5, pitch, 75.0) * 0.85);
+    sky = mix(sky, INK_PINK, screen(p, edge * 0.5, dots, 75.0) * 0.85);
     float spine = exp(-across * across * 2.2) * fall;
-    sky = mix(sky, INK_YELLOW, screen(p, spine * 0.8, pitch, 0.0) * 0.9);
+    sky = mix(sky, INK_YELLOW, screen(p, spine * 0.8, dots, 0.0) * 0.9);
     // Grains carried out down the tail, an even stream with no start.
     vec2 g = vec2(a / (1.6 * u) - iTime * 0.9, across * width / (0.9 * u));
     vec2 cell = floor(g);
@@ -482,12 +480,12 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
     float flutter = sin(iTime * 0.7 + ionAlong * 0.05) * ionAlong * 0.012;
     float ionD = abs(dot(q, ionSide) - flutter);
     float ionCover = exp(-ionAlong / (18.0 * u)) * smoothstep(0.2 * u + ionAlong * 0.012, 0.0, ionD);
-    sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.35), screen(p, ionCover * 0.75, pitch, 15.0) * 0.8);
+    sky = mix(sky, mix(INK_BLUE, vec3(1.0), 0.35), screen(p, ionCover * 0.75, dots, 15.0) * 0.8);
   }
   // The coma: green, as a comet's is, screened round a bright nucleus
   // that breathes.
   if (!isComa) return sky;
-  sky = mix(sky, mix(INK_GREEN, vec3(1.0), 0.35), screen(p, exp(-r / (0.75 * u * pulse)) * smoothstep(3.0 * u, 1.0 * u, r) * 0.9, pitch, 30.0) * 0.85);
+  sky = mix(sky, mix(INK_GREEN, vec3(1.0), 0.35), screen(p, exp(-r / (0.75 * u * pulse)) * smoothstep(3.0 * u, 1.0 * u, r) * 0.9, dots, 30.0) * 0.85);
   sky = mix(sky, vec3(1.0, 0.98, 0.9), 0.55 * exp(-r / (0.35 * u * pulse)));
   return ink(sky, vec3(1.0, 0.98, 0.92), r - 0.25 * u, 1.0);
 }
@@ -546,8 +544,6 @@ vec3 confetti(vec3 sky, vec2 p, float u, float seed, float k) {
 
 // --- The Swedish days -------------------------------------------------------
 
-float box(vec2 q, vec2 b) { vec2 d = abs(q) - b; return length(max(d, 0.0)) + min(max(d.x, d.y), 0.0); }
-
 // Maundy Thursday night: a påskkärring on her broom, a coffee pot hanging
 // from it, on her way past the moon to Blåkulla.
 vec3 witch(vec3 sky, vec2 p, float u, float seed, float t, float k) {
@@ -593,10 +589,10 @@ vec3 featherPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, float k)
   vec2 f = tumble(q, sway + 0.5 * PI, flip) / s;
   float scale = s * abs(flip);
   float shaft = 0.9 * (1.0 - smoothstep(0.0, 0.07 * u, abs(f.y) * scale)) * step(f.x, 0.2);
-  vec3 color = mix(dye[i % 5], CREAM, screen(p, shaft, max(3.0, u * 0.24), 0.0));
+  vec3 color = mix(dye[i % 5], CREAM, screen(p, shaft, pitch(u), 0.0));
   sky = ink(sky, lift(color, k), featherShape(f) * scale, 0.95);
-  vec2 f2 = tumble(q - vec2(0.12, 0.1) * u, sway + 0.5 * PI, flip) / s;
-  return ink(sky, lift(INK_INDIGO, k), abs(featherShape(f2) * scale) - 0.05 * u, 0.45);
+  vec2 f2 = tumble(q - keyShift(u), sway + 0.5 * PI, flip) / s;
+  return keyPlate(sky, featherShape(f2) * scale, 0.05 * u, 0.45, k);
 }
 
 // Feathers drifting down, dyed as for the påskris, swaying as they fall.
