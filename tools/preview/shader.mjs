@@ -43,11 +43,13 @@ const params = shaderParams(
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
     // --basket 6 or 9,burn or 0,embers: the wastebasket in the corner.
+    // --fish 7 or 7,catch or 7,grill or 0,embers: the same mark as the keeper's catch (grill is burn).
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
     isYUp: !!o['y-up'],
     stagePx: o.stage ? Number(o.stage) : 0,
     isLight: !!o.light,
-    basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
+    basket: o.fish !== undefined ? { balls: Number(String(o.fish).split(',')[0]), fire: { grill: 'burn' }[String(o.fish).split(',')[1]] ?? String(o.fish).split(',')[1] ?? null }
+      : o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))

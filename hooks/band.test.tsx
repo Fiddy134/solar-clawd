@@ -86,6 +86,7 @@ test('in Ghostty the wastebasket stands in the sky, each tab\'s own carried in i
   expect(tabMark({ balls: 14, fire: null })).toEqual([0, 10, 1])
   expect(tabMark({ balls: 3, fire: 'burn' })).toEqual([1, 3, 1])
   expect(tabMark({ balls: 0, fire: 'embers' })).toEqual([2, 0, 1])
+  expect(tabMark({ balls: 7, fire: 'catch' })).toEqual([3, 7, 1])
   expect(tabMark(null)).toEqual([0, 0, 1])
   const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
   // The band throws toward the sky's basket instead of keeping its own.

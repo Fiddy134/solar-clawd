@@ -46,7 +46,7 @@ export type ShaderParams = {
   // The wastebasket in the bottom right corner: balls of paper, a tenth of
   // the context window each, and a fire while the conversation compacts
   // (embers just after); null where the band keeps its own.
-  basket: { balls: number; fire: 'burn' | 'embers' | null } | null
+  basket: { balls: number; fire: 'burn' | 'embers' | 'catch' | null } | null
   // The ISS on a visible pass, where it is and was 20 s before; null otherwise.
   iss: { at: DomePoint; trail: DomePoint } | null
   // Where a comet up now hangs on the dome, and the angle its tails point
@@ -87,10 +87,10 @@ export type ShaderParams = {
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
 // markTab): blue one step off black says Claude runs there, green counts
 // the balls in its wastebasket and red says what burns (1 a fire, 2
-// embers). Per tab, where the shader's text is one for all of them.
+// embers) or that a tenth has just filled (3). Per tab, where the shader's text is one for all of them.
 export function tabMark(basket: ShaderParams['basket']): [number, number, number] {
   const balls = Math.max(0, Math.min(10, Math.round(basket?.balls ?? 0)))
-  const fire = basket?.fire === 'burn' ? 1 : basket?.fire === 'embers' ? 2 : 0
+  const fire = basket?.fire === 'burn' ? 1 : basket?.fire === 'embers' ? 2 : basket?.fire === 'catch' ? 3 : 0
 
   return [fire, balls, 1]
 }
