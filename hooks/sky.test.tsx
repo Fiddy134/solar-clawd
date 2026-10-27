@@ -10,6 +10,7 @@ import type { DomePoint } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { animationOf, WAITING_MS, WAITING_SWEEP_MS, WAITING_URGENT_MS, waitingAt } from './waiting'
 import { elementsOf, issAt, issVisible } from './iss'
+import { asPace, AWAY_MS, canTick, FULL_STILL_MS, nextTickAt, PACE_HZ, skyRules, versionOf } from './pace'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
 import { BASKET } from './glsl/basket'
@@ -561,4 +562,88 @@ test("/solar event plays fyr's previews, the keeper's abduction and surf, and th
     expect(kinds).not.toContain('abduction')
     expect(kinds).not.toContain('surf')
   }
+})
+
+// The rules' inputs, for one combination: a fresh question, one past its
+// sweep, or none; the person here a second or six minutes.
+const WAITS = [null, { mode: 'asking' as const, since: 0 }, { mode: 'done' as const, since: -WAITING_SWEEP_MS }]
+const rulesWith = (o: Partial<Parameters<typeof skyRules>[0]>) =>
+  skyRules({ pace: 'spar', canTick: true, waiting: null, now: 1000, idleMs: 1000, isOnBattery: false, isLively: true, isGhosttyInFront: true, ...o })
+
+test("without ticks the rules are today's, to the letter", () => {
+  for (const pace of ['full', 'spar'] as const) {
+    for (const waiting of WAITS) {
+      for (const idleMs of [1000, 6 * 60_000, null]) {
+        for (const isOnBattery of [false, true]) {
+          for (const isLively of [false, true]) {
+            for (const isGhosttyInFront of [false, true, null]) {
+              const isAway = idleMs !== null && idleMs >= AWAY_MS
+              const today = animationOf({ waiting, now: 1000, isAway, isOnBattery, isLively })
+              expect(rulesWith({ pace, canTick: false, waiting, idleMs, isOnBattery, isLively, isGhosttyInFront })).toEqual({
+                animation: today,
+                isLight: isOnBattery || isAway,
+                isTicking: false,
+              })
+            }
+          }
+        }
+      }
+    }
+  }
+})
+
+test('full ticks in front and behind, on battery, until twenty minutes away, and is never light', () => {
+  const full = { pace: 'full' as const, isGhosttyInFront: false, isOnBattery: true, isLively: false }
+  expect(rulesWith({ ...full, idleMs: 19 * 60_000 })).toEqual({ animation: 'false', isLight: false, isTicking: true })
+  expect(rulesWith({ ...full, idleMs: FULL_STILL_MS })).toEqual({ animation: 'false', isLight: false, isTicking: false })
+  expect(rulesWith({ ...full, idleMs: null })).toEqual({ animation: 'false', isLight: false, isTicking: true })
+  expect(rulesWith({ ...full, waiting: { mode: 'asking', since: 0 } }).isTicking).toBe(true)
+})
+
+test("spar ticks where today's sky would move, and only in front unless the lighthouse sweeps", () => {
+  const asking = { mode: 'asking' as const, since: 0 }
+  const ticks = (o: Partial<Parameters<typeof skyRules>[0]>) => rulesWith(o).isTicking
+  expect(ticks({})).toBe(true)
+  expect(ticks({ isGhosttyInFront: false, waiting: asking })).toBe(true)
+  expect(ticks({ isGhosttyInFront: null })).toBe(true)
+  expect(ticks({ isGhosttyInFront: false })).toBe(false)
+  expect(ticks({ isOnBattery: true })).toBe(false)
+  expect(ticks({ isLively: false })).toBe(false)
+  expect(ticks({ idleMs: AWAY_MS })).toBe(false)
+  expect(ticks({ waiting: asking, now: WAITING_SWEEP_MS })).toBe(false)
+  for (const o of [{}, { isOnBattery: true }, { idleMs: AWAY_MS }, { waiting: asking, isGhosttyInFront: false }]) {
+    expect(rulesWith(o).animation).toBe('false')
+  }
+  expect(rulesWith({ isOnBattery: true }).isLight).toBe(true)
+  expect(rulesWith({ idleMs: AWAY_MS }).isLight).toBe(true)
+  expect(rulesWith({}).isLight).toBe(false)
+})
+
+test('ticks need macOS, a known Ghostty, and on 1.3 the vsync line', () => {
+  expect(canTick({ isLinux: true, version: [1, 4], isVsyncOff: true })).toBe(false)
+  expect(canTick({ isLinux: false, version: null, isVsyncOff: true })).toBe(false)
+  expect(canTick({ isLinux: false, version: [1, 3], isVsyncOff: false })).toBe(false)
+  expect(canTick({ isLinux: false, version: [1, 3], isVsyncOff: true })).toBe(true)
+  expect(canTick({ isLinux: false, version: [1, 4], isVsyncOff: false })).toBe(true)
+  expect(canTick({ isLinux: false, version: [2, 0], isVsyncOff: false })).toBe(true)
+  expect(versionOf('1.3.1')).toEqual([1, 3])
+  expect(versionOf('1.4.0-dev+abc')).toEqual([1, 4])
+  for (const text of [undefined, '', 'tip']) expect(versionOf(text)).toBeNull()
+  expect(asPace('{"pace":"full"}')).toBe('full')
+  expect(asPace('{"pace":"spar"}')).toBe('spar')
+  for (const text of ['', '{"pace":"fast"}', '{', 'null', '"full"']) expect(asPace(text)).toBe('spar')
+})
+
+test('a late tick goes to the next frame of the grid, never back for the ones it missed', () => {
+  const frame = 1000 / PACE_HZ
+  const near = (a: number, b: number) => Math.abs(a - b) < 1e-6
+  expect(PACE_HZ).toBe(24)
+  expect(near(nextTickAt(1000, 1000, PACE_HZ), 1000 + frame)).toBe(true)
+  expect(near(nextTickAt(1000 + frame / 2, 1000, PACE_HZ), 1000 + frame)).toBe(true)
+  // On the grid exactly: the next one, not this one again.
+  expect(near(nextTickAt(1000 + frame * 3, 1000, PACE_HZ), 1000 + frame * 4)).toBe(true)
+  const woken = 1000 + 3_600_000 + 5
+  const next = nextTickAt(woken, 1000, PACE_HZ)
+  expect(next).toBeGreaterThan(woken)
+  expect(next - woken).toBeLessThanOrEqual(frame)
 })

@@ -26,6 +26,7 @@ import {
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
 import { issVisible } from './iss'
+import { AWAY_MS } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
@@ -74,9 +75,6 @@ const FILL_MS = 30_000
 
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
-// Away after this long without a key or the mouse: the sky stands still,
-// and with it Ghostty's frame loop, until the person is back.
-const AWAY_MS = 5 * 60_000
 // How often to ask whether the Mac runs on battery.
 const BATTERY_MS = 60_000
 
