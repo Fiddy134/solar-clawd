@@ -51,6 +51,10 @@ test('the sky shader is the same text for the same scene, its constants baked in
   expect(skyShader(shaderParams({ ...input, ms: Date.UTC(2026, 9, 24, 11) }, options))).toContain('const float IS_DAY = 1.0;')
   // A demo bakes in the whole day, played with iTime.
   expect(skyShader(shaderParams(input, { ...options, demo: { seconds: 48 } }))).toContain('const int DEMO_COUNT = 96;')
+  // The lighter sky, on battery or with the person away, leaves the clouds out.
+  expect(shader).toContain('const float LIGHT = 0.0;')
+  expect(skyShader(shaderParams(input, { ...options, isLight: true }))).toContain('const float LIGHT = 1.0;')
+  expect(shader).toContain('if (LIGHT < 0.5) sky = clouds(')
 })
 
 test('events are a pure function of time: the same moment, the same events', () => {

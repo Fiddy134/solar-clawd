@@ -6,7 +6,9 @@
 # working tree has changes the commit lacks. The shader's text depends on
 # the scene's flags alone, never on a window's size, so one file serves
 # every screen. A commit other than the working tree is rendered from a
-# temporary worktree with that commit's own preview tool.
+# temporary worktree with that commit's own preview tool. The -light scenes
+# are the lighter sky of battery and away (F4 task 5b), which only a commit
+# from 743d58a on can write.
 set -euo pipefail
 root=${0:A:h:h:h}
 
@@ -17,6 +19,8 @@ scenes=(
   day-leaves   '--at 2026-10-26T12:30 --weather 1,10,3,20 --stage 480 --event leaves'
   milestone    '--at 2026-10-26T12:30 --weather 1,10,3,20 --stage 480 --event milestone'
   night-lit    '--at 2026-10-26T22:00 --weather 0,5,2,10 --stage 480 --beacon asking'
+  day-clear-light '--at 2026-10-26T12:30 --weather 1,10,3,20 --stage 480 --light'
+  night-lit-light '--at 2026-10-26T22:00 --weather 0,5,2,10 --stage 480 --beacon asking --light'
   night-dark   '--at 2026-10-26T22:00 --weather 3,5,2,95 --stage 480'
   comet        '--at 2026-10-26T22:00 --weather 0,5,2,10 --stage 480 --event comet'
 )
@@ -55,6 +59,11 @@ for name in $names; do
   print -n "$ref $sha $name … "
   $tree/tools/preview/run.sh shader ${=scenes[$name]} --out measure-$name > /dev/null
   grep -q 'void mainImage' $tree/.preview/sky.glsl || { print -u2 "${0:t}: $name gave no shader"; exit 1; }
+  # An older preview tool takes --light without a word and draws the whole sky.
+  if [[ $name == *-light ]] && ! grep -q 'const float LIGHT = 1.0;' $tree/.preview/sky.glsl; then
+    print -u2 "${0:t}: $ref cannot write the lighter sky"
+    exit 1
+  fi
   cp $tree/.preview/sky.glsl $out/$name.glsl
   print $out/$name.glsl
 done

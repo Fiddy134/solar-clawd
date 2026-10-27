@@ -164,7 +164,7 @@ export type SkyState = {
 }
 
 // What the session's shader is asked to draw beyond the scene.
-export type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number }
+export type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number; isLight: boolean }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // sky is not hidden, nothing otherwise, and Ghostty animating it as the
@@ -272,8 +272,14 @@ async function writeGhosttySky(
   const isWanted = !isHidden
   let include = ''
   if (isWanted) {
-    // Ghostty draws with OpenGL on Linux, where fragCoord has y up.
-    const extras = { beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent }, isYUp: ghostty.isLinux, stagePx: ghostty.stagePx }
+    // Ghostty draws with OpenGL on Linux, where fragCoord has y up. On
+    // battery or with the person away, the lighter sky.
+    const extras = {
+      beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent },
+      isYUp: ghostty.isLinux,
+      stagePx: ghostty.stagePx,
+      isLight: state.isOnBattery || state.isAway,
+    }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).
     const shader = shaderAt(now, extras)

@@ -5,7 +5,7 @@ const float PI = 3.14159265;
 // The arc the sun and the moon cross, as fractions of the window.
 const vec4 ARC = vec4(0.56, 0.95, 0.12, 0.62); // left, right, top, foot
 // The brightest the sky gets, so the terminal's light text stays readable.
-const float LUMINANCE = 0.36;
+const float LUMINANCE = 0.8;
 const float SATURATION = 1.35;
 
 // --- Numbers -------------------------------------------------------------

@@ -181,11 +181,16 @@ vec3 rainbow(vec3 sky, vec2 p, float k) {
 vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
   vec2 anchor = vec2(iResolution.x * (0.2 + 0.2 * seeded(seed, 1)), iResolution.y);
   vec2 at = vec2(iResolution.x * (0.35 + 0.2 * seeded(seed, 2)) + sin(iTime * 0.7) * 1.5 * u, iResolution.y * (0.22 + 0.1 * seeded(seed, 3)) + sin(iTime * 1.1) * 0.8 * u);
+  float cord = segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u;
+  // Off the string, the kite and its bows sit within 1.5u across and from
+  // 1.5u above to 4.9u below it.
+  vec2 off = p - at;
+  if (cord > 0.5 && (abs(off.x) > 1.5 * u + 1.0 || off.y < -1.5 * u - 1.0 || off.y > 4.9 * u + 1.0)) return sky;
   float tilt = sin(iTime * 0.9) * 0.25;
-  vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * (p - at);
+  vec2 q = mat2(cos(tilt), -sin(tilt), sin(tilt), cos(tilt)) * off;
   float diamond = (abs(q.x) / (0.9 * u) + abs(q.y) / (1.3 * u) - 1.0) * 0.9 * u;
   vec3 color = (q.x < 0.0) == (q.y < 0.0) ? INK_PINK : INK_YELLOW;
-  sky = ink(sky, lift(INK_INDIGO, k), segment(p, at + vec2(0.0, 1.3 * u), anchor) - 0.03 * u, 0.5);
+  sky = ink(sky, lift(INK_INDIGO, k), cord, 0.5);
   for (int j = 0; j < 6; j++) {
     vec2 bow = at + vec2(sin(iTime * 2.0 + float(j)) * 0.5 * u, (float(j) + 1.6) * 0.7 * u);
     sky = ink(sky, lift(j % 2 == 0 ? INK_BLUE : INK_PINK, k), length((p - bow) / vec2(1.6, 1.0)) - 0.16 * u, 1.0);
@@ -203,6 +208,8 @@ vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
     float b = seeded(seed, i * 4 + 1);
     float span = iResolution.x + 4.0 * u;
     float x = mod(a * span + iTime * (2.0 + WIND * 0.6) * u * (0.6 + 0.8 * b), span) - 2.0 * u;
+    // A leaf is drawn within u of its place, which the cursor shoves at most 3u.
+    if (abs(p.x - x) > 4.0 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.9 * u * (0.5 + a), iResolution.y + 4.0 * u) - 2.0 * u + sin(iTime * 1.7 + a * 9.0) * u;
     vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > u * u) continue;
@@ -226,14 +233,24 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   float pulse = 0.9 + 0.1 * sin(iTime * 1.6);
   vec2 q = p - head;
   float along = dot(q, dir);
-  if (along > -2.0 * u) {
+  float a = max(along, 0.0);
+  float bend = a * a * 0.0006 / u;
+  float width = 0.5 * u + a * 0.11;
+  float across = (dot(q, side) - bend) / width;
+  float ionAlong = dot(q, ion);
+  vec2 ionSide = vec2(-ion.y, ion.x);
+  float r = length(q);
+  // What each part can still touch: the dust tail's grains thin out past
+  // 200u and four widths of its spine; the ion tail is screened to nothing
+  // past 80u and its flutter keeps it inside a strip; the coma is gone by 12u.
+  bool isDust = along > -2.0 * u && along < 200.0 * u && abs(across) < 4.0;
+  bool isIon = ionAlong > 0.0 && ionAlong < 80.0 * u && abs(dot(q, ionSide)) < 0.2 * u + 0.026 * ionAlong;
+  bool isComa = r < 12.0 * u;
+  if (!isDust && !isIon && !isComa) return sky;
+  if (isDust) {
     // The dust tail: a broad fan, densest along its spine and fading
     // softly to its edges, yellow printed over pink so the curve's outer
     // edge runs orange.
-    float a = max(along, 0.0);
-    float bend = a * a * 0.0006 / u;
-    float width = 0.5 * u + a * 0.11;
-    float across = (dot(q, side) - bend) / width;
     float fall = exp(-a / (10.0 * u)) * smoothstep(-2.0 * u, 0.8 * u, along);
     float edge = exp(-pow(across - 0.45, 2.0) * 4.0) * fall * smoothstep(0.0, 4.0 * u, a);
     sky = mix(sky, INK_PINK, screen(p, edge * 0.5, pitch, 75.0) * 0.85);
@@ -250,9 +267,7 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
     }
   }
   // The ion tail: straight, narrow, blue, fluttering a little.
-  float ionAlong = dot(q, ion);
-  if (ionAlong > 0.0) {
-    vec2 ionSide = vec2(-ion.y, ion.x);
+  if (isIon) {
     float flutter = sin(iTime * 0.7 + ionAlong * 0.05) * ionAlong * 0.012;
     float ionD = abs(dot(q, ionSide) - flutter);
     float ionCover = exp(-ionAlong / (18.0 * u)) * smoothstep(0.2 * u + ionAlong * 0.012, 0.0, ionD);
@@ -260,7 +275,7 @@ vec3 comet(vec3 sky, vec2 p, float u, float seed) {
   }
   // The coma: green, as a comet's is, screened round a bright nucleus
   // that breathes.
-  float r = length(q);
+  if (!isComa) return sky;
   sky = mix(sky, mix(INK_GREEN, vec3(1.0), 0.35), screen(p, exp(-r / (0.75 * u * pulse)) * smoothstep(3.0 * u, 1.0 * u, r) * 0.9, pitch, 30.0) * 0.85);
   sky = mix(sky, vec3(1.0, 0.98, 0.9), 0.55 * exp(-r / (0.35 * u * pulse)));
   return ink(sky, vec3(1.0, 0.98, 0.92), r - 0.25 * u, 1.0);
@@ -273,6 +288,11 @@ vec3 constellation(vec3 sky, vec2 p, float u, float seed) {
   float s = 1.7 * u;
   // Left of the arc and below where a comet would hang.
   vec2 o = iResolution.xy * vec2(0.08 + 0.22 * seeded(seed, 1), 0.34 + 0.12 * seeded(seed, 2));
+  // The figure spans -0.2 to 7.2 across and 0 to 4.4 down, in s; its lines,
+  // stars and eyes reach less than 0.3u + 1 past it.
+  vec2 off = p - o;
+  float m = 0.3 * u + 1.0;
+  if (off.x < -0.2 * s - m || off.x > 7.2 * s + m || off.y < -m || off.y > 4.4 * s + m) return sky;
   float line = 1e9;
   for (int i = 0; i < 10; i++) line = min(line, segment(p, o + FIGURE[i] * s, o + FIGURE[(i + 1) % 10] * s));
   line = min(line, segment(p, o + vec2(2.0, 3.2) * s, o + FIGURE[10] * s));
@@ -300,6 +320,8 @@ vec3 confetti(vec3 sky, vec2 p, float u, float seed, float k) {
     float a = seeded(seed, i * 3);
     float b = seeded(seed, i * 3 + 1);
     float x = a * iResolution.x + sin(iTime * (1.0 + b) + a * 7.0) * 1.2 * u;
+    // A piece is drawn within u of its column.
+    if (abs(p.x - x) > u) continue;
     float y = mod(b * fall + iTime * (2.5 + 3.0 * a) * u, fall) - 2.0 * u;
     vec2 q = p - vec2(x, y);
     if (dot(q, q) > u * u) continue;
@@ -345,6 +367,9 @@ vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
     float a = seeded(seed, i * 4 + 50);
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
+    // A feather is drawn within 1.23u of its place, which the cursor shoves
+    // at most 3u.
+    if (abs(p.x - x) > 4.3 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
     vec2 q = p - shy(vec2(x, y), u);
     if (dot(q, q) > 1.5 * u * u) continue;
@@ -378,6 +403,9 @@ vec3 maypole(vec3 sky, vec2 p, float u, float k) {
   float foot = 0.62 * iResolution.y;
   float x = 0.72 * iResolution.x;
   float h = 5.5 * u;
+  // Pole, bar and rings all lie within 1.8u of the pole and between its top
+  // and foot, with a pixel's margin.
+  if (abs(p.x - x) > 1.8 * u + 1.0 || p.y < foot - h - 1.0 || p.y > foot + 1.0) return sky;
   vec3 green = lift(INK_GREEN, k);
   sky = ink(sky, green, box(p - vec2(x, foot - h * 0.5), vec2(0.12 * u, h * 0.5)), 0.95);
   sky = ink(sky, green, box(p - vec2(x, foot - h * 0.78), vec2(1.3 * u, 0.1 * u)), 0.95);

@@ -88,6 +88,7 @@ battery, beside a process over 20 % CPU, or with Finder windows open.
 
 ```
 sudo -v && tools/measure/gpu.sh plan --twice          # the whole list, ABBA, ~75 min, leave the Mac
+sudo -v && tools/measure/gpu.sh plan f4 --twice       # F4 phase 4: that and the same on gpu, ~105 min
 sudo -v && tools/measure/gpu.sh row probe true focused idle          # one controlled row
 sudo -v && tools/measure/gpu.sh row ljus-himmel:day-clear true focused spinner
 sudo -v && tools/measure/gpu.sh live "solar-12:30 ofokus"            # the running Ghostty, as it is
@@ -108,9 +109,10 @@ corner (sixteen small bands behind the text area, or a strip along the
 bottom edge), so scenes get an fps column and the dropped-frames inference
 in the first run becomes a measurement. The second improvement is the
 Metal HUD (`MTL_HUD_ENABLED=1` on a direct exec) or another per-process
-reading, to replace the `GPU ms/s` column macOS 27 emptied. Printing MHz
-and residency from `report.mjs` (it already parses them) would make those
-columns reproducible with `gpu.sh report`.
+reading, to replace the `GPU ms/s` column macOS 27 emptied. `report.mjs`
+now prints MHz and residency beside the mW in every table that has mW, and
+gives this run's columns as quoted here (checked on rows 1–4 and the
+branch against main).
 
 ## Run 2026-10-26: M1 Pro, built-in display, level A, B and 60 Hz
 
@@ -463,9 +465,11 @@ What Vincent decided (task 6, 2026-10-26):
 2. A report to Ghostty (an "Issue Triage" discussion) is drafted in
    `docs/superpowers/ghostty-discussion-draft.md`; Vincent checks the repro
    himself, edits it and posts it.
-3. The sweep keeps `always` for five minutes and gets an unfocused path in
-   the shader (F4 post 8: `iFocus == 0` skips the rim and the text test);
-   Vincent approves the visible difference on screenshots.
+3. The sweep keeps `always` for five minutes and was to get an unfocused
+   path in the shader (F4 post 8: `iFocus == 0` skips the rim). On the
+   screenshots Claude Code's grey text faded without the rim on a bright
+   day sky, in any window out of focus that redraws, so Vincent dropped
+   it; see "F4 phase 2" below.
 4. F4 starts now from this single pass. Its bench and rim work (tasks 0–1)
    use the preview and need no new run; the harness is run again with
    `--twice` on a quiet machine, the 60 Hz rows with mW, before F4's
@@ -578,3 +582,589 @@ the branch, against a target of 5.
 - **The raw data is outside git** (`.preview/` is ignored); the tables here
   are the record, and `rows.tsv` for this run is 45 rows at
   `.preview/measure/out/2026-10-26T171840/`.
+
+## Bench 2026-10-26: per-stage cost in WebGL (preview)
+
+F4's task 0: what each stage of the sky costs, taken apart with the
+preview's `--bench` on the Mac's own GPU. This is a different instrument
+from the run above: it times the fragment shader alone in Chrome, not
+Ghostty drawing it, so it says how the shader's own work divides between
+its stages, not what Ghostty costs the machine.
+
+### Context
+
+- Same machine: MacBookPro18,3, Apple M1 Pro; macOS 27.0; Google Chrome
+  155.0.8059.85, headless. Branch `gpu` (main with `ljus-himmel` merged),
+  shader at commit `b3e9630`, in which the rim became its own stage.
+- **Renderer**, as `WEBGL_debug_renderer_info` gives it and as every run
+  printed it: `ANGLE (Apple, ANGLE Metal Renderer: Apple M1 Pro,
+  Unspecified Version)`. The flags are `--use-angle=metal --enable-gpu
+  --ignore-gpu-blocklist` (`tools/preview/run.sh shader … --gpu`);
+  headless Chrome 155 gives the Metal renderer even with none of them.
+  Without `--gpu` the preview stays on SwiftShader.
+- **Conditions:** the live sky hidden in every Ghostty window (the
+  `runtime/hidden` file, written 21:27), the external display unplugged
+  (`system_profiler` listing only the built-in Color LCD, Internal, at
+  21:28 and again at 21:32 and 21:43), other apps and Claude sessions
+  closed, AC power. `ecosystemd` still used 50–70 % of a CPU core at
+  21:29–21:30; load average 3.65 at the start of the main bench, 2.58 at
+  its end. Every round reported below was taken after both conditions
+  held; there were no earlier rounds.
+- **The bench:** `--bench 200 --gpu --width 3024 --height 1964`, i.e. one
+  warm-up frame, then 200 frames each followed by a one-pixel
+  `readPixels`, so a frame starts only when the one before has finished;
+  ms a frame is the wall-clock mean over the 200. Scenes as in the run
+  above: `day-clear` = `--at 2026-10-26T12:30 --weather 1,10,3,20 --stage
+  480`, `night-lit` = `--at 2026-10-26T22:00 --weather 0,5,2,10 --beacon
+  asking --stage 480`. The stand-in terminal is the preview's default
+  (seven short lines and a status bar at 13 px, no `--retina`), so text
+  covers little of the frame.
+- **Configs:** the full shader; `--without <stage>` for each of `clouds`,
+  `shaded`, `beacon`, `keeper`, `stars`, `realStars`, `events`, `basket`,
+  `aurora` (it drops every line matching `sky = <stage>(`: one line each,
+  two for `events`, the before- and after-clouds calls); `floor` = all nine
+  dropped at once; `bare` = those and also `weather`, `iss`, `tone`,
+  `sunAt`, `moonAt`, `chartLines`, which leaves the gradient, the mask,
+  `glass()` and `isTextOnGlass()`; and `--passthrough`, a shader that only
+  returns the terminal's texel.
+- **Rounds:** four, 21:32:38–21:36:27, all 26 configs per round (13 × 2
+  scenes), forward in rounds 1 and 3 and backward in 2 and 4 (ABBA).
+  The runs went from a scratch script, `node .preview/shader.bundle.mjs`
+  with the flags above, one Chrome per run.
+
+### What each stage costs
+
+**own** = full − passthrough: the shader's work over an empty one.
+**cost** = full − without that stage. Mean of four rounds, ms a frame;
+the range is the lowest and highest of the four.
+
+`day-clear`: full **8.54** (8.49–8.62), passthrough **2.19** (2.11–2.34),
+own **6.34**.
+
+| without | ms a frame | range | cost | share of own |
+|---|---|---|---|---|
+| shaded (the rim) | 5.44 | 5.39–5.52 | 3.10 | 49 % |
+| clouds | 5.59 | 5.57–5.61 | 2.95 | 47 % |
+| keeper | 8.25 | 8.23–8.28 | 0.29 | 5 % |
+| beacon | 8.29 | 8.25–8.31 | 0.25 | 4 % |
+| stars | 8.51 | 8.49–8.53 | 0.03 | 0 % |
+| events | 8.52 | 8.50–8.55 | 0.02 | 0 % |
+| aurora | 8.52 | 8.49–8.54 | 0.02 | 0 % |
+| realStars | 8.53 | 8.51–8.54 | 0.01 | 0 % |
+| basket | 8.54 | 8.51–8.60 | −0.01 | 0 % |
+| floor (all nine) | 2.27 | 2.18–2.40 | 6.27 | 99 % |
+| bare | 2.26 | 2.18–2.30 | 6.28 | 99 % |
+
+`night-lit`: full **9.97** (9.90–10.15), passthrough **2.23** (2.15–2.37),
+own **7.74**.
+
+| without | ms a frame | range | cost | share of own |
+|---|---|---|---|---|
+| shaded (the rim) | 6.83 | 6.79–6.85 | 3.14 | 41 % |
+| clouds | 7.30 | 7.28–7.33 | 2.67 | 34 % |
+| realStars | 8.34 | 8.31–8.38 | 1.63 | 21 % |
+| beacon | 9.59 | 9.58–9.62 | 0.38 | 5 % |
+| stars | 9.61 | 9.58–9.65 | 0.36 | 5 % |
+| keeper | 9.85 | 9.84–9.86 | 0.12 | 2 % |
+| events | 9.88 | 9.88–9.89 | 0.09 | 1 % |
+| aurora | 9.91 | 9.88–9.96 | 0.06 | 1 % |
+| basket | 9.94 | 9.91–9.96 | 0.03 | 0 % |
+| floor (all nine) | 2.38 | 2.35–2.43 | 7.59 | 98 % |
+| bare | 2.29 | 2.24–2.35 | 7.69 | 99 % |
+
+The costs do not quite add up: the nine add to 6.66 ms by day against
+6.27 for dropping all nine at once, and to 8.48 against 7.59 by night.
+Removing one stage seems to save a little of the others' cost too
+(registers, occupancy); the single-stage costs are each a little high,
+by up to about 10 %, and the shares above should be read that way.
+
+**Spread.** Every config's four rounds lie within 0.13 ms of each other
+except night `full` (0.25, its first round at 10.15 against 9.90–9.92),
+the two passthroughs and day `floor` (0.22–0.23; the shortest frames are
+the noisiest). No drift between the forward and backward rounds.
+
+### A screen full of text
+
+The default stand-in has little text, and `glass()` and
+`isTextOnGlass()` run only on text pixels, so a second bench used
+`--retina --prose --diff` (paragraphs of 22 px text, Claude Code's dark
+diff, prompt and shell fields) on the same scenes: full, passthrough,
+bare, `--without shaded` and `--without clouds`, four ABBA rounds,
+21:43:39–21:44:50, same conditions.
+
+| scene | full | passthrough | own | bare − passthrough | rim cost | clouds cost |
+|---|---|---|---|---|---|---|
+| day-clear | 8.82 | 2.13 | 6.69 | 0.73 (11 %) | 2.60 (39 %) | 3.10 (46 %) |
+| night-lit | 10.24 | 2.30 | 7.94 | 0.58 (7 %) | 2.49 (31 %) | 2.71 (34 %) |
+
+Ranges: 0.02–0.06 ms for every config but the passthroughs (0.10 and
+0.37). `bare − passthrough` is the gradient, the mask, `glass()` and
+`isTextOnGlass()` together; it has no stage line of its own, so this is an
+upper bound on what the glass costs. The rim costs less here because it
+is skipped under glass.
+
+### What it says about F4
+
+- **The rim is 41–49 % of the shader's own work with little text and
+  31–39 % with a screen of it** in this bench, against F4's hypothesis of
+  35–50 % of the branch's own cost. Consistent, by day at the top of the
+  range. Dropping the eight samples that weigh nothing (F4 change 1) is
+  aimed at the right thing.
+- **The clouds cost as much as the rim:** 47 % by day and 34 % by night
+  at 20 % and 10 % cloud cover, which fits the per-pixel slot work F4's
+  cost model describes better than the drawing of a few clouds. F4's
+  order puts the glass (changes 2 and 4) before the clouds (change 5,
+  −5–8 % of the upper half); by this bench the clouds belong next to the
+  rim, and changes 5 and 6 may be worth more than the plan expects.
+  Neither scene is overcast, so the bench says nothing about a full sky
+  of clouds.
+- **The glass is small:** at most 0.6–0.7 ms of 6.7–7.9 (7–11 %) even with
+  a screen full of text, gradient and mask included. That is in line with
+  F4's −2–3 % for change 2 and −2–4 % for change 4, but it puts the glass
+  well behind the clouds, not second.
+- **`realStars()` is 21 % of the night.** F4 expects at most −3 % from
+  change 10 (skipping the twinkle away from the cursor), which may still
+  be right for that change, but the stage as a whole is larger than the
+  plan's ordering assumes. The night ranking is rim, clouds, realStars,
+  then beacon and stars at 5 % each.
+- **Events cost nothing when none is up** (0–1 %), as the cost model
+  says; these scenes have none, so change 7 is not measured here.
+  `keeper`, `beacon` and `basket` together are under 10 %.
+- **The empty shader is a fixed 2.1–2.3 ms a frame** here, which is the
+  readback and Chrome's own overhead rather than shading: the bare shader
+  (gradient, mask, glass, and in this stand-in few text pixels) is within
+  0.1 ms of it.
+
+### Caveats
+
+- **WebGL on ANGLE's Metal backend is not Ghostty.** Ghostty compiles
+  GLSL 4.30 to SPIR-V to MSL; Chrome compiles GLSL ES 3.00 through ANGLE
+  to MSL. The two compilers may inline, unroll and fold differently, so
+  the shares are evidence about the shader's work, not a measurement of
+  Ghostty's.
+- **Not vsync-bound, and at an unknown clock.** The bench draws back to
+  back with a sync per frame; the GPU's clock during it was not read
+  (powermetrics needs root, and it was not run). A ms difference here is
+  not a device % or mW difference in Ghostty; ms at one clock and ms at
+  another are not the same work, though all configs ran under the same
+  conditions, interleaved.
+- **One stand-in screen.** The sparse stand-in favours the sky; the
+  text-heavy one shows how the rim's share falls with more glass. Real
+  Claude Code screens lie somewhere between.
+- **Machine in use, lightly:** no other apps or sessions, but
+  `ecosystemd` busy on the CPU and this Claude session running the
+  bench. The spread above is what that left.
+- **Interaction between stages** makes single-stage costs overlap by up
+  to ~10 % (see above).
+
+## F4 phase 2, 2026-10-26: the changes, each checked and benched in the preview
+
+The changes from F4's ranked list that went into the branch `gpu`
+(merge `ff85241`), what each was checked against, and what it saved in
+the preview bench above (`--gpu --bench 200`, 3024×1964). Three agents
+made them in parallel and benched at the same time, on a machine at load
+6–18, so the per-change numbers are back-to-back pairs read through that
+noise and only the large effects stand out. The merged shader was benched
+once more against `cbc9a0e` afterwards, with nothing else benching.
+Every change was reviewed by a fourth agent, who derived each bound from
+the code, rendered the cases the authors had not, and merged the three
+branches in a throwaway tree (clean, 99 tests, tsc).
+
+### What went in
+
+| change (F4 post) | commit | parity | bench |
+|---|---|---|---|
+| the rim reads 13 places, not 21, and the pixel's own mask (1) | `ce0367f` | `near` identical; `brightest` loses the 2.24 px places, so pixels within 1 px of text move up to 43/255; away from text ≤ 2/255 at 3024×1964, ≤ 5/255 at 3456×2234 | day 9.28 → 7.37 ms, night 10.68 → 8.87 (medians under load) |
+| glass turns light text away by its lightness (2) | `0924b99` | identical | below the noise |
+| an unmarked tab gets the terminal before any text work (3) | `32ba69c` | marked identical; unmarked equals the terminal | unmarked, text-heavy: 4.1 → 3.05 ms, the empty shader's 3.0 at the time |
+| clouds are placed before their kind is chosen (5) | `fc338dd` | identical, three scenes × three times, `--ufo`, 3456×2234 | day-clear 8.93 → 7.89, overcast 10.28 → 8.72, night 10.34 → 9.48; the cloud stage by day 3.0 → 2.0 ms |
+| the star chart reads a row of tiles as one run (10) | `180019e` | identical, with the cursor on a star and on a window wider than the tile grid | `realStars` about 2.5 → 1 ms at night (noisy) |
+| events leave alone the pixels they cannot reach (7) | `78d6029` … `9318afb` | identical for all eight, with the cursor on a leaf, a feather and a piece of confetti, at 420×240 and 3456×2234 | during the event: leaves and confetti −15–25 % of the frame, kite −6–7 %, comet unproven |
+
+The rim at 9 places (3×3) passed the 8/255 budget at 3024×1964 but not
+at 3456×2234, where the rim is widest: 95 477 pixels away from text moved
+by more than 8/255. It stays at 13. The places past 2 pixels weigh nothing
+in the rim's reach, but they did feed the brightest neighbour, which sets
+its strength; that is the whole visible change, and side by side it is
+hard to find.
+
+The only pixels over budget in the rim's parity sat in column 0, where
+the preview's texture wraps (WebGL's default REPEAT) and picks up the
+stand-in text at the right edge; cropping that column removes them all.
+`tools/preview/diff.mjs` does not wrap and counts every non-background
+terminal pixel as text, so changes inside diff fields never count as
+away from text.
+
+### What was tried and left out
+
+- **The cross pretest for text on glass (post 4).** Eight places looked
+  at before the sixteen gave up on text pixels that touch a field only
+  diagonally or two places off, such as the inside of a bold g's tail: a
+  dark speck of the field on glass, 77–128/255, with a bold 24–30 px font
+  at 3024×1964. With the stand-in's 22 px font it moved 19 pixels by
+  4/255, which is why the authors' check passed. Its saving did not show
+  in the bench. Reverted (`52fc2dc`).
+- **One hash per cloud slot (post 6).** It changes the clouds' speeds and
+  heights, so the sky looks different; in the before/after pairs the
+  clouds bunched behind the text in the upper left, and the saving was
+  5–9 % of the sky's own cost on one or two clean rounds. Vincent said
+  no; it is kept on the branch `post6-moln-avvisad`.
+- **The unfocused path (post 8).** Out of focus, skipping the rim (and,
+  first, the text-on-glass test) saved 30–40 % of the frame, but an
+  unfocused window is drawn not only during the sweep under `always`; it
+  is drawn whenever its terminal changes, under any setting. Without the
+  rim Claude Code's grey text fades on a bright day sky, the case the rim
+  is there for, so a session in a window beside the one in use would be
+  hard to read. Vincent dropped it (`e34b2ef`); the preview's
+  `--unfocused` stays for trying a cheaper rim out of focus later.
+
+### The merged shader against where phase 2 began
+
+`gpu` at `ff85241` against `cbc9a0e`, three rounds per scene, A B / B A,
+23:3x on 2026-10-26, load 5, nothing else benching; medians in ms a
+frame, the empty shader 2.28:
+
+| scene | before | after | the sky's own cost |
+|---|---|---|---|
+| day-clear | 9.12 | 6.32 | 6.8 → 4.0 (−41 %) |
+| day-overcast | 10.27 | 7.31 | 8.0 → 5.0 (−37 %) |
+| night-lit | 10.63 | 7.04 | 8.4 → 4.8 (−43 %) |
+
+Rounds agreed within 0.3 ms after and 1.8 ms before (one slow first
+round by day).
+
+### Where that leaves F4's target
+
+F4 aims at the sky's own cost at or under half the branch's baseline. In
+the preview the merged shader is at 57–63 % of it, so not yet there.
+Whether Ghostty agrees is for phase 4: the target is measured in device
+points and mW over the floor, and since power rises faster than clock,
+work that lets the GPU drop a clock step may save more in mW than in ms
+(an inference from the first run's clocks, not a measurement). What is
+left on the table, in the plan's terms: the light decision's option (b),
+the rim only where text is light and the sky bright, which would make the
+night's rim free; and the rim by day, still the largest stage after the
+clouds lost a third of theirs. The lighter shader for the battery and
+away rules (task 5b, below) saves where it applies but does not count
+towards this target, which is measured with `true`, focused.
+
+The baseline for phase 4 is the first run's table above; the harness
+runs again with `--twice` on a quiet machine, against the same scenes
+written from `gpu`.
+
+## F4 task 5b, 2026-10-26: the lighter sky on battery and away
+
+### What was decided
+
+The decision of 2026-10-26 (task 6, point 1 above) said the still-sky and
+battery rules get "a lighter shader (no rim, no clouds, fewer samples)".
+Two things came up before it was built, and Vincent narrowed it:
+
+- **Which rules.** `!isLively` holds whenever nothing in the sky moves
+  (no event, rain, fire or time-lapse), which is an ordinary clear or
+  grey day, so most of the time someone sits at the computer. A lighter
+  sky there would have been the everyday sky. It now applies **on battery
+  and while the person is away** (five minutes without a key or the
+  mouse, when nobody reads it). The still-sky rule keeps the whole sky.
+- **What it leaves out.** Without the rim Claude Code's grey text faded on
+  a bright day sky (post 8), and on battery the window is in front and
+  read. The lighter sky leaves out **the clouds only** and keeps the rim,
+  so it says nothing ahead of the light decision.
+
+`animationOf` and its test are untouched. The shader gets a constant
+`LIGHT`, and `mainImage` draws the clouds only when it is 0. Going away
+or on battery changes the shader's text, so it is one reload each way,
+within `SKY_MS` (10 s) and `BATTERY_MS` (60 s). Every session writes the
+same text, since idleness and power are the machine's. The preview draws
+it with `--light`.
+
+### The bench
+
+`gpu` at `743d58a`, `--bench 200 --gpu --width 3024 --height 1964`, the
+scenes from `tools/measure/scenes.sh`, the full sky and `--light` in turn,
+A B / B A / A B, with the empty shader once a round. 23:48–23:49 on
+2026-10-26, load 3.5, nothing else benching. Medians in ms a frame, the
+empty shader 2.26 (2.25–2.28):
+
+| scene | full | light | the sky's own cost |
+|---|---|---|---|
+| day-clear | 6.19 | 3.90 | 3.93 → 1.64 (−58 %) |
+| day-overcast | 7.09 | 3.89 | 4.83 → 1.63 (−66 %) |
+| night-lit | 6.92 | 4.93 | 4.66 → 2.67 (−43 %) |
+
+The rounds agreed within 0.07 ms. The clouds weigh more here than the
+first bench's 34–47 %, because the rim, glass and text work around them
+got cheaper in phase 2. The night saves less, its stars, chart and lit
+lighthouse staying.
+
+The screenshots (`--diff --gpu`, 1512×982, normal and `--light` of each
+scene) are `.preview/5b-*.png` in the worktree, not committed. They show
+no difference but the clouds.
+
+### What it does not show
+
+Whether Ghostty agrees, in device points and mW, is a row for phase 4 if
+Vincent wants one: `scenes.sh` writes the scenes without `LIGHT`, so a
+light row needs a scene written with it. The preview's own weak spots (see
+phase 2) apply as before.
+
+## F4 phase 4, 2026-10-27: the merged shader in Ghostty
+
+The harness's plan `f4 --twice` on `gpu` at `d19a474`: the first run's
+45 rows again as the baseline, the merged shader beside them, and the
+three 60 Hz rows the morning after.
+
+### Context
+
+- Same machine and display as the first run: MacBookPro18,3, M1 Pro
+  32 GB, macOS 27.0 (26A428), Ghostty 1.3.1, the built-in Color LCD
+  alone at 3024×1964, AC power, no thermal or performance warning.
+  Settle 10 s, sample 30 s.
+- **The plan:** 00:21–01:59, 128 rows, the 64 of `plan f4` forward and
+  then backward (ABBA). The scenes from `ljus-himmel` and `main` have the
+  same sha256 as in the first run (`89272b7a0789`, `cc466523bfcf`,
+  `af7c1319f745`, `70fa7b81935b`). Load average 6.82 at the start, against
+  1.81 for the first run's level A. A start three minutes earlier
+  (`2026-10-27T001827`) stopped after its first row and is not used.
+- **The 60 Hz rows:** 08:20–08:25, the display set to 60 Hz in System
+  Settings, one row each: the probe, `ljus-himmel:day-clear`,
+  `gpu:day-clear`. The probe row was taken with `--force`, past a
+  preflight that found PerfPowerService at 84 % of a CPU (a try before:
+  48 %, with `deleted` at 47 % and `cloudd` at 32 %); the two scene rows
+  passed it. `--force` leaves no trace in `context.txt`, so it is
+  recorded here. Load average 2.87.
+- The raw data is outside git: `.preview/measure/out/2026-10-27T002134/`
+  (`rows.tsv`, `report.md`) and `.preview/measure/out/2026-10-27-rows/`.
+
+**Busy cycles** below are mean MHz × active residency, the proxy the first
+run used ("20 % against 75 %"), over the same floor: passthrough focused
+idle 389 × 0.749 = 291, with the spinner 304. An inference about work,
+not a measurement of it.
+
+### F4's target
+
+The sky's own cost, over the floor, `ljus-himmel` → `gpu`, mean of the
+two passes:
+
+| scene | setting | device points | left | mW | left | busy cycles | left | MHz |
+|---|---|---|---|---|---|---|---|---|
+| day-clear | true, focused, idle | 42.2 → 38.3 | 91 % | 12341 → 4925 | 40 % | 941 → 557 | 59 % | 1247 → 875 |
+| day-clear | true, focused, spinner | 40.5 → 38.3 | 95 % | 12719 → 4875 | 38 % | 943 → 545 | 58 % | 1271 → 875 |
+| night-lit | true, focused, idle | 48.9 → 38.6 | 79 % | 14923 → 6499 | 44 % | 1001 → 665 | 66 % | 1296 → 987 |
+| night-lit | true, focused, spinner | 48.8 → 38.2 | 78 % | 14844 → 6492 | 44 % | 991 → 657 | 66 % | 1296 → 992 |
+
+In mW the target is met: the sky's own power is 38–44 % of the
+baseline's in both scenes, idle and with the spinner, and each pass alone
+gives the same (day-clear 41 % and 39 %, night-lit 43 % and 44 %). In
+device points it is not met, at 78–95 %. In busy cycles, the measure
+nearest the work, it is not met either: 58–66 %, where the preview bench
+put the merged shader at 57–63 % (phase 2).
+
+So, read plainly: the merged shader asks about a third less work of the
+GPU than the baseline, the GPU does that work a clock step lower (1247 →
+875 MHz by day, 1296 → 987 by night), and since power rises faster than
+clock it draws 56–62 % less power for it. The plan asks for the target to
+be read with MHz and residency beside it "so that a change of clock is
+not read as less work"; read that way, F4 has reached its target in
+power and not in work.
+
+Device points cannot measure this target at all. Every full `gpu` scene
+but the milestone sits at 75.4–77.1 % device whatever its power (5.7 to
+10.3 W), as main's two scenes do (74.5–75.9 % at 4.1 and 5.7 W), and
+`gpu:day-clear` at 60 Hz reads 81.4 %, more than at 120 Hz, while drawing
+a third of the power. Device % is the share of time the GPU is busy at
+the clock it chose, and the GPU picks the lowest clock that keeps it busy
+most of the time; a cheaper shader gives back a clock step, not idle
+time. Only at the lowest step, 389 MHz (the probe, passthrough, the
+unmarked tab), does device % move with the work.
+
+### 60 Hz: is the sky held back at 120 Hz?
+
+| row | 120 Hz (this run) | 60 Hz |
+|---|---|---|
+| probe, true, focused, idle | 36.3 %, 778 mW, 389 MHz, 75.1 %, 120 fps | 19.0 %, 380 mW, 390 MHz, 42.2 %, 61.9 fps |
+| `ljus-himmel:day-clear` | 79.3 %, 13126 mW, 1247 MHz, 98.8 % | 75.6 %, 4248 mW, 724 MHz, 87.4 % |
+| `gpu:day-clear` | 75.4 %, 5710 mW, 875 MHz, 96.9 % | 81.4 %, 1856 mW, 389 MHz, 96.1 % |
+
+By day, no. A sky that could not finish its frames at 120 Hz would lose
+less than half its work when asked for half the frames. The baseline's
+own busy cycles fall from 941 to 468 (633 over the probe's 165 at
+60 Hz), 0.50 of what they were, which is what a sky that drew every
+frame at 120 Hz shows; the merged shader's fall to 0.38. So the
+baseline's mW by day are the cost of drawing it in full, and F4's saving
+shows as fewer mW, not as more frames. The first run's 80.9 → 77.9 %
+was the same thing in device %; with MHz beside it, it reads as the
+clock nearly halving (1247 → 724 MHz) and the power falling to a third.
+
+At 60 Hz the merged shader's own cost is 38 % of the baseline's in mW
+and 45 % in busy cycles.
+
+What it does not settle: only day-clear was taken. The baseline's
+night-lit, overcast, dark and event scenes sit at 1292–1296 MHz with
+99.1–100 % residency, the top step with nothing left, so they may drop
+frames at 120 Hz; if they do, their baseline mW understate what they
+cost, and the night's 44 % left is, if anything, too high. One row each,
+no repeat, and the proxy assumes a frame takes the same cycles at any
+clock, which the merged shader's 0.38, below half, says is not exactly
+so.
+
+### The other targets
+
+- **`true` unfocused at the no-shader level:** met. `gpu` day-clear 2.4 %,
+  night-lit 2.5 % device, the first run's single-sample pattern (sd 13);
+  86 and 31 mW, against 12 for no shader.
+- **An unmarked visible tab within 5 points of passthrough:** on the line.
+  42.2 % against 37.1, +5.1 in both passes. In mW +103, against the
+  baseline's +236 and main's +167.
+- **`always` unfocused within 10 points of focused:** met, 2.1 points by
+  day (73.3 against 75.4) and 1.6 by night. Its power is 83 % of focused
+  by day and 80 % by night (first run 87–88 %); post 8, which was to make
+  it clearly lower, was dropped in phase 2.
+- **The floor:** passthrough 37.1 % device and 785 mW at 120 Hz, no
+  shader 1.0 % and 12 mW, the probe at 60 Hz 19.0 % and 380 mW. The
+  floor halves with the frame rate and is the same for any shader: it is
+  Ghostty's draw loop and the compositing of a 3024×1964 window at
+  120 Hz, which no change in the shader's code reaches.
+
+### The other scenes
+
+| scene | device % | mW over floor | left | MHz | residency % |
+|---|---|---|---|---|---|
+| day-overcast | 87.0 → 75.8 | 14788 → 6592 | 45 % | 1294 → 1000 | 99.5 → 97.1 |
+| night-dark | 99.3 → 75.9 | 17123 → 8659 | 51 % | 1296 → 1143 | 100.0 → 97.4 |
+| day-leaves | 100.0 → 77.1 | 17572 → 9526 | 54 % | 1296 → 1265 | 100.0 → 97.9 |
+| comet | 94.8 → 76.0 | 16418 → 7530 | 46 % | 1296 → 1054 | 99.9 → 97.3 |
+| milestone | 100.0 → 99.9 | 15140 → 14089 | 93 % | 1296 → 1296 | 100.0 → 100.0 |
+
+Every baseline scene here was on the top step, so its mW are a lower
+bound and the share left an upper one. All but the milestone came off
+it. The milestone's confetti still holds the GPU at 1296 MHz and 100 %,
+with WindowServer at 7 % of a CPU against 54–59 % under the other
+scenes, a sign of dropped frames on both sides; its 93 % says nothing
+about what post 7 saved.
+
+### The lighter sky against the whole one
+
+`gpu` with `LIGHT` (no clouds, the rim kept), the sky written on battery
+and away:
+
+| scene | device points | mW over floor | left | busy cycles | left | MHz |
+|---|---|---|---|---|---|---|
+| day-clear | 38.3 → 34.2 | 4925 → 2303 | 47 % | 557 → 278 | 50 % | 875 → 605 |
+| night-lit | 38.6 → 37.5 | 6499 → 3893 | 60 % | 665 → 449 | 68 % | 987 → 770 |
+
+It saves 53 % of the sky's own power by day and 40 % by night, where the
+bench said 58 % and 43 %. The night keeps its stars, chart and lit
+lighthouse.
+
+### What the light decision has to go on
+
+The plan's three options: (a) `LUMINANCE` 0.8 with the rim, which the
+branch has now; (b) 0.8 with the rim only where the text is light and
+the sky bright, free at night and dusk; (c) 0.5–0.6 with no rim. Its
+rule: (a) and (b) if the rim measures under about 5 device points,
+otherwise (c) is on the table.
+
+This run does not separate the rim in Ghostty; no row drops it. What it
+separates is everything the branch added to main (the rim, glass, the
+text-on-glass test, `LUMINANCE` 0.8), net of what F4 saved since. The
+merged shader's own cost against main's:
+
+| scene | device points | mW over floor | busy cycles |
+|---|---|---|---|
+| day-clear | 37.4 → 38.3 (+0.9) | 3287 → 4925 (1.50×) | 472 → 557 (1.18×) |
+| night-lit | 38.8 → 38.6 (−0.2) | 4886 → 6499 (1.33×) | 578 → 665 (1.15×) |
+
+In device points the rule is met many times over, but device points
+are the measure shown above not to separate scenes. In power the
+readable sky costs a third to a half more than main's, which was darker
+and had no rim; in busy cycles 15–18 % more.
+
+### Caveats
+
+- **Load 6.82 at the start**, not the quiet machine asked for. The drift
+  between passes says it did little: every repeated row agrees within
+  0.8 points but three.
+- **Those three:** `ljus-himmel:day-clear` focused, idle under `true`,
+  `false` and `always`, at 81.1–81.3 % in the first pass and 77.5–77.9 in
+  the second, while their power went the other way (12.8–12.9 → 13.5 W)
+  and their clock rose (1221–1224 → 1266–1272 MHz). The first pass is
+  where the first run was (80.9 %, 12863 mW, 1228 MHz). The share left
+  is 41 % in one pass and 39 % in the other, so the target does not hang
+  on it.
+- **Scenes still have no frame count**; the 60 Hz answer is inferred from
+  busy cycles, for day-clear only.
+- **The unfocused means are a single sample**, as in the first run;
+  treat them as 0.
+- **Per-process GPU time is still 0.00** for every process; everything
+  here is the whole GPU.
+
+## F4, 2026-10-27: the light decision, and the rim left out where the sky is dark
+
+Vincent took (a) and (b) on 2026-10-27, from the numbers above:
+`LUMINANCE` stays at 0.8 with the rim, and the rim is left out where the
+sky is dark enough not to need it.
+
+**Where the sky is dark.** The plan's sketch of (b) put the line near
+0.45 of the sky's lightness. Measured in the preview (`--gpu`, 1512×982,
+`--without shaded`), a dusk sky at 16:45 is 88 % under 0.45 and 12 % under
+0.2, and Claude Code's grey text (153) needs the rim there: at 0.35 it is
+about 2.5 to 1 on the sky without one. The line went instead where the
+rim stops mattering: under 0.2 that grey is 4.5 to 1 without a rim, and
+under 0.1 the rim moves the sky's lightness by 9/255 at most. So the rim
+fades out between 0.2 and 0.1 of the sky's lightness at that pixel
+(`SHADE_DARK`) and its disc is not read below 0.1. A night sky is 46 %
+under 0.08 and 85 % under 0.12; a clear day has nothing under 0.2.
+
+**Parity** (`--diff --p3 --retina`, 3024×1964, before and after): day-clear
+identical; dusk at 16:45, 17:15 and 17:45, night-lit and night-dark change
+only within a pixel of text, the largest by 12–30/255 in a channel (a
+night's blue), and nowhere more than 1/255 further out. Side by side,
+with `--prose` enlarged twice, the night and the 17:45 dusk look the same.
+
+**Bench**, `--bench 200 --gpu --width 3024 --height 1964`, four rounds
+A B / B A, 08:37–08:39, load 3.7–5, medians in ms a frame, the empty
+shader 2.66:
+
+| scene | before | after | the sky's own cost |
+|---|---|---|---|
+| day-clear | 6.98 | 7.09 | 4.32 → 4.43, within the rounds' spread |
+| dusk 17:45 | 8.57 | 8.22 | 5.91 → 5.56 (−6 %) |
+| night-lit | 8.05 | 6.76 | 5.39 → 4.10 (−24 %) |
+| night-dark | 9.26 | 8.27 | 6.60 → 5.61 (−15 %) |
+
+In Ghostty this is not measured; the night's −24 % in the bench would
+come off the 44 % left in mW above.
+
+## What a scene language would and would not change
+
+F4 asked whether the sky should get a language of its own, a scene
+format compiled to GLSL, for the GPU's sake. No, and the runs above say
+why.
+
+What the sky costs is frames × pixels × work per pixel. The frames are
+Ghostty's: 120 a second while the window is in focus, whatever the shader
+says, and none out of focus under `true`. The pixels are the window's.
+Together they are the floor, 37 % busy and 0.8 W with an empty shader,
+halving at 60 Hz; no shader, written by hand or by a compiler, gets
+under it. A scene language reaches only the third factor, and only if
+its compiler makes the shader do less per pixel than the hand-written one.
+
+Everything F4 saved came from that third factor, by a handful of
+conventions applied by hand: ask where before who (the clouds placed
+before their kind is chosen), leave alone the pixels a thing cannot reach
+(each event's box test, the star chart's run of tiles, an unmarked tab
+returning the terminal first), read no more than the result needs (the
+rim's 13 places, not 21), and do no per-pixel work where it cannot show
+(the rim on a dark sky). A compiler could enforce the box test and emit
+the same early exits; it would not find better ones, and the
+measurements are the only way to tell which exits pay. The 60 Hz rows
+also say the sky by day was not dropping frames, so there was no hidden
+cost a different structure could have uncovered.
+
+What stays as convention, so the next scene keeps to it: every event has
+a box test, `events()` calls stand one to a line so `--without` can drop
+them, and a per-pixel stage asks first whether it can change the pixel.
+Where a scene format would pay is in writing skies, the theme format of
+F5, F7 and F8, and there being no more costly than GLSL by hand is a
+requirement on it, not its purpose.

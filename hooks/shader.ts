@@ -78,6 +78,10 @@ export type ShaderParams = {
   // The width of the strip at the right where the lighthouse stands, in
   // pixels; 0 while it is not known.
   stagePx: number
+  // The lighter sky, without its clouds, for a Mac on battery or a person
+  // away: Ghostty draws a focused window at every frame whatever the
+  // animation setting says, so a still sky costs as much as a moving one.
+  isLight: boolean
 }
 
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
@@ -166,6 +170,7 @@ export function shaderParams(
     basket?: ShaderParams['basket']
     isYUp?: boolean
     stagePx?: number
+    isLight?: boolean
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -196,6 +201,7 @@ export function shaderParams(
     basket: options.basket ?? null,
     isYUp: !!options.isYUp,
     stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
+    isLight: !!options.isLight,
     iss: options.iss ? { at: dome(options.iss.at), trail: dome(options.iss.trail) } : null,
     comet: comet ? cometAt(comet.seed, ms, place) : null,
     chart: {
@@ -253,9 +259,9 @@ const STOPS: readonly [number, number, number, number][] = [
   [0, 0x2f4a92, 0x9a6aa6, 0xf59a78],
   [3, 0x3b66b0, 0xc48fb0, 0xffbf86],
   [8, 0x3f7cc8, 0x8fb5e0, 0xf7d6b4],
-  [15, 0x3585d8, 0x79b4ea, 0xd6e8f6],
-  [30, 0x2a7ad8, 0x66aaf0, 0xbfe0fa],
-  [90, 0x1f6ed6, 0x58a2f0, 0xb0d8fb],
+  [15, 0x4973ce, 0x6184d4, 0xb4b5db],
+  [30, 0x436fcf, 0x537dd4, 0xacb3e1],
+  [90, 0x3e6ace, 0x4c77d3, 0xa7afe1],
 ]
 
 // The colours Claude Code fills its own fields with in its dark themes, as
@@ -396,6 +402,7 @@ export function skyShader(params: ShaderParams): string {
     `const int BASKET = ${params.basket ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
+    `const float LIGHT = ${params.isLight ? '1.0' : '0.0'};`,
     `const int FIELD_COUNT = ${fieldsSeen(params.isYUp).length};`,
     `const vec3 FIELD_COLOURS[${fieldsSeen(params.isYUp).length}] = vec3[${fieldsSeen(params.isYUp).length}](${fieldsSeen(params.isYUp).join(', ')});`,
     `const vec2 COMET_AT = vec2(${f(params.comet?.at.x ?? 0)}, ${f(params.comet?.at.y ?? 0)});`,

@@ -32,18 +32,28 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
   float inkStrength = 0.45 + 0.35 * day;
   vec2 shift = vec2(pitch * 0.45, pitch * 0.3);
 
+  float margin = baseSize * 6.0;
+  float span = w + margin * 2.0;
+
+  // Each cloud is placed before it is chosen: where it is, then how large,
+  // and only a pixel that could be under it asks what it is.
   for (int slot = 0; slot < 9; slot++) {
     if (slot >= count) break;
-    float margin = baseSize * 6.0;
-    float span = w + margin * 2.0;
     float travelled = rand(slot * 977 + 5) * span + iTime * speed * (0.6 + rand(slot * 31 + 2) * 0.8);
+    float x = mod(travelled, span) - margin;
+    // Quick out before the cloud has a seed: sideways of the widest any
+    // cloud gets (1.3 base sizes, with room to spare).
+    if (p.x - x < -baseSize * 2.8 || p.x - x > baseSize * 9.8) continue;
     int lap = int(floor(travelled / span));
     int seed = int(hashi(slot * 7919 + lap * 104729 + 11) >> 1u);
+    float size = baseSize * (0.7 + rand(seed + 9) * 0.6);
+    vec2 o = vec2(x, floor(h * (0.06 + 0.44 * rand(seed + 1))));
+    vec2 q = p - o;
+    // Quick out: outside the widest a cloud of this size gets. A saucer
+    // keeps well inside it (its px is size / 6, size never under 8.96).
+    if (q.x < -size * 2.0 || q.x > size * 7.0 || q.y < -size * 2.0 || q.y > size * 3.0) continue;
     int kind = 0;
     if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);
-    float size = baseSize * (0.7 + rand(seed + 9) * 0.6);
-    vec2 o = vec2(mod(travelled, span) - margin, floor(h * (0.06 + 0.44 * rand(seed + 1))));
-    vec2 q = p - o;
 
     if (kind == 6) {
       // Now and then not a cloud at all: a saucer, printed as the balloon
@@ -71,9 +81,6 @@ vec3 clouds(vec3 sky, vec2 p, Scene s, float unit, float k) {
       sky = ink(sky, lift(INK_INDIGO, k), key - 0.06 * px, 0.6);
       continue;
     }
-
-    // Quick out: outside the widest a cloud of this size gets.
-    if (q.x < -size * 2.0 || q.x > size * 7.0 || q.y < -size * 2.0 || q.y > size * 3.0) continue;
 
     float cover = 0.0;
     float minY = 1e9;

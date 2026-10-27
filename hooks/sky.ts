@@ -107,9 +107,9 @@ const STOPS: readonly [number, number, number, number][] = [
   [0, 0x2f4a92, 0x9a6aa6, 0xf59a78],
   [3, 0x3b66b0, 0xc48fb0, 0xffbf86],
   [8, 0x3f7cc8, 0x8fb5e0, 0xf7d6b4],
-  [15, 0x3585d8, 0x79b4ea, 0xd6e8f6],
-  [30, 0x2a7ad8, 0x66aaf0, 0xbfe0fa],
-  [90, 0x1f6ed6, 0x58a2f0, 0xb0d8fb],
+  [15, 0x4973ce, 0x6184d4, 0xb4b5db],
+  [30, 0x436fcf, 0x537dd4, 0xacb3e1],
+  [90, 0x3e6ace, 0x4c77d3, 0xa7afe1],
 ]
 
 function stops(elevation: number): [number, number, number] {
@@ -149,6 +149,10 @@ export function arcPoint(canvas: Canvas, arc: Arc, progress: number): { x: numbe
   }
 }
 
+// How much of the weather's grey the gradient takes: a cloudy day stays a
+// day, blue under its clouds, as Apple's Solar Gradients keep it.
+const CLOUD_GREY = 0.5
+
 export function paintGradient(canvas: Canvas, sun: Sun, body: Body, arc: Arc, cloudiness: number): void {
   const { w, h } = canvas
   const isEvening = body.isDay ? body.progress > 0.5 : body.progress < 0.5
@@ -174,7 +178,7 @@ export function paintGradient(canvas: Canvas, sun: Sun, body: Body, arc: Arc, cl
     for (let x = 0; x < w; x++) {
       const dx = (x - sunX) / w
       const c = mix(base, glowColor, glow * t * t * Math.exp(-dx * dx * 6) * 0.55)
-      canvas.paint(x, y, mix(c, grey(c), cloudiness))
+      canvas.paint(x, y, mix(c, grey(c), cloudiness * CLOUD_GREY))
     }
   }
 }
@@ -649,7 +653,7 @@ export function paintBandSky(canvas: Canvas, input: SkyInput): void {
 // The brightest the wallpaper gets, so the terminal's light text stays
 // readable on a midday sky: the whole picture is scaled down together, then
 // given back some colour so a dimmed day stays blue rather than grey.
-const WALLPAPER_LUMINANCE = 0.36
+const WALLPAPER_LUMINANCE = 0.8
 const WALLPAPER_SATURATION = 1.35
 
 // The still part of the wallpaper (gradient, aurora, stars, sun or moon),

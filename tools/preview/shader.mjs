@@ -6,8 +6,11 @@
 //   tools/preview/run.sh shader --at 2026-10-24T22:00 --weather 2,6,3,40 --time 30
 //   --width 1512 --height 982   --demo (a whole day; --time picks the moment)   --aurora
 //   --stage 480 (the strip at the right where the lighthouse stands; the stand-in text stops short of it)
-//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff, a prompt row, a shell row, and a line of its dimmest text)
+//   --diff (Claude Code's own dark fields: a diff's removed and added rows, a tool's highlighted diff with a grey comment, a prompt row, a shell row, and a line of its dimmest text)
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
+//   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
+//   --light (the lighter sky of a Mac on battery or a person away: no clouds)
+//   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -43,6 +46,7 @@ const params = shaderParams(
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.
     isYUp: !!o['y-up'],
     stagePx: o.stage ? Number(o.stage) : 0,
+    isLight: !!o.light,
     basket: o.basket === undefined ? null : { balls: Number(String(o.basket).split(',')[0]), fire: String(o.basket).split(',')[1] ?? null },
   },
 )
@@ -53,7 +57,10 @@ const whole = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind
 // --without clouds,beacon: mainImage without those stages, to see what each costs (with --bench).
 const left = o.without ? String(o.without).split(',') : []
 const sky = whole.split('\n').filter(line => !left.some(name => new RegExp(`sky = ${name}\\(`).test(line))).join('\n')
-const source = sky + (o.broken ? '\nint broken = ;\n' : '')
+// --passthrough: the terminal as it is and no sky, the floor a bench of
+// the sky is read against.
+const passthrough = 'void mainImage(out vec4 fragColor, in vec2 fragCoord) { fragColor = vec4(texture(iChannel0, fragCoord / iResolution.xy).rgb, 1.0); }'
+const source = (o.passthrough ? passthrough : sky) + (o.broken ? '\nint broken = ;\n' : '')
 writeFileSync(join(OUT, 'sky.glsl'), source)
 
 // Ghostty's frame, as WebGL can give it: y from the top, iChannel0 the
@@ -106,6 +113,7 @@ const bandSvg = o.band
 
 const page = `<!doctype html><html><body style="margin:0;background:#000">
 <canvas id="c" width="${width}" height="${height}" style="display:block"></canvas>
+<pre id="renderer" hidden></pre>
 <pre id="log" style="position:absolute;top:0;left:0;margin:8px;color:#f66;font:12px Menlo;white-space:pre-wrap"></pre>
 <script>
 const log = document.getElementById('log')
@@ -115,6 +123,9 @@ const w = ${width}, h = ${height}
 const term = document.createElement('canvas')
 term.width = w; term.height = h
 const t = term.getContext('2d')
+// --retina: the stand-in drawn at twice the scale, as a Mac's Retina window has it.
+const k = ${o.retina ? 2 : 1}
+t.scale(k, k)
 t.fillStyle = '#${o.background}'; t.fillRect(0, 0, w, h)
 t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
 const lines = ['● Solar Clawd: the sky behind the terminal', '', '  Read 1 file, ran 2 shell commands', '', '❯ how does it read?', '', '  ⎿  tools/preview/run.sh shader --at 22:00']
@@ -138,24 +149,46 @@ if (${!!o.diff}) {
     [null, ''],
     [deleteLine, '  12 -  const GLASS = 0.4;', [deleteWord, '0.4']],
     [addLine, '  12 +  const GLASS = 0.55;', [addWord, '0.55']],
+    [addLine, '  13 +  // lighter, so the sky shows through', null, 'rgb(106,115,125)'],
     [null, ''],
     [user, '> and the weekends?'],
     [null, ''],
     [bash, '! git status --short'],
   ]
-  diff.forEach(([fill, line, word], i) => {
+  diff.forEach(([fill, line, word, ink], i) => {
     if (fill) { t.fillStyle = fill; t.fillRect(0, 186 + i * 20, w, 20) }
     if (word) {
       const at = line.lastIndexOf(word[1])
       t.fillStyle = word[0]; t.fillRect(16 + t.measureText(line.slice(0, at)).width, 186 + i * 20, t.measureText(word[1]).width, 20)
     }
-    t.fillStyle = '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
+    t.fillStyle = ink ?? '#d7dae0'; t.fillText(line, 16, 200 + i * 20, w - ${stage} - 32)
   })
   t.fillStyle = 'rgb(80,80,80)'; t.fillText('     … +12 lines (ctrl+o to expand)', 16, 200 + diff.length * 20, w - ${stage} - 32)
   t.fillStyle = '#d7dae0'
 }
-t.fillStyle = '#3e4451'; t.fillRect(0, h - 120, w, 22)
-t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h - 60)
+// --prose: a reply of long paragraphs as a Retina window shows them (22px
+// text on 27px rows), to see the shade behind text on a bright sky; the
+// second and third in Claude Code's two greys, its inactive and subtle text.
+if (${!!o.prose}) {
+  t.font = '22px Menlo'
+  const inks = ['#d7dae0', 'rgb(153,153,153)', 'rgb(80,80,80)', '#d7dae0']
+  const words = 'Det fanns förr en fyrvaktare på en liten ö långt ut i Bottenhavet som hade för vana att skriva ner vädret varje morgon i en tjock, klotbunden bok. Han skrev inte bara vindriktning och lufttryck, utan också hur himlen såg ut.'.split(' ')
+  let row = 0
+  for (let p = 0; p < 4; p++) {
+    t.fillStyle = inks[p]
+    let line = p === 0 ? '● ' : '  '
+    for (let i = 0; i < 3 * words.length; i++) {
+      const word = words[(i + p * 7) % words.length]
+      if (t.measureText(line + word).width > w - ${stage} - 64) { t.fillText(line, 16, 330 + row++ * 27); line = '  ' }
+      line += word + ' '
+    }
+    t.fillText(line, 16, 330 + row++ * 27)
+    row++
+  }
+  t.font = '13px Menlo'; t.fillStyle = '#d7dae0'
+}
+t.fillStyle = '#3e4451'; t.fillRect(0, h / k - 120, w, 22)
+t.fillStyle = '#98c379'; t.fillText('Model: Opus 5.5 | Ctx Used: 14.0%', 16, h / k - 60)
 // --p3: the terminal as a Mac's Ghostty hands it to the shader, its sRGB
 // colours converted to Display P3 (the background as good as unchanged).
 if (${!!o.p3}) {
@@ -173,6 +206,10 @@ if (${!!o.p3}) {
 const render = () => {
 const gl = document.getElementById('c').getContext('webgl2', { preserveDrawingBuffer: true })
 if (!gl) fail('no WebGL2')
+// What it ran on, said with every run: a bench on SwiftShader and one on
+// the GPU are not the same kind of number.
+const info = gl && gl.getExtension('WEBGL_debug_renderer_info')
+if (gl) document.getElementById('renderer').textContent = gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)
 const shader = (type, text) => {
   const s = gl.createShader(type); gl.shaderSource(s, text); gl.compileShader(s)
   if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s))
@@ -198,20 +235,22 @@ try {
   // --cursor x,y (its centre, y down) and --since s: a cursor that moved s seconds ago.
   gl.uniform4f(gl.getUniformLocation(program, 'iCurrentCursor'), ${cursor[0] - 5}, ${cursor[1] + 10}, 10, 20)
   gl.uniform1f(gl.getUniformLocation(program, 'iTimeCursorChange'), ${Number(o.time) - Number(o.since ?? 100)})
-  gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), 1)
-  // A tab Claude has marked (register.tsx, markTab).
-  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${tabMark(params.basket).map(v => v / 255).join(', ')})
+  gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), ${o.unfocused ? 0 : 1})
+  // A tab Claude has marked (register.tsx, markTab), or with --unmarked one
+  // it has not, colour 16 as xterm has it.
+  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.basket).map(v => v / 255).join(', ')})
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)
-  // --bench n: the time a frame takes, over n frames (SwiftShader, on the CPU).
+  // --bench n: the time a frame takes, over n frames, each read back so
+  // the next waits for it (SwiftShader on the CPU, or with --gpu the GPU).
   const runs = ${Number(o.bench ?? 0)}
   if (runs > 0) {
     const pixel = new Uint8Array(4)
     gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel)
     const begin = performance.now()
     for (let i = 0; i < runs; i++) { gl.drawArrays(gl.TRIANGLES, 0, 3); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel) }
-    document.title = 'ok ' + ((performance.now() - begin) / runs).toFixed(1)
+    document.title = 'ok ' + ((performance.now() - begin) / runs).toFixed(2)
   } else document.title = 'ok'
 } catch (error) { fail(String(error.message || error)) }
 }
@@ -225,7 +264,10 @@ if (bandSvg) {
 const html = join(OUT, `${o.out ?? 'shader'}.html`)
 writeFileSync(html, page)
 
-const dom = dumpDom(html, true)
+const webgl = o.gpu ? 'gpu' : true
+const dom = dumpDom(html, webgl)
+const renderer = /<pre id="renderer"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1]
+console.log('renderer:', renderer ? renderer.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : 'unknown')
 const failed = /<title>fail<\/title>/.test(dom) || !/<title>ok( [\d.]+)?<\/title>/.test(dom)
 if (failed) {
   const text = /<pre id="log"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1] ?? dom.slice(0, 2000)
@@ -236,5 +278,5 @@ if (o.bench) {
   console.log(`${/<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]} ms a frame`)
   process.exit(0)
 }
-console.log(screenshot(html, width, height, o.out ?? 'shader', true))
+console.log(screenshot(html, width, height, o.out ?? 'shader', webgl))
 console.log(`${source.length} chars, scene`, JSON.stringify(params.scene))

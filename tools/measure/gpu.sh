@@ -5,7 +5,9 @@
 #   tools/measure/gpu.sh context                    the machine, as a run records it
 #   tools/measure/gpu.sh row <shader> <animation> <focus> <activity> [marked|unmarked]
 #   tools/measure/gpu.sh live <label>               the Ghostty already running, as it is
-#   tools/measure/gpu.sh plan [--twice]             the first run's list, unattended
+#   tools/measure/gpu.sh plan [f2|f4] [--twice]     a run's list, unattended: the
+#                                                   first run's (f2), or that and the
+#                                                   same on gpu (f4, phase 4)
 #   tools/measure/gpu.sh report [dir]               a run's rows as markdown
 #   tools/measure/gpu.sh decode <png>               the frame count in a screenshot of the probe
 #
@@ -460,8 +462,31 @@ first_list() {
   for s in day-overcast night-dark day-leaves milestone comet; do print "ljus-himmel:$s true focused idle marked"; done
 }
 
+# F4's phase 4: the first run again, as the baseline, then gpu in the
+# states its targets name, the passthrough under the spinner as the floor
+# of the spinner rows, and the lighter sky of battery and away beside the
+# whole one.
+f4_list() {
+  local a s
+  first_list
+  print 'passthrough true focused spinner marked'
+  for s in day-clear night-lit; do
+    for a in 'true focused idle' 'true unfocused idle' 'always focused idle' 'always unfocused idle' 'true focused spinner'; do
+      print "gpu:$s $a marked"
+    done
+  done
+  print 'gpu:day-clear true focused idle unmarked'
+  for s in day-overcast night-dark day-leaves milestone comet; do print "gpu:$s true focused idle marked"; done
+  for s in day-clear night-lit; do print "gpu:$s-light true focused idle marked"; done
+}
+
 plan() {
-  local list=(${(f)"$(first_list)"})
+  local list
+  case ${1:-f2} in
+    f2) list=(${(f)"$(first_list)"}) ;;
+    f4) list=(${(f)"$(f4_list)"}) ;;
+    *) die "no plan called $1 (f2, f4)" ;;
+  esac
   # Twice, the second time backwards (ABBA), so a slow drift in the
   # machine's heat falls evenly on every row.
   local order=(${(@)list/#/1 })
@@ -528,7 +553,7 @@ case ${1-} in
     cleanup
     tail -1 $dir/rows.tsv ;;
   live) (( $# == 2 )) || die 'live <label>'; live $2 ;;
-  plan) plan ;;
+  plan) plan ${2-} ;;
   report) node $root/tools/measure/report.mjs ${2:-$measure/out/latest} ;;
   *) sed -n '2,/^setopt/p' $0 | sed '$d; s/^# \{0,1\}//'; exit 2 ;;
 esac

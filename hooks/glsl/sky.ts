@@ -38,7 +38,8 @@ vec3 gradient(vec2 p, Scene s, out float k) {
   vec3 base = v < 0.55 ? mix(top, middle, v / 0.55) : mix(middle, horizon, (v - 0.55) / 0.45);
   float dx = p.x / iResolution.x - glowX;
   vec3 c = mix(base, glowColor, glow * v * v * exp(-dx * dx * 6.0) * 0.55);
-  return mix(c, grey(c), CLOUDINESS);
+  // Half the weather's grey: a cloudy day stays a day (CLOUD_GREY in sky.ts).
+  return mix(c, grey(c), CLOUDINESS * 0.5);
 }
 
 // --- Aurora ----------------------------------------------------------------
@@ -94,36 +95,40 @@ int chartTile(int column, int row) {
 }
 
 // The real stars near \`p\`: as bright as their magnitude, tinted by their
-// colour index, the brightest with a soft glint.
+// colour index, the brightest with a soft glint. The tiles of a row lie one
+// after another in the chart's list, so the three around \`p\` in each row
+// are one run of it: three rows read, not nine tiles, in the same order.
 vec3 realStars(vec3 sky, vec2 p, float strength, float size) {
   vec2 d = pixelToDome(p);
   int column = int(floor((d.x + 1.6) / 0.04));
   int row = int(floor(d.y / 0.04));
+  int left = max(column - 1, 0);
+  int right = min(column + 1, 79);
+  if (left > right) return sky;
   for (int dy = -1; dy <= 1; dy++) {
-    for (int dx = -1; dx <= 1; dx++) {
-      int tile = chartTile(column + dx, row + dy);
-      if (tile < 0) continue;
-      int first = TILE_START[tile];
-      for (int k = first; k < first + TILE_COUNT[tile]; k++) {
-        int i = TILE_STAR[k];
-        vec2 at = domeToPixel(STAR_AT[i]);
-        float mag = STAR_LOOK[i].x;
-        // Far from it, past the largest its glint could make it: nothing.
-        float dist = length(p - at);
-        float plain = size * (0.9 + max(0.0, 3.5 - mag) * 0.6);
-        if (dist > plain * 6.8) continue;
-        float bv = STAR_LOOK[i].y;
-        float glint = glance(at);
-        float r = plain * (1.0 + 0.7 * glint);
-        if (dist > r * 4.0) continue;
-        vec3 tint = bv < 0.2 ? vec3(0.78, 0.86, 1.0) : bv > 1.2 ? vec3(1.0, 0.8, 0.62) : vec3(1.0, 0.97, 0.92);
-        float twinkle = 0.85 + 0.15 * sin(iTime * (1.1 + mod(float(i), 7.0) * 0.3) + float(i));
-        float bright = clamp((4.5 - mag) / 3.5, 0.3, 1.0) * twinkle;
-        float core = clamp(r - dist + 0.5, 0.0, 1.0);
-        float halo = max(mag < 2.0 ? 0.45 * exp(-dist / (r * 0.8)) : 0.0, 0.7 * glint * exp(-dist / (r * 1.4)));
-        float a = strength * bright * (1.0 - smoothstep(0.5, 0.85, at.y / iResolution.y)) * (1.0 + 1.5 * glint);
-        sky = mix(sky, tint, clamp(a * max(core, halo), 0.0, 1.0));
-      }
+    if (row + dy < 0 || row + dy >= 16) continue;
+    int across = (row + dy) * 80;
+    int first = TILE_START[across + left];
+    int end = TILE_START[across + right] + TILE_COUNT[across + right];
+    for (int k = first; k < end; k++) {
+      int i = TILE_STAR[k];
+      vec2 at = domeToPixel(STAR_AT[i]);
+      float mag = STAR_LOOK[i].x;
+      // Far from it, past the largest its glint could make it: nothing.
+      float dist = length(p - at);
+      float plain = size * (0.9 + max(0.0, 3.5 - mag) * 0.6);
+      if (dist > plain * 6.8) continue;
+      float bv = STAR_LOOK[i].y;
+      float glint = glance(at);
+      float r = plain * (1.0 + 0.7 * glint);
+      if (dist > r * 4.0) continue;
+      vec3 tint = bv < 0.2 ? vec3(0.78, 0.86, 1.0) : bv > 1.2 ? vec3(1.0, 0.8, 0.62) : vec3(1.0, 0.97, 0.92);
+      float twinkle = 0.85 + 0.15 * sin(iTime * (1.1 + mod(float(i), 7.0) * 0.3) + float(i));
+      float bright = clamp((4.5 - mag) / 3.5, 0.3, 1.0) * twinkle;
+      float core = clamp(r - dist + 0.5, 0.0, 1.0);
+      float halo = max(mag < 2.0 ? 0.45 * exp(-dist / (r * 0.8)) : 0.0, 0.7 * glint * exp(-dist / (r * 1.4)));
+      float a = strength * bright * (1.0 - smoothstep(0.5, 0.85, at.y / iResolution.y)) * (1.0 + 1.5 * glint);
+      sky = mix(sky, tint, clamp(a * max(core, halo), 0.0, 1.0));
     }
   }
   return sky;
