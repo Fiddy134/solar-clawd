@@ -234,6 +234,23 @@ test('/clear keeps the sky: the session goes on', async ($, on) => {
   expect(RELOADS(world.runs)).toBe(reloads)
 })
 
+test('/clear empties the context at once: the keeper grills his catch, the embers glow over a bare line', async ($, on) => {
+  const fill = { percent: 60 }
+  const { clock, world, include } = await waitingWorld($, on, { value: 1 }, () => on('session.usage', () => usageOf(fill)))
+  const mark = () => lastMark(world.runs)
+  expect(mark()).toContain('rgb:00/06/01')
+  fill.percent = 2
+  await $.session.end({ reason: 'clear', sessionId: 'this-session', resume: { id: 'this-session' } })
+  await clock.advance(10)
+  expect(mark()).toContain('rgb:01/06/01')
+  expect(include()).toContain('custom-shader-animation = true')
+  await clock.advance(8_000)
+  expect(mark()).toContain('rgb:02/00/01')
+  await clock.advance(3_500)
+  expect(mark()).toContain('rgb:00/00/01')
+  expect(include()).toContain('custom-shader-animation = false')
+})
+
 test('the shader takes the terminal background from Ghostty itself', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })

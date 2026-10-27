@@ -108,6 +108,24 @@ function showCatch($: EngineInterface, refresh: () => void): void {
   void $.clock.sleep(CATCH_MS).then(refresh).catch(() => undefined)
 }
 
+// The keeper grills his catch for a while and the embers glow after
+// (where there is no sky, the wastebasket burns): /solar grill plays it,
+// and a /clear, which empties the context at once, leaves the line bare.
+type Grilled = { grillShownUntil: number; passing: { kind: Reaction; at: number } | null; fill: number | null }
+function playGrill($: EngineInterface, claude: Grilled, refresh: () => void, now: number, isCleared: boolean): void {
+  claude.grillShownUntil = now + GRILL_SHOWN_MS
+  refresh()
+  void $.clock
+    .sleep(GRILL_SHOWN_MS)
+    .then(() => {
+      claude.passing = { kind: 'embers', at: now + GRILL_SHOWN_MS }
+      if (isCleared) claude.fill = null
+      refresh()
+    })
+    .catch(() => undefined)
+  void $.clock.sleep(GRILL_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(refresh).catch(() => undefined)
+}
+
 // The notifications that ask the person something.
 const ASKING = ['permission_prompt', 'elicitation_dialog']
 
@@ -546,6 +564,9 @@ export const register: Register = on => {
     if (iterm !== null && wallpaper.isShown) {
       await $.process.run(['/usr/bin/osascript', ...SET_BACKGROUND, iterm.sessionId, ''])
     }
+    // A /clear empties the context at once, and the session goes on: the
+    // keeper grills what he had caught, as for a compaction.
+    if (e.reason === 'clear' && (claude.fill ?? 0) >= 10) playGrill($, claude, () => refreshSky?.(), await $.clock.now(), true)
     if (ghostty !== null) await endGhosttySky($, ghostty, e.reason)
 
     return next(e)
@@ -744,16 +765,7 @@ export const register: Register = on => {
     }
 
     if (word === 'grill') {
-      claude.grillShownUntil = now + GRILL_SHOWN_MS
-      refreshSky?.()
-      void $.clock
-        .sleep(GRILL_SHOWN_MS)
-        .then(() => {
-          claude.passing = { kind: 'embers', at: now + GRILL_SHOWN_MS }
-          refreshSky?.()
-        })
-        .catch(() => undefined)
-      void $.clock.sleep(GRILL_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
+      playGrill($, claude, () => refreshSky?.(), now, false)
       const what = isInGhosttySky() ? 'the keeper grills his catch' : 'the wastebasket burns'
 
       return { text: `Solar: ${what} for ${GRILL_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
