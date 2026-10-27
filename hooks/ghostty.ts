@@ -131,7 +131,8 @@ export async function ttyOf($: EngineInterface): Promise<string | null> {
   const answer = await $.process.run(['sh', '-c', 'ps -o tty= -p $PPID'], { timeoutMs: 5_000 }).catch(() => null)
   const name = answer?.exitCode === 0 ? answer.stdout.trim() : ''
 
-  return /^tty[\w.]+$/.test(name) ? `/dev/${name}` : null
+  // ttys004 on a Mac, pts/3 on Linux.
+  return /^(tty[\w.]+|pts\/\d+)$/.test(name) ? `/dev/${name}` : null
 }
 
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:

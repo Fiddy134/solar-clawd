@@ -143,6 +143,7 @@ const PACE_WORDS = {
   vsyncOn: 'Solar: vsync is on again for new Ghostty tabs and windows; tabs already open keep it off until they close.',
   vsyncNotNeeded: 'Solar: this Ghostty draws the sky 24 times a second with vsync on; there is nothing to turn off.',
   notOnLinux: 'Solar: on Linux the sky keeps its pace as it is, for now.',
+  unknownVersion: 'Solar: Ghostty did not say its version here, so the sky keeps its pace as it is and vsync is left alone.',
   includeFirst: "Solar: run /solar ghostty first; the sky is not in Ghostty's config yet.",
 }
 const NOT_GHOSTTY = 'Solar: this session is not running in Ghostty.'
@@ -798,11 +799,14 @@ export const register: Register = on => {
     if (pace === 'full' || pace === 'spar' || pace === 'vsync off' || pace === 'vsync on') {
       if (ghostty === null) return { text: NOT_GHOSTTY }
       if (ghostty.isLinux) return { text: PACE_WORDS.notOnLinux }
+      // Without Ghostty's version the sky cannot tick: nothing is promised,
+      // and vsync is only ever turned back on.
+      if (ghostty.version === null && pace !== 'vsync on') return { text: PACE_WORDS.unknownVersion }
       const needsLine = ghostty.version === null || needsVsyncLine(ghostty.version)
       if (pace === 'full' || pace === 'spar') {
         await $.fs.write(ghostty.settings, JSON.stringify({ pace: pace }))
         refreshSky?.()
-        const isLineMissing = ghostty.version !== null && needsLine && !(await isVsyncOff($, ghostty))
+        const isLineMissing = needsLine && !(await isVsyncOff($, ghostty))
 
         return { text: PACE_WORDS[pace] + (isLineMissing ? PACE_WORDS.needsVsync : '') }
       }

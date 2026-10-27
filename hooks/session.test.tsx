@@ -908,6 +908,7 @@ const VSYNC_OFF = 'Solar: vsync is off in every Ghostty window, with Claude or w
 const VSYNC_ON = 'Solar: vsync is on again for new Ghostty tabs and windows; tabs already open keep it off until they close.'
 const VSYNC_NOT_NEEDED = 'Solar: this Ghostty draws the sky 24 times a second with vsync on; there is nothing to turn off.'
 const NOT_ON_LINUX = 'Solar: on Linux the sky keeps its pace as it is, for now.'
+const UNKNOWN_VERSION = 'Solar: Ghostty did not say its version here, so the sky keeps its pace as it is and vsync is left alone.'
 const INCLUDE_FIRST = "Solar: run /solar ghostty first; the sky is not in Ghostty's config yet."
 const SETTINGS = '/Users/test/Library/Application Support/solar-clawd/sky.json'
 const VSYNC = `${RUNTIME}/vsync.ghostty`
@@ -1133,4 +1134,22 @@ test('hidden, or ended, the sky ticks no more, and the last word to the tab is i
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
   expect(await marks(5_000)).toBe(0)
+})
+
+test('on Linux the tab is a pts, and its mark is written there', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  world.answers.set('sh', 'pts/3\n')
+  await startGhostty($, on, clock, world)
+  expect(world.files.get('/dev/pts/3')?.text).toContain(']4;16;rgb:')
+})
+
+test('where Ghostty says no version, vsync is left alone and the pace is not promised', async ($, on) => {
+  const { world, solar } = await paceWorld($, on, null)
+  await solar('ghostty')
+  expect(await solar('vsync off')).toBe(UNKNOWN_VERSION)
+  expect(world.files.has(VSYNC)).toBe(false)
+  expect(await solar('full')).toBe(UNKNOWN_VERSION)
+  expect(world.files.has(SETTINGS)).toBe(false)
 })
