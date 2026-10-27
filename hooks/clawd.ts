@@ -21,7 +21,8 @@ export type Mode = 'live' | 'demo' | 'pinned'
 // What Claude is up to, as Clawd shows it: `working` while it writes or
 // runs things, `reading` while it only reads; `toss` as the context window
 // fills another tenth, `burn` while the conversation is compacted and
-// `embers` just after.
+// `embers` just after (thrown into his wastebasket, or in Ghostty's sky
+// the keeper's catch and grill, which he looks round at).
 export type Reaction = 'working' | 'reading' | 'cheer' | 'facepalm' | 'wave' | 'lookUp' | 'toss' | 'burn' | 'embers'
 
 // What a tool does, as Clawd shows it: reads, writes (or runs), or neither
@@ -55,9 +56,10 @@ export type View = SkyInput & {
   // How full Claude's context window is, 0 to 100: the paper in the
   // wastebasket behind him.
   paper?: number | null
-  // The wastebasket stands in the sky's corner (Ghostty's shader) instead:
-  // he throws the paper down toward it.
-  isBasketInSky?: boolean
+  // The context window shows in the sky instead (Ghostty's shader, the
+  // keeper's fish on his line): no wastebasket here, and nothing thrown;
+  // he looks round at the catch, and smells the grill.
+  isContextInSky?: boolean
 }
 
 const LABELS: Record<Activity, string> = {
@@ -469,6 +471,14 @@ function reactionOverrides(
   if (!reaction) return { glyphs: [] }
   const { kind, age } = reaction
   const dots = '.'.repeat(1 + (Math.floor(t * 3) % 3))
+  // The keeper grilling the context in the sky: its smell drifts in from
+  // the band's right edge, two wisps a row apart, and he looks round at it.
+  // Asleep, it drifts in all the same.
+  if (kind === 'burn' && isInSky) {
+    const glyphs = [0, 1].map(k => ({ x: c.w - 1 - Math.floor(((age / 2 + k / 2) % 1) * 7), y: k, text: '~', fg: SMOKE }))
+
+    return isAwake ? { eyes: 'right', glyphs } : { glyphs }
+  }
 
   if (kind === 'working' || kind === 'reading') {
     const glyphs = [{ x: x - 4, y: 0, text: dots.padEnd(3), fg: PALE }]
@@ -494,10 +504,11 @@ function reactionOverrides(
 
     return { eyes: 'closed', arms: 'typing', glyphs: [] }
   }
-  // A ball of paper over his shoulder into the basket.
-  if (kind === 'toss') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.5 ? 'up' : 'down', glyphs: [] }
+  // A ball of paper over his shoulder into the basket; with the keeper's
+  // line in the sky, a pause to look round at his catch.
+  if (kind === 'toss') return isInSky ? { eyes: 'right', arms: 'down', glyphs: [] } : { eyes: 'left', arms: age < 0.5 ? 'up' : 'down', glyphs: [] }
   // A match thrown in, then watching the context burn away, and the smoke.
-  if (kind === 'burn') return { eyes: isInSky ? 'right' : 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
+  if (kind === 'burn') return { eyes: 'left', arms: age < 0.6 ? 'up' : 'down', glyphs: [] }
   if (kind === 'embers') return { eyes: 'closed', glyphs: [] }
   // Something in the sky: eyes up, a claw pointing at it.
   if (kind === 'lookUp') {
@@ -523,6 +534,7 @@ function paintWork(c: Canvas, reaction: View['reaction'], x: number, y: number, 
 }
 
 const STEEL = mix(PALE, INKS.indigo, 0.35)
+const SMOKE = 0xb8b8c0
 const FLAME = [mix(INKS.pink, INKS.orange, 0.45), INKS.orange, INKS.yellow]
 
 // The wastebasket behind him: a wire-mesh bin, the context window's paper
@@ -548,7 +560,7 @@ function paintBasket(c: Canvas, x: number, y: number, paper: number | null | und
   if (burning !== null || reaction?.kind === 'embers') {
     for (let k = 0; k < 3; k++) {
       const age = (t * 0.8 + k / 3) % 1
-      c.blend(left + 1 + k % 2 + Math.round(Math.sin(t * 2 + k) * 0.7), y - 2 - Math.floor(age * 3), 0xb8b8c0, 0.6 * (1 - age))
+      c.blend(left + 1 + k % 2 + Math.round(Math.sin(t * 2 + k) * 0.7), y - 2 - Math.floor(age * 3), SMOKE, 0.6 * (1 - age))
     }
   }
 }
@@ -557,18 +569,15 @@ function paintBasket(c: Canvas, x: number, y: number, paper: number | null | und
 export const THROW_SECONDS = 1.4
 
 // What flies to the basket: a ball of paper, or a lit match, arcing back
-// over his shoulder to the one behind him, or out and down toward the one
-// in the sky's corner.
-function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'], isInSky: boolean): void {
+// over his shoulder to the one behind him.
+function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction']): void {
   const age = reaction?.kind === 'toss' ? reaction.age : reaction?.kind === 'burn' ? reaction.age : null
   if (age === null || age > THROW_SECONDS) return
   const f = age / THROW_SECONDS
-  // Into the sky's basket: high over his screen to the band's last
-  // columns, and only there down out of it, above where it stands.
-  const px = Math.round(isInSky ? x + 5 + 9 * f : x - 4 * f)
-  const py = Math.round(isInSky ? y + 1 - 12 * f * (1 - f) + 5 * f * f * f : y + 1 - 3 * f * (1 - f) * 2 - f)
+  const px = Math.round(x - 4 * f)
+  const py = Math.round(y + 1 - 3 * f * (1 - f) * 2 - f)
   c.set(px, py, reaction!.kind === 'toss' ? CREAM : INKS.yellow)
-  if (reaction!.kind === 'burn') c.set(px + (isInSky ? -1 : 1), py + 1, WOOD)
+  if (reaction!.kind === 'burn') c.set(px + 1, py + 1, WOOD)
 }
 
 // --- Frame ----------------------------------------------------------------
@@ -578,7 +587,8 @@ function paintThrow(c: Canvas, x: number, y: number, reaction: View['reaction'],
 function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: number): Glyph[] {
   const { t, reaction, track } = view
   const { activity, occasion, isAwake, light, isWindy } = state
-  // A throw at the wastebasket stops even a chase after his hat.
+  // A throw at the wastebasket (or a look round at the keeper's catch and
+  // grill) stops even a chase after his hat.
   const isThrowing = reaction?.kind === 'toss' || reaction?.kind === 'burn'
   const chase = isWindy && !isThrowing ? chaseAt(t) : null
   const stage: Stage = {
@@ -593,7 +603,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   }
   const scene = SCENES[activity]
   const seated = scene.pose(stage)
-  const isInSky = !!view.isBasketInSky
+  const isInSky = !!view.isContextInSky
   const override = reactionOverrides(c, chase ? null : reaction, x, y, t, isAwake, isInSky)
 
   paintOccasion(c, occasion, x - 8, y, t, light)
@@ -607,7 +617,7 @@ function paintScene(c: Canvas, view: View, state: SceneState, x: number, y: numb
   paintClawd(c, cx, cy, eyes, arms, chase?.legs ?? 'stand', light)
   scene.front(stage)
   if (isAwake && !chase) paintWork(c, reaction, x, y, t, light)
-  if (!chase) paintThrow(c, x, y, reaction, isInSky)
+  if (!chase && !isInSky) paintThrow(c, x, y, reaction)
 
   const hat = state.hat && HATS[state.hat]
   if (hat) {

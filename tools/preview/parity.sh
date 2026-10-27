@@ -45,6 +45,11 @@ scene leaves differs --at 2026-10-26T13:00 --event leaves
 scene blossom differs --at 2026-05-10T12:00 --event blossom
 scene birds differs --at 2026-10-26T07:40 --event birds
 scene feathers differs --at 2027-03-26T12:00 --event feathers
+scene fish same --at 2026-10-24T15:35 --fish 6
+scene catch same --at 2026-10-24T15:35 --fish 7,catch
+scene grill same --at 2026-10-24T15:35 --fish 9,grill
+scene embers same --at 2026-10-24T15:35 --fish 0,embers
+scene band same --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4
 
 if [ "$mode" = record ]; then
   cp "$here"/*.png "$here/sha256.txt" "$dir/"

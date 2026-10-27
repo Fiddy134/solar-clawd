@@ -83,18 +83,30 @@ vec3 fishingLantern(vec3 sky, vec2 p, Lighthouse l, float u, float k) {
   return ink(sky, INK_YELLOW, box(v, vec2(0.3 * c, 0.5 * c)), 1.0);
 }
 
-// His hammock, drawn over him: its post on the rocks and a ring in the
-// tower, ropes from them to its ends, and its bed, striped blue and
-// cream, sagging under him and wrapping his back, the key plate along its
-// underside.
+// The post his hammock is slung from, on the rocks 2 s out from the
+// tower's middle: where its rope is tied, its top a little higher.
+vec2 hammockPost(Lighthouse l) { return vec2(l.x + 2.0 * l.s, l.foot - 0.9 * l.s); }
+
+// The post, standing day and night: his hammock hangs from it at night,
+// and his line (catch.ts) is tied to its top.
+vec3 post(vec3 sky, vec2 p, Lighthouse l, float k) {
+  float s = l.s;
+  vec2 at = hammockPost(l);
+  float w = max(2.0, 0.4 * keeperCell(s));
+  if (abs(p.x - at.x) > w || p.y < at.y - 0.12 * s - w || p.y > l.foot + 0.15 * s + w) return sky;
+  return keeperLine(sky, p, at - vec2(0.0, 0.12 * s), vec2(at.x, l.foot + 0.15 * s), keeperInk(WOOD, k), w, 1.0);
+}
+
+// His hammock, drawn over him: a ring in the tower and the post, ropes
+// from them to its ends, and its bed, striped blue and cream, sagging
+// under him and wrapping his back, the key plate along its underside.
 vec3 hammock(vec3 sky, vec2 p, Lighthouse l, float k) {
   float s = l.s;
   float c = keeperCell(s);
   vec3 bed = hammockBed(l);
   vec2 ring = vec2(l.x + 0.56 * s, l.foot - 0.9 * s);
-  vec2 post = vec2(l.x + 2.0 * s, l.foot - 0.9 * s);
+  vec2 post = hammockPost(l);
   float end = l.foot - 0.6 * s;
-  sky = keeperLine(sky, p, post - vec2(0.0, 0.12 * s), vec2(post.x, l.foot + 0.15 * s), keeperInk(WOOD, k), max(2.0, 0.4 * c), 1.0);
   sky = keeperLine(sky, p, ring, vec2(bed.x - bed.z, end), keeperInk(CREAM, k), 1.0, 0.7);
   sky = keeperLine(sky, p, post, vec2(bed.x + bed.z, end), keeperInk(CREAM, k), 1.0, 0.7);
   sky = ink(sky, lift(INK_INDIGO, k), length(p - ring) - max(1.0, 0.2 * c), 1.0);

@@ -1,5 +1,7 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the wastebasket in
-// the bottom right corner.
+// The sky shader's GLSL: the wastebasket in the bottom right corner, the
+// context window as balls of paper. Not in hooks/shader.ts's BODY since the
+// keeper's catch (catch.ts) shows the context instead; kept for a sky that
+// does not show it itself. Its fire and smoke are COMMON's.
 export const BASKET = `
 // --- The wastebasket -------------------------------------------------------
 
@@ -19,16 +21,6 @@ vec3 paperBall(vec3 sky, vec2 p, vec2 at, float r, int seed, float k, float burn
   return ink(sky, lift(INK_INDIGO, k), abs(length(v - vec2(0.12, 0.1) * r) - r) - 0.5, 0.6);
 }
 
-// A tongue of fire rising from \`foot\`, \`h\` tall and \`w\` wide at its base,
-// flickering; how much it covers \`p\`.
-float flame(vec2 p, vec2 foot, float h, float w, float phase) {
-  float f = (foot.y - p.y) / h;
-  if (f < 0.0 || f > 1.0) return 0.0;
-  float sway = sin(f * 3.0 + iTime * 6.0 + phase) * 0.18 * w * f;
-  float width = w * pow(1.0 - f, 0.7) * smoothstep(0.0, 0.12, f);
-  return smoothstep(width, width * 0.6, abs(p.x - foot.x - sway));
-}
-
 // The wastebasket in the bottom right corner, wire mesh over a dark inside:
 // the context window's paper in balls inside it, the last over the rim.
 // While the conversation compacts it burns, the balls blackening, flames
@@ -36,10 +28,10 @@ float flame(vec2 p, vec2 foot, float h, float w, float phase) {
 const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0.5, -1.15), vec2(0.05, -1.1), vec2(0.55, -1.15),
   vec2(-0.55, -1.85), vec2(0.05, -1.8), vec2(0.6, -1.85), vec2(-0.3, -2.55), vec2(0.4, -2.6));
 vec3 basket(vec3 sky, vec2 p, float u, float k) {
-  if (BASKET == 0) return sky;
+  if (CONTEXT == 0) return sky;
   // This tab's own, from its mark (tabMark).
   int balls = int(iPalette[16].g * 255.0 + 0.5);
-  int fire = int(iPalette[16].r * 255.0 + 0.5);
+  int state = int(iPalette[16].r * 255.0 + 0.5);
   float pitch = max(3.0, u * 0.24);
   // Its own unit, a little smaller than the sky's.
   u *= 0.85;
@@ -50,18 +42,11 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   float rise = clamp(-v.y / hgt, 0.0, 1.0);
   float halfWidth = mix(0.85, 1.15, rise) * u;
   bool isInside = v.y <= 0.0 && v.y >= -hgt && abs(v.x) <= halfWidth;
-  bool isBurning = fire == 1;
+  bool isBurning = state == 1;
   float burnt = isBurning ? 0.55 + 0.25 * sin(iTime * 2.0) : 0.0;
 
   // Smoke, behind it all.
-  if (fire != 0) {
-    for (int j = 0; j < 4; j++) {
-      float age = fract(iTime * 0.22 + float(j) * 0.25);
-      vec2 at = base + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 0.5 * u, -hgt - 0.8 * u - age * 4.5 * u);
-      float puff = smoothstep(1.0, 0.4, length(p - at) / ((0.35 + 0.7 * age) * u)) * (1.0 - age) * (isBurning ? 0.6 : 0.4);
-      sky = mix(sky, lift(vec3(0.62, 0.62, 0.68), k), screen(p, puff, pitch, 45.0) * 0.8);
-    }
-  }
+  if (state != 0) sky = smoke(sky, p, base - vec2(0.0, hgt + 0.8 * u), 4.5 * u, 0.0, 0.35 * u, 0.22, isBurning ? 0.6 : 0.4, lift(mix(CREAM, INK_INDIGO, 0.45), k), pitch);
   if (isInside) sky = mix(sky, tone(INK_INDIGO, k) * 0.55, 0.85);
   for (int i = 0; i < 8; i++) {
     if (i >= balls) break;
@@ -87,22 +72,9 @@ vec3 basket(vec3 sky, vec2 p, float u, float k) {
   }
 
   // The fire: pink, orange and yellow tongues, each smaller than the last.
-  if (isBurning) {
-    vec3 inks[3] = vec3[3](INK_PINK, INK_ORANGE, INK_YELLOW);
-    float angles[3] = float[3](75.0, 45.0, 0.0);
-    for (int layer = 0; layer < 3; layer++) {
-      float scale = 1.0 - float(layer) * 0.28;
-      float cover = 0.0;
-      for (int i = 0; i < 3; i++) {
-        float x = (-0.6 + 0.6 * float(i)) * u;
-        float h = (1.4 + 0.9 * (0.5 + 0.5 * sin(iTime * (2.3 + float(i) * 0.7) + float(i) * 1.9))) * u * scale;
-        cover = max(cover, flame(p, base + vec2(x, -hgt + 0.6 * u), h, 0.55 * u * scale, float(i * 3 + layer)));
-      }
-      sky = mix(sky, inks[layer], screen(p, cover * 0.95, pitch, angles[layer]));
-    }
-  }
+  if (isBurning) sky = fire(sky, p, base + vec2(0.0, -hgt + 0.6 * u), 0.6 * u, u, 0.55 * u, pitch);
   // Embers in the bottom of an emptied bin.
-  if (fire == 2 && isInside && v.y > -0.6 * u) {
+  if (state == 2 && isInside && v.y > -0.6 * u) {
     float glow = step(0.82, rand(int(floor(p.x / pitch)) * 31 + int(floor(p.y / pitch)) * 17 + int(floor(iTime * 4.0))));
     sky = mix(sky, INK_ORANGE, glow * 0.9);
   }

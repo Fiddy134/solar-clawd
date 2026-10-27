@@ -100,9 +100,10 @@ export async function tidy($: EngineInterface, folder: string, keep: string[]): 
 // for, so the sky shows only where Claude runs. Written to the session's
 // own terminal: the tty of the process the mod's commands run under.
 const UNMARK_TAB = '\x1b]104;16\x1b\\'
-// The mark for what this tab's wastebasket holds (tabMark).
-function markOf(basket: ShaderParams['basket']): string {
-  const hex = tabMark(basket).map(v => v.toString(16).padStart(2, '0'))
+// The mark for this tab's context window: how full, and what is happening
+// to it (tabMark).
+function markOf(context: ShaderParams['context']): string {
+  const hex = tabMark(context).map(v => v.toString(16).padStart(2, '0'))
 
   return `\x1b]4;16;rgb:${hex.join('/')}\x1b\\`
 }
@@ -159,7 +160,7 @@ export type SkyState = {
   isAway: boolean
   isOnBattery: boolean
   waiting: Waiting | null
-  basketAt: (now: number) => ShaderParams['basket']
+  catchAt: (now: number) => ShaderParams['context']
   livelyAt: (now: number) => boolean
 }
 
@@ -254,9 +255,9 @@ async function writeGhosttySky(
 ): Promise<void> {
   const { written } = ghostty
   const now = await $.clock.now()
-  // The tab's mark when its basket changes, and again each minute: a
-  // `reset` in the tab would have cleared it.
-  const mark = markOf(state.basketAt(now))
+  // The tab's mark when its context window changes, and again each minute:
+  // a `reset` in the tab would have cleared it.
+  const mark = markOf(state.catchAt(now))
   if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
     await markTab($, mark)
     written.mark = mark

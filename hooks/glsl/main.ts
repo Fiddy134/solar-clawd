@@ -214,7 +214,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   // Only in a tab where Claude runs: its session marks palette colour 16,
   // blue one step off black (tabMark). Asked first, so any other tab the
   // shader is drawn in costs no more than the terminal itself.
-  if (abs(iPalette[16].b - 1.0 / 255.0) > 0.5 / 255.0 || iPalette[16].r > 2.5 / 255.0 || iPalette[16].g > 10.5 / 255.0) {
+  if (abs(iPalette[16].b - 1.0 / 255.0) > 0.5 / 255.0 || iPalette[16].r > 3.5 / 255.0 || iPalette[16].g > 10.5 / 255.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }
@@ -283,7 +283,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   if (LIGHT < 0.5) sky = clouds(sky, p, s, unit, k);
   sky = events(sky, p, unit, k, false);
   sky = weather(sky, p, unit);
-  sky = basket(sky, p, unit, k);
   // No rim under glass. Without glass, mask is still the terminal's own,
   // text on a coloured field being glass or else done with above.
   if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);

@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './beacon'
-import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, THROW_SECONDS, toolKind, workKind } from './clawd'
+import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
 import type { Mode, Reaction } from './clawd'
 import { contextAt, EVENT_WORDS, eventsAt, OLD_EVENT_WORDS, PREVIEW_MS, showerAt, shootingRate } from './events'
 import type { EventKind, Forced } from './events'
@@ -59,11 +59,15 @@ const ACTIVITY_MS = 3_000
 // Weather and aurora are asked for this often, music this often.
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
-// How long /solar bränn plays the wastebasket's fire.
-const BURN_SHOWN_MS = 8_000
+// How long /solar grill plays the keeper's grill (the wastebasket's fire
+// in a band without the sky).
+const GRILL_SHOWN_MS = 8_000
+// How long the keeper's catch shows once another tenth of the context
+// window has filled.
+const CATCH_MS = 2_500
 // How often the context window's fill is asked (it costs nothing), for the
-// pile of paper by Clawd.
-const PAPER_MS = 30_000
+// keeper's fish and the pile of paper by Clawd.
+const FILL_MS = 30_000
 
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
@@ -89,12 +93,37 @@ async function stagePxOf($: EngineInterface, isOnLinux: boolean): Promise<number
   return STAGE_PT * (Number.isFinite(scale) && scale > 0 ? scale : 1)
 }
 
-// How full the context window is, 0 to 100, for Clawd's pile of paper;
-// null when it could not say.
+// How full the context window is, 0 to 100, for the keeper's fish and
+// Clawd's pile of paper; null when it could not say.
 async function contextFill($: EngineInterface): Promise<number | null> {
   const usage = await $.session.usage().catch(() => null)
 
   return usage?.context.percent ?? null
+}
+
+// The keeper's catch: in the sky at once (`refresh`), and back on the line
+// once it is over.
+function showCatch($: EngineInterface, refresh: () => void): void {
+  refresh()
+  void $.clock.sleep(CATCH_MS).then(refresh).catch(() => undefined)
+}
+
+// The keeper grills his catch for a while and the embers glow after
+// (where there is no sky, the wastebasket burns): /solar grill plays it,
+// and a /clear, which empties the context at once, leaves the line bare.
+type Grilled = { grillShownUntil: number; passing: { kind: Reaction; at: number } | null; fill: number | null }
+function playGrill($: EngineInterface, claude: Grilled, refresh: () => void, now: number, isCleared: boolean): void {
+  claude.grillShownUntil = now + GRILL_SHOWN_MS
+  refresh()
+  void $.clock
+    .sleep(GRILL_SHOWN_MS)
+    .then(() => {
+      claude.passing = { kind: 'embers', at: now + GRILL_SHOWN_MS }
+      if (isCleared) claude.fill = null
+      refresh()
+    })
+    .catch(() => undefined)
+  void $.clock.sleep(GRILL_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(refresh).catch(() => undefined)
 }
 
 // The notifications that ask the person something.
@@ -123,14 +152,16 @@ export const register: Register = on => {
     passing: null as { kind: Reaction; at: number } | null,
     // The main conversation's calls now running that read or write, by id.
     open: new Map<string, 'read' | 'write'>(),
-    // How full the context window is, 0 to 100, as last asked.
-    paper: null as number | null,
-    // When the conversation began compacting, while it does.
-    compactingSince: null as number | null,
-    // A fire played on request (/solar bränn) until then, and a ball thrown
-    // on request (/solar kasta) lying in the basket until then.
-    burnShownUntil: 0,
-    ballShownUntil: 0,
+    // The context window: how full it is, 0 to 100, as last asked; when the
+    // conversation began clearing it (compacting), while it does; and until
+    // when the keeper's catch shows another tenth just filled.
+    fill: null as number | null,
+    clearingSince: null as number | null,
+    catchUntil: 0,
+    // A grill played on request (/solar grill) until then, and a fish
+    // caught on request (/solar catch) hanging on the line until then.
+    grillShownUntil: 0,
+    fishShownUntil: 0,
   }
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
@@ -178,32 +209,36 @@ export const register: Register = on => {
     return pinnedAt === null ? { ms: now, mode: 'live' } : { ms: pinnedAt, mode: 'pinned' }
   }
 
-  // How full the context window is now: another tenth filled, Clawd
-  // throws a ball of paper in the basket.
-  // Whether he threw.
-  const takePaper = (fill: number | null, now: number): boolean => {
-    const before = claude.paper
-    claude.paper = fill ?? before
-    if (before !== null && fill !== null && claude.compactingSince === null && Math.floor(fill / 10) > Math.floor(before / 10)) {
+  // How full the context window is now: another tenth filled, the keeper
+  // lands a fish (and where there is no sky, Clawd throws a ball of paper
+  // in his basket). Whether one did.
+  const takeFill = (fill: number | null, now: number): boolean => {
+    const before = claude.fill
+    claude.fill = fill ?? before
+    if (before !== null && fill !== null && claude.clearingSince === null && Math.floor(fill / 10) > Math.floor(before / 10)) {
       claude.passing = { kind: 'toss', at: now }
+      claude.catchUntil = now + CATCH_MS
 
       return true
     }
 
     return false
   }
-  // The sky's wastebasket: a ball for each tenth, and the fire.
-  const basketAt = (now: number): ShaderParams['basket'] => {
+  // The context window as the sky shows it: a fish for each tenth full, and
+  // what is happening to it. The grill and its embers outrank the catch;
+  // the embers leave the line bare.
+  const catchAt = (now: number): ShaderParams['context'] => {
     const isEmbers = claude.passing?.kind === 'embers' && now - claude.passing.at < REACTION_SECONDS.embers * 1000
-    const fire = claude.compactingSince !== null || now < claude.burnShownUntil ? 'burn' : isEmbers ? 'embers' : null
-    const balls = (claude.paper === null ? 0 : Math.floor(claude.paper / 10)) + (now < claude.ballShownUntil ? 1 : 0)
+    const isGrill = claude.clearingSince !== null || now < claude.grillShownUntil
+    const state = isGrill ? 'grill' : isEmbers ? 'embers' : now < claude.catchUntil ? 'catch' : 'idle'
+    const fish = (claude.fill === null ? 0 : Math.floor(claude.fill / 10)) + (now < claude.fishShownUntil ? 1 : 0)
 
-    return { balls: isEmbers ? 0 : balls, fire }
+    return { fish: state === 'embers' ? 0 : fish, state }
   }
 
   const reactionAt = (now: number) => {
-    if (claude.compactingSince !== null) return { kind: 'burn' as const, age: (now - claude.compactingSince) / 1000 }
-    if (now < claude.burnShownUntil) return { kind: 'burn' as const, age: (now - (claude.burnShownUntil - BURN_SHOWN_MS)) / 1000 }
+    if (claude.clearingSince !== null) return { kind: 'burn' as const, age: (now - claude.clearingSince) / 1000 }
+    if (now < claude.grillShownUntil) return { kind: 'burn' as const, age: (now - (claude.grillShownUntil - GRILL_SHOWN_MS)) / 1000 }
     const { passing } = claude
     // Looking up at the sky gives way to a question and to work.
     const isBusy = waiting?.mode === 'asking' || claude.isWorking
@@ -228,6 +263,10 @@ export const register: Register = on => {
     return { events, context }
   }
 
+  // Whether Ghostty's sky shows through the band, and with it the context
+  // window on the keeper's line.
+  const isInGhosttySky = () => ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''
+
   const viewAt = (now: number, columns: number) => {
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
@@ -247,10 +286,10 @@ export const register: Register = on => {
       isAuroraForced,
       moonTexture,
       // Clear where a wallpaper or Ghostty's sky shows through the band.
-      isClear: iterm !== null || (ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''),
+      isClear: iterm !== null || isInGhosttySky(),
       reaction: reactionAt(now),
-      paper: claude.paper,
-      isBasketInSky: ghostty !== null && ghostty.isIncluded && ghostty.written.include !== '',
+      paper: claude.fill,
+      isContextInSky: isInGhosttySky(),
       track,
       event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
@@ -260,14 +299,18 @@ export const register: Register = on => {
   const issNow = (now: number, mode: Mode) => (mode === 'live' ? issVisible(issOrbit, now, where.place) : null)
 
   // Whether anything in the sky moves enough to be worth Ghostty's frame
-  // loop: an event, rain or snow, a fire, a time-lapse, a storm played.
+  // loop: an event, rain or snow, the grill or its embers, a time-lapse, a
+  // storm played. Not the catch: every frame of it is a still of the same
+  // moment, and it is over in seconds.
   const livelyAt = (now: number): boolean => {
     const sky = where.weather ? skyOf(where.weather.code) : 'clear'
     const isWet = sky === 'drizzle' || sky === 'rain' || sky === 'thunder' || sky === 'snow'
+    const state = catchAt(now)?.state
+    const isFire = state === 'grill' || state === 'embers'
 
-    return momentAt(now).mode === 'demo' || eventsNow(now).events.length > 0 || isWet || isWindForced || basketAt(now)?.fire != null
+    return momentAt(now).mode === 'demo' || eventsNow(now).events.length > 0 || isWet || isWindForced || isFire
   }
-  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, basketAt, livelyAt })
+  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, catchAt, livelyAt })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   // What was in the Ghostty sky last time it was drawn; null before the first.
@@ -285,14 +328,14 @@ export const register: Register = on => {
     if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, basket: basketAt(now) }))
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now) }))
   }
 
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | toss | burn | ghostty]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty]',
       immediate: true,
     })
 
@@ -397,12 +440,12 @@ export const register: Register = on => {
       issOrbit = (await issElements($)) ?? issOrbit
     }
     void fetchIss().catch(() => undefined)
-    // A ball thrown lands in the sky's basket as it gets there.
-    const readPaper = async () => {
-      if (takePaper(await contextFill($), await $.clock.now())) await $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
+    // Another tenth filled: the keeper's catch.
+    const readFill = async () => {
+      if (takeFill(await contextFill($), await $.clock.now())) showCatch($, () => refreshSky?.())
     }
-    void readPaper()
-    $.clock.every(PAPER_MS, () => void readPaper())
+    void readFill()
+    $.clock.every(FILL_MS, () => void readFill())
     $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
     $.clock.every(WEATHER_MS, () => void refreshWeather($, where).catch(() => undefined))
     // Away from the computer, or iTerm2 behind other windows: the wallpaper
@@ -521,6 +564,9 @@ export const register: Register = on => {
     if (iterm !== null && wallpaper.isShown) {
       await $.process.run(['/usr/bin/osascript', ...SET_BACKGROUND, iterm.sessionId, ''])
     }
+    // A /clear empties the context at once, and the session goes on: the
+    // keeper grills what he had caught, as for a compaction.
+    if (e.reason === 'clear' && (claude.fill ?? 0) >= 10) playGrill($, claude, () => refreshSky?.(), await $.clock.now(), true)
     if (ghostty !== null) await endGhosttySky($, ghostty, e.reason)
 
     return next(e)
@@ -544,7 +590,7 @@ export const register: Register = on => {
       claude.isWorking = false
       claude.open.clear()
       const now = await $.clock.now()
-      if (takePaper(await contextFill($), now)) void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
+      if (takeFill(await contextFill($), now)) showCatch($, () => refreshSky?.())
       if (e.reason === 'answer') {
         claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
@@ -593,29 +639,29 @@ export const register: Register = on => {
     return result
   })
 
-  // The conversation compacting (not ahead of time): Clawd throws a match
-  // in the basket and the context burns while it runs; smoke after, unless
-  // it was skipped.
+  // The conversation compacting (not ahead of time): the keeper grills his
+  // catch while it runs (where there is no sky, Clawd throws a match in his
+  // basket and the context burns); embers after, unless it was skipped,
+  // the line bare, and then hung with what the new reading says.
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
-    claude.compactingSince = await $.clock.now()
-    // The match lands, and the sky's basket catches fire.
-    void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
+    claude.clearingSince = await $.clock.now()
+    refreshSky?.()
     try {
       const result = await next(e)
       if (!('skip' in result)) {
         const now = await $.clock.now()
         claude.passing = { kind: 'embers', at: now }
-        claude.compactingSince = null
-        claude.paper = null
-        takePaper(await contextFill($), now)
-        // Embers now, and an empty bin once they are out.
+        claude.clearingSince = null
+        claude.fill = null
+        takeFill(await contextFill($), now)
+        // Embers now, and the line as it is once they are out.
         void $.clock.sleep(REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
       }
 
       return result
     } finally {
-      claude.compactingSince = null
+      claude.clearingSince = null
       refreshSky?.()
     }
   })
@@ -637,11 +683,11 @@ export const register: Register = on => {
   })
 
   on('command.run', { command: 'solar' }, async ($, e) => {
-    // The Swedish words it once took still work.
+    // The words it once took, Swedish and English, still work.
     const said = e.args.trim()
     const [first = '', ...rest] = said.split(/\s+/)
-    const english = ({ plats: 'place', norrsken: 'aurora', blåst: 'storm', kasta: 'toss', bränn: 'burn' } as Record<string, string>)[first.toLowerCase()]
-    const arg = english ? [english, ...rest].join(' ') : said
+    const renamed = ({ plats: 'place', norrsken: 'aurora', blåst: 'storm', kasta: 'catch', bränn: 'grill', toss: 'catch', burn: 'grill' } as Record<string, string>)[first.toLowerCase()]
+    const arg = renamed ? [renamed, ...rest].join(' ') : said
     const word = arg.toLowerCase()
     const now = await $.clock.now()
 
@@ -705,29 +751,24 @@ export const register: Register = on => {
       return { text: `Solar: ${EVENT_WORDS[kind]} for ${PREVIEW_MS / 1000} seconds.` }
     }
 
-    // Clawd's wastebasket, played: a ball thrown in, or the context burnt.
-    if (word === 'toss') {
+    // The context window, played: the keeper's catch, a fish on his line
+    // for a while, or his grill. Where there is no sky, Clawd's wastebasket:
+    // a ball of paper thrown in, or the context burnt.
+    if (word === 'catch') {
       claude.passing = { kind: 'toss', at: now }
-      claude.ballShownUntil = now + PREVIEW_MS
-      void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
+      claude.catchUntil = now + CATCH_MS
+      claude.fishShownUntil = now + PREVIEW_MS
+      showCatch($, () => refreshSky?.())
       void $.clock.sleep(PREVIEW_MS + 100).then(() => refreshSky?.()).catch(() => undefined)
 
-      return { text: 'Solar: Clawd tosses a ball of paper into the wastebasket.' }
+      return { text: isInGhosttySky() ? 'Solar: the keeper lands a fish, as when another tenth of the context window fills.' : 'Solar: Clawd tosses a ball of paper into the wastebasket.' }
     }
 
-    if (word === 'burn') {
-      claude.burnShownUntil = now + BURN_SHOWN_MS
-      void $.clock.sleep(THROW_SECONDS * 1000).then(() => refreshSky?.()).catch(() => undefined)
-      void $.clock
-        .sleep(BURN_SHOWN_MS)
-        .then(() => {
-          claude.passing = { kind: 'embers', at: now + BURN_SHOWN_MS }
-          refreshSky?.()
-        })
-        .catch(() => undefined)
-      void $.clock.sleep(BURN_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
+    if (word === 'grill') {
+      playGrill($, claude, () => refreshSky?.(), now, false)
+      const what = isInGhosttySky() ? 'the keeper grills his catch' : 'the wastebasket burns'
 
-      return { text: `Solar: the wastebasket burns for ${BURN_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
+      return { text: `Solar: ${what} for ${GRILL_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
     }
 
     if (word === 'aurora') {
@@ -781,7 +822,7 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar toss or /solar burn.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch or /solar grill.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
