@@ -33,7 +33,7 @@ show() {
   else
     flags=(--custom-shader-animation=false --window-vsync=false "--command=$root/tools/measure/term.sh marked tick$rate")
   fi
-  open -naW $app --args --config-default-files=false --maximize=true --window-save-state=never \
+  open -nW -a $app --args --config-default-files=false --maximize=true --window-save-state=never \
     --confirm-close-surface=false --quit-after-last-window-closed=true --shell-integration=none \
     --background=282c34 --window-padding-x=2,240 --title=$title --custom-shader=$file $flags
 }
