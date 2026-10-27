@@ -11,9 +11,12 @@
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
-//   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
-//   --theme fyr (the theme the sky is drawn with, fyr by default)
+//   --bench 200 (ms a frame, and what the theme costs: its frame less the engine's alone, and against fyr's)
+//   --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
+//   --theme fyr (the theme the sky is drawn with, fyr by default; none for the engine alone, the four
+//   functions stubbed; or a folder with a manifest.json and a theme.glsl)
 
+import { execFileSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -22,7 +25,9 @@ import { contextAt, EVENTS, eventsAt, shootingRate, specsOf } from '../../hooks/
 import { tabMark } from '../../hooks/mark.ts'
 import { shaderParams, skyShader } from '../../hooks/shader.ts'
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
+import { NO_THEME } from '../../hooks/themes/check.ts'
 import { THEMES } from '../../hooks/themes/index.ts'
+import { themeNamed } from '../theme/load.mjs'
 import { cellsSvg, dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
@@ -35,8 +40,7 @@ const weather = o.weather ? weatherOf(o.weather) : null
 // --event balloon (or several, comma-separated) plays them as a preview would.
 const forced = o.event ? String(o.event).split(',').map(kind => ({ kind, at: ms })) : []
 const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null)
-const theme = THEMES[o.theme ?? 'fyr']
-if (!theme) throw new Error(`--theme: no theme called "${o.theme}" (${Object.keys(THEMES).join(', ')})`)
+const theme = themeNamed(o.theme ?? 'fyr')
 const events = eventsAt(ms, context, forced, [...EVENTS, ...specsOf(theme)])
 // --fish 7 or 7,catch or 7,grill or 0,embers: the tab's mark for its context
 // window, the keeper's line of fish (--basket the old name, burn the old grill).
@@ -290,7 +294,25 @@ if (failed) {
   process.exit(1)
 }
 if (o.bench) {
-  console.log(`${/<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]} ms a frame`)
+  const frame = /<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]
+  console.log(`${frame} ms a frame`)
+  // What the theme costs: its frame less the engine's alone, the same
+  // scene drawn with --theme none, and that against what fyr's costs. The
+  // others run one after the other in a process each, as this one did; on
+  // a busy machine the difference is noise, so read it on a calm one.
+  if (!o['bench-alone'] && theme !== NO_THEME) {
+    const other = name => {
+      const args = [...process.argv.slice(2), '--theme', name, '--bench-alone', '--out', `${o.out ?? 'shader'}-${name}`]
+      const text = execFileSync(process.execPath, [process.argv[1], ...args], { encoding: 'utf8', env: process.env })
+      return Number(/([\d.]+) ms a frame/.exec(text)?.[1])
+    }
+    const none = other('none')
+    const cost = Number(frame) - none
+    console.log(`none: ${none.toFixed(2)} ms a frame`)
+    console.log(`theme cost = ${Number(frame).toFixed(2)} − ${none.toFixed(2)} = ${cost.toFixed(2)} ms a frame`)
+    const fyrCost = theme === THEMES.fyr ? cost : other('fyr') - none
+    console.log(`ratio to fyr = ${(cost / fyrCost).toFixed(2)}${theme === THEMES.fyr ? ' (this is fyr)' : ` (fyr's cost ${fyrCost.toFixed(2)} ms a frame)`}`)
+  }
   process.exit(0)
 }
 const name = o.out ?? 'shader'

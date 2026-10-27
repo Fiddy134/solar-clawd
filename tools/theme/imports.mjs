@@ -16,9 +16,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
 const hooks = join(root, 'hooks')
 const themes = join(hooks, 'themes')
 const clawd = join(hooks, 'clawd.ts')
-// The framework a theme is read through is the engine's own; only a
-// theme's folder is out of bounds.
-const framework = new Set([join(themes, 'index.ts'), join(themes, 'theme.ts')])
+// The files in hooks/themes/ itself (the register, the manifest's checks)
+// are the engine's own; only a theme's folder under it is out of bounds.
+const isInATheme = path => path.startsWith(themes + '/') && dirname(path) !== themes
 
 function filesUnder(dir) {
   return readdirSync(dir).flatMap(name => {
@@ -52,7 +52,7 @@ for (const file of filesUnder(hooks)) {
   if (file.startsWith(themes + '/')) continue
   const isTest = /\.test\.tsx?$/.test(file)
   for (const { spec, path } of importsOf(file)) {
-    if (path.startsWith(themes + '/') && !framework.has(path)) broken.push(`${relative(root, file)}: '${spec}' is a theme's own`)
+    if (isInATheme(path)) broken.push(`${relative(root, file)}: '${spec}' is a theme's own`)
     if (path === clawd && !isTest && file !== join(hooks, 'register.tsx')) broken.push(`${relative(root, file)}: '${spec}' is the character`)
   }
 }

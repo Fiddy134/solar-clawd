@@ -11,6 +11,7 @@ import type { Weather } from './sky'
 import { swedish } from './test-kit'
 import { COMMON } from './glsl/common'
 import { PROTOTYPES } from './glsl/prototypes'
+import { checkTheme, engineNames, longNight, NO_THEME, themeFiles, themeOfFiles, weightOf } from './themes/check'
 import { BASE_THEME, THEMES } from './themes/index'
 import { ENGINE_CONTRACT, lintTheme, SHADER_MAX, THEME_GLSL_MAX, themeOf, topLevelNames, whenOf } from './themes/theme'
 import type { Theme, ThemeManifest, ThemeWhen } from './themes/theme'
@@ -256,4 +257,33 @@ test("fyr's dolphins answer to their old Swedish words, as aliases now", () => {
   expect(kindOf('delfin', bare)).toBeUndefined()
   expect(wordsOf(FYR).abduction).toBe('ufo abduction')
   expect(wordsOf(FYR).surf).toBe('surf')
+})
+
+test('fyr packs to a manifest.json and a theme.glsl that read back as fyr and check clean', () => {
+  const files = themeFiles(FYR)
+  expect(Object.keys(files)).toEqual(['manifest.json', 'theme.glsl'])
+  const back = themeOfFiles(files['manifest.json'], files['theme.glsl'])
+  expect(back).toEqual(FYR)
+  expect(checkTheme(back as Theme)).toEqual([])
+  expect('error' in themeOfFiles('{ "engine": 1', '')).toBe(true)
+  expect(themeOfFiles(JSON.stringify({ ...FYR.manifest, engine: 2 }), FYR.glsl)).toEqual({ error: 'the manifest asks for engine contract 2; this engine has 1' })
+})
+
+test('the check says what the lint and the caps say; the engine alone has every stub and checks clean', () => {
+  expect(checkTheme(FYR)).toEqual([])
+  expect(checkTheme(NO_THEME)).toEqual([])
+  expect(checkTheme({ ...FYR, glsl: `${FYR.glsl}\nfloat spin() { float a = 0.0; while (a < 1.0) a += 0.1; return a; }\n` })).toContain('uses a while loop')
+  expect(checkTheme({ ...FYR, glsl: `${FYR.glsl}\n// ${'x'.repeat(THEME_GLSL_MAX)}\n` }).some(problem => problem.startsWith('its GLSL is'))).toBe(true)
+  expect(checkTheme({ ...FYR, glsl: `${FYR.glsl}\n// ${'x'.repeat(SHADER_MAX)}\n` }).some(problem => problem.startsWith('the whole shader of a long night is'))).toBe(true)
+  // The wastebasket's names are the engine's, though fyr's shader leaves it out.
+  expect(engineNames()).toContain('basket')
+  expect(checkTheme({ ...FYR, glsl: `${FYR.glsl}\nvec3 basket(vec3 sky) { return sky; }\n` })).toContain("defines basket, which is the engine's")
+  const none = skyShader(params, NO_THEME)
+  expect(none).toContain('vec3 scenery(vec3 sky, vec2 p, float u, float k) { return sky; }')
+  expect(none).toContain('vec3 resident(vec3 sky, vec2 p, float u, float k) { return sky; }')
+  expect(none).toContain('vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind) { return sky; }')
+  expect(none).toContain('float themeWindow(vec2 p, float u) { return 1.0; }')
+  expect(none).not.toContain('basket(')
+  expect(weightOf(NO_THEME).glsl).toBe(0)
+  expect(weightOf(FYR).night).toBe(skyShader(longNight(), FYR).length)
 })

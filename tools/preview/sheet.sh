@@ -7,17 +7,22 @@
 #   tools/preview/sheet.sh fisk i1         (writes .preview/fisk-i1/)
 # the keeper's catch (F3b), the context window as the fish he has hung up
 # and the grill as the conversation compacts, by day and by night, the
-# zooms side by side in contact.png. BUNDLE=.preview/b/before.bundle.mjs
-# draws a sheet with an earlier build instead of this tree's.
+# zooms side by side in contact.png; and
+#   tools/preview/sheet.sh theme fyr       (writes .preview/theme-fyr/)
+# one theme (built in, or a folder with manifest.json and theme.glsl) in
+# the parity scenes at the parity's size, its own events and previews each
+# at three moments, every frame small in contact.png.
+# BUNDLE=.preview/b/before.bundle.mjs draws a sheet with an earlier build
+# instead of this tree's.
 set -e
 root=$(cd "$(dirname "$0")/../.." && pwd)
 sheet=$1
 variant=$2
-if { [ "$sheet" != q2 ] && [ "$sheet" != fisk ]; } || [ -z "$variant" ]; then
-  echo "usage: tools/preview/sheet.sh q2|fisk <variant>" >&2
+if { [ "$sheet" != q2 ] && [ "$sheet" != fisk ] && [ "$sheet" != theme ]; } || [ -z "$variant" ]; then
+  echo "usage: tools/preview/sheet.sh q2|fisk <variant>, or sheet.sh theme <name|folder>" >&2
   exit 1
 fi
-name=$sheet-$variant
+name=$sheet-$(basename "$variant")
 dir=$root/.preview/$name
 rm -rf "$dir"
 mkdir -p "$dir"
@@ -80,6 +85,77 @@ if [ "$sheet" = q2 ]; then
   # The contact sheet: every frame small, three across (a, b of each scene).
   ffmpeg -y -loglevel error -pattern_type glob -i "$dir/*-[ab].png" \
     -vf "scale=504:-1:flags=area,tile=3x6:padding=4:color=black" -frames:v 1 "$dir/contact.png"
+  echo "$dir"
+  exit 0
+fi
+
+if [ "$sheet" = theme ]; then
+  # A folder is read from where the sheet was asked for.
+  theme=$variant
+  [ -d "$theme" ] && theme=$(cd "$theme" && pwd)
+  kinds=$("$root/tools/theme/run.sh" kinds "$theme")
+  S="--theme $theme --stage 240"
+  DAY="--at 2026-10-26T13:00"
+  NIGHT="--at 2026-10-24T22:00"
+  # frame <scene> <time> <flags>: one frame at the parity's size.
+  frame() {
+    scene=$1
+    time=$2
+    shift 2
+    # shellcheck disable=SC2086
+    render "$@" $S --time "$time" --out "$name/$scene"
+    echo "$scene"
+  }
+  # The engine's parity scenes, which every theme is drawn in: its day at
+  # four moments, Claude waiting, the night, the weather, the context
+  # window, the engine's events and days, and the engine's own paths.
+  frame 01-day-20 20 $DAY
+  frame 02-day-45 45 $DAY
+  frame 03-day-60 60 $DAY
+  frame 04-day-75 75 $DAY
+  frame 05-waiting-dusk 20 --at 2026-10-26T16:30 --waiting asking
+  frame 06-waiting-urgent 20 $NIGHT --waiting asking --urgent
+  frame 07-waiting-done 20 $DAY --waiting done
+  frame 08-night-aurora 20 $NIGHT --aurora
+  frame 09-night-iss 20 $NIGHT --iss
+  frame 10-night-moon 20 --at 2026-10-26T23:00 --weather 0,5,2,10
+  frame 11-asleep-0400 20 --at 2026-10-26T04:00
+  frame 12-rain 20 $DAY --weather 61,8,4,90
+  frame 13-snow 20 --at 2026-01-15T13:00 --weather 71,-2,3,90
+  frame 14-storm-kite 20 $DAY --weather 95,12,12,95 --event kite
+  frame 15-fish-6 20 --at 2026-10-24T15:35 --fish 6
+  frame 16-fish-9-grill 20 --at 2026-10-24T15:35 --fish 9,grill
+  frame 17-fish-0-embers 20 --at 2026-10-24T15:35 --fish 0,embers
+  frame 18-fish-7-catch 20 --at 2026-10-24T15:35 --fish 7,catch
+  frame 19-comet-constellation 20 $NIGHT --weather 0,5,2,10 --event comet,constellation
+  frame 20-rainbow 20 $DAY --event rainbow --rained
+  frame 21-balloon-plane-birds 20 --at 2026-10-26T09:00 --event balloon,plane,birds
+  frame 22-christmas 20 --at 2026-12-24T16:00
+  frame 23-flag-day 20 --at 2026-06-06T12:00
+  frame 24-new-year 20 --at 2026-12-31T23:55
+  frame 25-milestone 20 $DAY --event milestone
+  frame 26-demo 20 $DAY --demo
+  frame 27-y-up 20 $DAY --y-up
+  frame 28-diff-p3 20 $DAY --diff --p3
+  frame 29-light 20 $DAY --light
+  frame 30-unmarked 20 $DAY --unmarked
+  frame 31-band 20 --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4
+  # The theme's own events and previews, each by day at 24.8 s and by
+  # night at 88 and 126 (fyr's dolphins leap at 24.8, its UFO beams him up
+  # at 88 and sets him down at 126).
+  i=32
+  for kind in $kinds; do
+    frame "$i-$kind-day" 24.8 --at 2026-10-24T15:35 --event "$kind"
+    frame "$((i + 1))-$kind-88" 88 $NIGHT --event "$kind"
+    frame "$((i + 2))-$kind-126" 126 $NIGHT --event "$kind"
+    i=$((i + 3))
+  done
+
+  # The contact sheet: every frame small, six across.
+  count=$(ls "$dir"/*.png | wc -l)
+  rows=$(( (count + 5) / 6 ))
+  ffmpeg -y -loglevel error -pattern_type glob -i "$dir/[0-9]*.png" \
+    -vf "scale=378:-1:flags=area,tile=6x$rows:padding=4:color=black" -frames:v 1 "$dir/contact.png"
   echo "$dir"
   exit 0
 fi
