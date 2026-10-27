@@ -28,7 +28,7 @@ vec3 paperBall(vec3 sky, vec2 p, vec2 at, float r, int seed, float k, float burn
 const vec2 BALL_AT[10] = vec2[10](vec2(-0.45, -0.45), vec2(0.45, -0.45), vec2(-0.5, -1.15), vec2(0.05, -1.1), vec2(0.55, -1.15),
   vec2(-0.55, -1.85), vec2(0.05, -1.8), vec2(0.6, -1.85), vec2(-0.3, -2.55), vec2(0.4, -2.6));
 vec3 basket(vec3 sky, vec2 p, float u, float k) {
-  if (BASKET == 0) return sky;
+  if (CONTEXT == 0) return sky;
   // This tab's own, from its mark (tabMark).
   int balls = int(iPalette[16].g * 255.0 + 0.5);
   int state = int(iPalette[16].r * 255.0 + 0.5);

@@ -6,6 +6,8 @@ import { localTime, STOCKHOLM, swedishOffsetMs } from './astro'
 import { swedish } from './test-kit'
 import { activityAt, activityOn, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { fromBase64 } from './paint'
+import { CATCH } from './glsl/catch'
+import { MAIN } from './glsl/main'
 import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
 
@@ -76,21 +78,57 @@ test('the wastebasket fills with the context window, a ball at a time, and burns
   expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'embers', age: 1 } })).not.toBe(drawFrame({ ...view, paper: 90 }))
 })
 
-test('in Ghostty the wastebasket stands in the sky, each tab\'s own carried in its mark', () => {
-  const text = (basket: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { basket } as never))
-  expect(text(null)).toContain('const int BASKET = 0;')
-  expect(text({ balls: 7, fire: null })).toContain('const int BASKET = 1;')
-  // The shader's text is one for every tab: what is in the basket is not in it.
-  expect(text({ balls: 7, fire: null })).toBe(text({ balls: 2, fire: 'burn' }))
-  expect(tabMark({ balls: 7, fire: null })).toEqual([0, 7, 1])
-  expect(tabMark({ balls: 14, fire: null })).toEqual([0, 10, 1])
-  expect(tabMark({ balls: 3, fire: 'burn' })).toEqual([1, 3, 1])
-  expect(tabMark({ balls: 0, fire: 'embers' })).toEqual([2, 0, 1])
-  expect(tabMark({ balls: 7, fire: 'catch' })).toEqual([3, 7, 1])
+test("in Ghostty the context window hangs on the keeper's line, each tab's own carried in its mark", () => {
+  const text = (context: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context } as never))
+  expect(text(null)).toContain('const int CONTEXT = 0;')
+  expect(text({ fish: 7, state: 'idle' })).toContain('const int CONTEXT = 1;')
+  // The shader's text is one for every tab: what is on its line is not in it.
+  expect(text({ fish: 7, state: 'idle' })).toBe(text({ fish: 2, state: 'grill' }))
+  expect(text({ fish: 7, state: 'idle' })).toBe(text({ fish: 8, state: 'catch' }))
+  expect(tabMark({ fish: 7, state: 'idle' })).toEqual([0, 7, 1])
+  expect(tabMark({ fish: 14, state: 'idle' })).toEqual([0, 10, 1])
+  expect(tabMark({ fish: 3, state: 'grill' })).toEqual([1, 3, 1])
+  expect(tabMark({ fish: 0, state: 'embers' })).toEqual([2, 0, 1])
+  expect(tabMark({ fish: 7, state: 'catch' })).toEqual([3, 7, 1])
   expect(tabMark(null)).toEqual([0, 0, 1])
   const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
-  // The band throws toward the sky's basket instead of keeping its own.
-  expect(drawFrame({ ...view, isBasketInSky: true })).not.toBe(drawFrame(view))
+  // The band keeps no wastebasket of its own then.
+  expect(drawFrame({ ...view, isContextInSky: true })).not.toBe(drawFrame(view))
+  expect(drawFrame({ ...view, isContextInSky: true })).toBe(drawFrame({ ...view, paper: 10, isContextInSky: true }))
+})
+
+test("the keeper's catch reads the tab's mark, and the shader's tab test lets every state of it through", () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context: { fish: 7, state: 'idle' } }))
+  expect(CATCH).toContain('iPalette[16]')
+  expect(text).toContain(CATCH)
+  // Red up to 3, a tenth just filled; 4 is no mark of ours.
+  expect(MAIN).toContain('iPalette[16].r > 3.5 / 255.0')
+  expect(Math.max(...(['idle', 'grill', 'embers', 'catch'] as const).map(state => tabMark({ fish: 10, state })[0]))).toBe(3)
+})
+
+test("with the keeper's line in the sky Clawd looks round at the catch and smells the grill, and throws nothing", () => {
+  // Over his coffee, his eyes on the room: at his screen he looks right anyway.
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 8), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60, isContextInSky: true }
+  // The cells' characters: each cell is three words, its character first.
+  const chars = (frame: string) => {
+    const bytes = fromBase64(frame)
+    const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
+
+    return [...words.filter((_, i) => i % 3 === 0)].map(code => String.fromCharCode(code)).join('')
+  }
+  const still = drawFrame(view)
+  // A tenth filled: a look to the right for as long as the catch, the same
+  // the whole while (no ball in the air); without the sky, a throw.
+  const glance = drawFrame({ ...view, reaction: { kind: 'toss', age: 0.2 } })
+  expect(glance).not.toBe(still)
+  expect(drawFrame({ ...view, reaction: { kind: 'toss', age: 1.2 } })).toBe(glance)
+  expect(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'toss', age: 0.2 } })).not.toBe(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'toss', age: 1.2 } }))
+  // Compacting: two wisps drift in from the band's right edge; no match.
+  const smells = [0.2, 0.9, 1.6].map(age => chars(drawFrame({ ...view, reaction: { kind: 'burn', age } })))
+  for (const cells of smells) expect(cells.split('~').length - 1).toBe(2)
+  expect(new Set(smells).size).toBe(3)
+  expect(chars(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'burn', age: 0.9 } }))).not.toContain('~')
+  expect(chars(still)).not.toContain('~')
 })
 
 test('a throw at the wastebasket stops a chase after his hat', () => {

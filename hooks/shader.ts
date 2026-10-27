@@ -43,10 +43,12 @@ export type ShaderParams = {
   // The lighthouse: lit while Claude waits (orange asking, white done),
   // hurrying once a question has waited.
   beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
-  // The wastebasket in the bottom right corner: balls of paper, a tenth of
-  // the context window each, and a fire while the conversation compacts
-  // (embers just after); null where the band keeps its own.
-  basket: { balls: number; fire: 'burn' | 'embers' | 'catch' | null } | null
+  // The context window as this tab's sky shows it: how many tenths of it
+  // are full (the keeper's fish on his line), and what is happening to it:
+  // `catch` a tenth has just filled, `grill` the conversation compacts,
+  // `embers` it has just compacted. Null where the band keeps its own
+  // wastebasket.
+  context: { fish: number; state: 'idle' | 'catch' | 'grill' | 'embers' } | null
   // The ISS on a visible pass, where it is and was 20 s before; null otherwise.
   iss: { at: DomePoint; trail: DomePoint } | null
   // Where a comet up now hangs on the dome, and the angle its tails point
@@ -86,13 +88,15 @@ export type ShaderParams = {
 
 // A tab's mark, palette colour 16 as the session sets it (register.tsx,
 // markTab): blue one step off black says Claude runs there, green counts
-// the balls in its wastebasket and red says what burns (1 a fire, 2
-// embers) or that a tenth has just filled (3). Per tab, where the shader's text is one for all of them.
-export function tabMark(basket: ShaderParams['basket']): [number, number, number] {
-  const balls = Math.max(0, Math.min(10, Math.round(basket?.balls ?? 0)))
-  const fire = basket?.fire === 'burn' ? 1 : basket?.fire === 'embers' ? 2 : basket?.fire === 'catch' ? 3 : 0
+// the tenths of its context window that are full, and red says what is
+// happening to it: 0 idle, 1 clearing (the conversation compacts), 2
+// cleared (it just has), 3 gained (a tenth has just filled). Per tab, where
+// the shader's text is one for all of them.
+export function tabMark(context: ShaderParams['context']): [number, number, number] {
+  const fish = Math.max(0, Math.min(10, Math.round(context?.fish ?? 0)))
+  const state = { idle: 0, grill: 1, embers: 2, catch: 3 }[context?.state ?? 'idle']
 
-  return [fire, balls, 1]
+  return [state, fish, 1]
 }
 
 // The shader's number for each event.
@@ -167,7 +171,7 @@ export function shaderParams(
     shootingRate?: number
     beacon?: ShaderParams['beacon']
     iss?: ShaderParams['iss']
-    basket?: ShaderParams['basket']
+    context?: ShaderParams['context']
     isYUp?: boolean
     stagePx?: number
     isLight?: boolean
@@ -198,7 +202,7 @@ export function shaderParams(
     // and with it Ghostty, still for the demo's length.
     scene,
     beacon: options.beacon ?? null,
-    basket: options.basket ?? null,
+    context: options.context ?? null,
     isYUp: !!options.isYUp,
     stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
     isLight: !!options.isLight,
@@ -399,7 +403,7 @@ export function skyShader(params: ShaderParams): string {
     `const vec2 ISS_TRAIL = vec2(${f(params.iss?.trail.x ?? 0)}, ${f(params.iss?.trail.y ?? 0)});`,
     `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
     `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
-    `const int BASKET = ${params.basket ? 1 : 0};`,
+    `const int CONTEXT = ${params.context ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
     `const float LIGHT = ${params.isLight ? '1.0' : '0.0'};`,
