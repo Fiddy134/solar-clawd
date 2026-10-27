@@ -182,12 +182,6 @@ vec3 splash(vec3 sky, vec2 p, vec2 at, float age, float s, float u, float k) {
   return sky;
 }
 
-// Two shapes' union, rounded where they meet, as a cartoon's are.
-float smin(float a, float b, float r) {
-  float h = max(r - abs(a - b), 0.0) / r;
-  return min(a, b) - h * h * r * 0.25;
-}
-
 // The dolphin's body bent along its leap, in units of its size, nose
 // forward along x and back up along y: the ends droop toward the water as
 // its arc does, and the tail beats with \`beat\`.

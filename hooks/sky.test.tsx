@@ -386,6 +386,13 @@ test('confetti is an even rain: it ignores where its loop is', () => {
   expect(body).not.toMatch(/[^\w.]t \*|\(t\b|, t\)/)
 })
 
+test('the dolphin, the leaves and the feathers share one smin and one tumble, in the common part', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(text.match(/float smin\(/g)).toHaveLength(1)
+  expect(text.indexOf('float smin(')).toBeLessThan(text.indexOf('float dolphinShape('))
+  expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
+})
+
 // --- Fixes from the final review ----------------------------------------
 
 test('the ISS shows only where the window shows it', () => {
