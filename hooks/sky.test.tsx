@@ -393,6 +393,16 @@ test('the dolphin, the leaves and the feathers share one smin and one tumble, in
   expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
 })
 
+test('the birds are printed in lifted inks, so they dim with the sky', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  // The skein finds which birds box the pixel, and birdPrint inks them.
+  const birds = /vec3 birds\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  const print = /vec3 birdPrint\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  expect(birds).toContain('birdPrint(')
+  expect(print).toContain('lift(')
+  expect(birds + print).not.toContain('vec3(0.0)')
+})
+
 test('a leaf is boxed before it is turned or printed', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
   for (const name of ['drift']) {
@@ -405,9 +415,9 @@ test('a leaf is boxed before it is turned or printed', () => {
   }
 })
 
-test('every plate of a leaf is a lifted ink', () => {
+test('every plate of a leaf or a bird is a lifted ink', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
-  for (const name of ['driftPrint']) {
+  for (const name of ['driftPrint', 'birdPrint']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
     const inks = body.match(/ink\(sky, [^,]*/g) ?? []
     expect(inks.length).toBeGreaterThan(1)

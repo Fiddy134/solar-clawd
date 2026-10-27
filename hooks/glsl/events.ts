@@ -82,21 +82,103 @@ vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   return ink(sky, lift(INK_INDIGO, k), key, 0.7);
 }
 
-vec3 birds(vec3 sky, vec2 p, float u, float seed, float t) {
+// A bird's wing in its frame (x ahead, y down, in units of its size), two
+// tapering limbs from the shoulder: the arm swept back at \`f1\` from
+// straight behind, turning up, and the hand after it at \`f2\`.
+float birdWing(vec2 q, float f1, float f2) {
+  vec2 shoulder = vec2(0.0, -0.05);
+  vec2 elbow = shoulder + vec2(-cos(f1), -sin(f1)) * 0.4;
+  vec2 tip = elbow + vec2(-cos(f2), -sin(f2)) * 0.5;
+  return smin(limb(q, shoulder, elbow, 0.13, 0.09), limb(q, elbow, tip, 0.09, 0.035), 0.04);
+}
+
+// A goose or a crane flying toward +x, in profile, as a cartoon draws one:
+// a plump body tapering to the tail, the neck held out ahead, the head
+// running into the bill, and the near wing. A crane's neck is longer and
+// thinner, its bill longer, and its legs trail out behind it.
+float birdShape(vec2 q, bool isCrane, float f1, float f2) {
+  float body = limb(q, vec2(-0.5, 0.02), vec2(0.22, 0.0), 0.04, 0.15);
+  float neck = isCrane ? limb(q, vec2(0.22, -0.03), vec2(0.8, -0.2), 0.07, 0.04) : limb(q, vec2(0.22, -0.03), vec2(0.68, -0.16), 0.09, 0.055);
+  vec2 head = isCrane ? vec2(0.8, -0.2) : vec2(0.68, -0.16);
+  float bill = limb(q, head, head + (isCrane ? vec2(0.34, 0.04) : vec2(0.3, 0.04)), isCrane ? 0.065 : 0.075, isCrane ? 0.012 : 0.015);
+  float d = smin(smin(body, neck, 0.06), bill, 0.02);
+  if (isCrane) d = min(d, limb(q, vec2(-0.4, 0.03), vec2(-0.98, 0.12), 0.05, 0.04));
+  return smin(d, birdWing(q, f1, f2), 0.04);
+}
+
+// Bird i of the skein printed, q from its place in the window's pixels, s
+// its size, \`back\` the way the ranks trail: its wings beating on its own
+// count, and every sixth beat held out a little up in a glide, eased in
+// and out, that runs down the V behind the leader. Printed as the dolphin
+// is, two plates off register: a blue plate of the whole bird shifted
+// down and to the right, and the indigo plate over it. The far wing beats
+// with the near one from behind and above it, raised a little more so it
+// shows past it, and lighter, so it reads as the one behind.
+vec3 birdPrint(vec3 sky, vec2 q, float s, int i, float back, bool isCrane, float u, float k) {
+  float rank = float((i + 1) / 2);
+  float phase = iTime * 6.0 + 1.3 * float(i) - 0.6 * rank;
+  float beat = phase / (2.0 * PI);
+  float glide = mod(floor(beat), 6.0) > 4.5 ? smoothstep(0.0, 0.15, fract(beat)) * smoothstep(1.0, 0.85, fract(beat)) : 0.0;
+  float a1 = mix(0.55 * sin(phase), 0.15, glide);
+  float a2 = mix(0.5 * sin(phase - 0.6), 0.1, glide);
+  // Seen from the side the stroke runs from well above the back to below
+  // the belly, so the angles are opened out.
+  float f1 = 0.2 + 1.6 * a1;
+  float f2 = f1 + 1.2 * a2 + 0.3;
+  // The plate is shifted the print's way before the bird is turned to face
+  // its own.
+  vec2 turn = vec2(-back, 1.0) / s;
+  vec2 b2 = (q - vec2(0.1, 0.08) * u) * turn;
+  vec2 b = q * turn;
+  vec2 far = vec2(-0.12, -0.1);
+  sky = ink(sky, lift(INK_BLUE, k), min(birdShape(b2, isCrane, f1, f2), birdWing(b2 - far, f1 + 0.2, f2 + 0.2)) * s, 0.45);
+  sky = ink(sky, lift(INK_INDIGO, k), birdWing(b - far, f1 + 0.2, f2 + 0.2) * s, 0.6);
+  return ink(sky, lift(INK_INDIGO, k), birdShape(b, isCrane, f1, f2) * s, 0.9);
+}
+
+// A skein of nine, geese or cranes by the seed, in a V behind its leader,
+// the leader largest and each rank behind it a little smaller, no bird
+// holding its place exactly and each rank heaving slowly in turn. A pixel
+// lies in the box of at most two of them, so the loop only finds which,
+// and those are printed after it, as the leaves are.
+vec3 birds(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   bool isEast = seeded(seed, 1) < 0.5;
+  bool isCrane = seeded(seed, 3) < 0.5;
   vec2 lead = vec2(mix(-0.15, 1.15, isEast ? t : 1.0 - t) * iResolution.x, iResolution.y * (0.12 + 0.25 * seeded(seed, 2)));
   float back = isEast ? -1.0 : 1.0;
-  if (abs(p.x - lead.x) > 9.0 * u || abs(p.y - lead.y) > 6.0 * u) return sky;
-  float d = 1e9;
+  // The last rank is 6.4u back and 3.6u aside and strays 0.35u, its box
+  // reaches 1u, and the cursor shoves a bird at most 3u.
+  if (abs(p.x - lead.x) > 11.0 * u || abs(p.y - lead.y) > 8.0 * u) return sky;
+  int hits = 0;
+  int first = 0;
+  int second = 0;
+  vec2 q1 = vec2(0.0);
+  vec2 q2 = vec2(0.0);
   for (int i = 0; i < 9; i++) {
     float rank = float((i + 1) / 2);
     float side = i % 2 == 0 ? 1.0 : -1.0;
-    vec2 at = shy(lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u), u);
-    float flap = sin(iTime * 7.0 + float(i) * 1.3) * 0.35 * u;
-    d = min(d, segment(p, at, at + vec2(-0.6 * u, -flap)));
-    d = min(d, segment(p, at, at + vec2(0.6 * u, -flap)));
+    vec2 at = lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u);
+    at += (vec2(seeded(seed, 10 + i * 2), seeded(seed, 11 + i * 2)) - 0.5) * 0.3 * u;
+    at.y += sin(iTime * 0.6 - 0.8 * rank) * 0.2 * u;
+    vec2 q = p - shy(at, u);
+    // Its box: the bill and a crane's legs ahead and behind, the wing tips
+    // above and below, and the plate's shift.
+    float s = 0.85 * u * (1.0 - 0.06 * rank);
+    if (abs(q.x) > 1.5 * s || abs(q.y) > 1.4 * s) continue;
+    if (hits == 0) {
+      first = i;
+      q1 = q;
+    } else if (hits == 1) {
+      second = i;
+      q2 = q;
+    }
+    hits++;
   }
-  return ink(sky, mix(INK_INDIGO, vec3(0.0), 0.3), d - 0.09 * u, 0.85);
+  for (int j = 0; j < min(hits, 2); j++) {
+    int i = j == 0 ? first : second;
+    sky = birdPrint(sky, j == 0 ? q1 : q2, 0.85 * u * (1.0 - 0.06 * float((i + 1) / 2)), i, back, isCrane, u, k);
+  }
+  return sky;
 }
 
 // An airliner seen from below, in its own frame (x towards the nose, y
@@ -648,7 +730,7 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
       continue;
     }
     if (kind == 2) sky = balloon(sky, p, u, seed, t, k);
-    if (kind == 3) sky = birds(sky, p, u, seed, t);
+    if (kind == 3) sky = birds(sky, p, u, seed, t, k);
     if (kind == 4) sky = plane(sky, p, u, seed, t, k);
     if (kind == 6) sky = kite(sky, p, u, seed, k);
     if (kind == 7 || kind == 8) sky = drift(sky, p, u, seed, kind == 8, k);
