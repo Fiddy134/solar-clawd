@@ -1098,3 +1098,40 @@ and had no rim; in busy cycles 15–18 % more.
   treat them as 0.
 - **Per-process GPU time is still 0.00** for every process; everything
   here is the whole GPU.
+
+## F4, 2026-10-27: the light decision, and the rim left out where the sky is dark
+
+Vincent took (a) and (b) on 2026-10-27, from the numbers above:
+`LUMINANCE` stays at 0.8 with the rim, and the rim is left out where the
+sky is dark enough not to need it.
+
+**Where the sky is dark.** The plan's sketch of (b) put the line near
+0.45 of the sky's lightness. Measured in the preview (`--gpu`, 1512×982,
+`--without shaded`), a dusk sky at 16:45 is 88 % under 0.45 and 12 % under
+0.2, and Claude Code's grey text (153) needs the rim there: at 0.35 it is
+about 2.5 to 1 on the sky without one. The line went instead where the
+rim stops mattering: under 0.2 that grey is 4.5 to 1 without a rim, and
+under 0.1 the rim moves the sky's lightness by 9/255 at most. So the rim
+fades out between 0.2 and 0.1 of the sky's lightness at that pixel
+(`SHADE_DARK`) and its disc is not read below 0.1. A night sky is 46 %
+under 0.08 and 85 % under 0.12; a clear day has nothing under 0.2.
+
+**Parity** (`--diff --p3 --retina`, 3024×1964, before and after): day-clear
+identical; dusk at 16:45, 17:15 and 17:45, night-lit and night-dark change
+only within a pixel of text, the largest by 12–30/255 in a channel (a
+night's blue), and nowhere more than 1/255 further out. Side by side,
+with `--prose` enlarged twice, the night and the 17:45 dusk look the same.
+
+**Bench**, `--bench 200 --gpu --width 3024 --height 1964`, four rounds
+A B / B A, 08:37–08:39, load 3.7–5, medians in ms a frame, the empty
+shader 2.66:
+
+| scene | before | after | the sky's own cost |
+|---|---|---|---|
+| day-clear | 6.98 | 7.09 | 4.32 → 4.43, within the rounds' spread |
+| dusk 17:45 | 8.57 | 8.22 | 5.91 → 5.56 (−6 %) |
+| night-lit | 8.05 | 6.76 | 5.39 → 4.10 (−24 %) |
+| night-dark | 9.26 | 8.27 | 6.60 → 5.61 (−15 %) |
+
+In Ghostty this is not measured; the night's −24 % in the bench would
+come off the 44 % left in mW above.

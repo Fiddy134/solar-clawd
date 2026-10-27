@@ -192,10 +192,20 @@ float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky, vec3 te
   return near * (gap < 0.0 ? SHADE : mix(SHADE_NEAR, SHADE, smoothstep(SHADE_GAP.x, SHADE_GAP.y, gap)));
 }
 
+// How dark a sky needs no rim, and how light one has all of it. Below
+// 0.2, Claude Code's grey (153) is 4.5 to 1 on the sky without one, and
+// the rim, darkening the sky towards SHADE_TINT, moves it little; below
+// 0.1 its lightness by 9/255 at most (a night's blue by up to 30), so
+// there the disc is not looked at. Most of a
+// night sky is under 0.12, a dusk sky over 0.2 until the sun is well down.
+const vec2 SHADE_DARK = vec2(0.1, 0.2);
+
 // The sky with the rim laid over it, a stage like the others so the
 // preview's --without shaded can leave it out.
 vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit, vec3 term, float mask) {
-  return mix(sky, SHADE_TINT, shade(fragCoord, linearBackground, unit, sky, term, mask));
+  float lit = smoothstep(SHADE_DARK.x, SHADE_DARK.y, luminance(sky));
+  if (lit == 0.0) return sky;
+  return mix(sky, SHADE_TINT, lit * shade(fragCoord, linearBackground, unit, sky, term, mask));
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
