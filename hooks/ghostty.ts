@@ -2,11 +2,11 @@ import type { EngineInterface } from 'claude-code'
 
 import { field, number } from './json'
 import { markOf, UNMARK_TAB } from './mark'
-import { asPace } from './pace'
+import { asPace, canTick, nextTickAt, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
 import type { ShaderParams } from './shader'
 import { staleFiles } from './tidy'
-import { animationOf, waitingAt } from './waiting'
+import { waitingAt } from './waiting'
 import type { Waiting } from './waiting'
 
 // Ghostty draws the sky itself, from a shader the mod writes into its
@@ -70,6 +70,9 @@ export type Ghostty = {
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
+  // The chain of ticks: the moment its grid of frames began, whether it
+  // runs, and the mark being written, which the session's end waits on.
+  ticks: { origin: number; isRunning: boolean; writing: Promise<void> | null }
   written: {
     shader: string
     include: string
@@ -80,6 +83,10 @@ export type Ghostty = {
     isReloadOwed: boolean
     // Set as the session ends: no tick writes after it.
     isEnded: boolean
+    // Whether the sky ticks now (pace.ts, skyRules), and whether it could
+    // tick at all here, as the last update found.
+    isTicking: boolean
+    canTick: boolean
     // The update under way, which the session's end waits on, and whether
     // something changed while it ran, so it runs again.
     running: Promise<void> | null
@@ -168,12 +175,14 @@ async function writeWhole($: EngineInterface, path: string, text: string, id: st
   if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
 }
 
-// What the Ghostty sky depends on besides the time: whether the person is
-// away, whether the Mac runs on battery, and what this session waits on the
-// person for.
+// What the Ghostty sky depends on besides the time: how long the person
+// has been away from the keys, whether the Mac runs on battery and Ghostty
+// is in front, the sky's pace, and what this session waits on the person for.
 export type SkyState = {
-  isAway: boolean
+  idleMs: number | null
   isOnBattery: boolean
+  isGhosttyInFront: boolean | null
+  pace: Pace
   waiting: Waiting | null
   catchAt: (now: number) => ShaderParams['context']
   livelyAt: (now: number) => boolean
@@ -183,8 +192,9 @@ export type SkyState = {
 export type SkyExtras = { waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number; isLight: boolean }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
-// sky is not hidden, nothing otherwise, and Ghostty animating it as the
-// lighthouse, the battery and the person's being away say. Ghostty
+// sky is not hidden, nothing otherwise, and Ghostty animating it, or the
+// mod ticking it, as the pace, the lighthouse, the battery and the
+// person's being away say (pace.ts, skyRules). Ghostty
 // reloads only when a file actually changed.
 //
 // Every session wants the same on or off (the hidden file and the person's
@@ -287,14 +297,25 @@ async function writeGhosttySky(
   const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
   const isWanted = !isHidden
   let include = ''
+  written.canTick = canTick({ isLinux: ghostty.isLinux, version: ghostty.version, isVsyncOff: await isVsyncOff($, ghostty) })
+  const rules = skyRules({
+    pace: state.pace,
+    canTick: written.canTick,
+    waiting,
+    now,
+    idleMs: state.idleMs,
+    isOnBattery: state.isOnBattery,
+    isLively: state.livelyAt(now),
+    isGhosttyInFront: state.isGhosttyInFront,
+  })
   if (isWanted) {
-    // Ghostty draws with OpenGL on Linux, where fragCoord has y up. On
-    // battery or with the person away, the lighter sky.
+    // Ghostty draws with OpenGL on Linux, where fragCoord has y up. The
+    // lighter sky as the rules say: on battery or with the person away.
     const extras = {
       waiting: waiting && { mode: waiting.mode, isUrgent: waiting.isUrgent },
       isYUp: ghostty.isLinux,
       stagePx: ghostty.stagePx,
-      isLight: state.isOnBattery || state.isAway,
+      isLight: rules.isLight,
     }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).
@@ -304,8 +325,7 @@ async function writeGhosttySky(
       written.isReloadOwed = true
     }
     written.shader = shader
-    const animation = animationOf({ waiting, now, isAway: state.isAway, isOnBattery: state.isOnBattery, isLively: state.livelyAt(now) })
-    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
+    include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${rules.animation}\n`
   }
   const onDisk = await $.fs.read(ghostty.include).catch(() => null)
   if (include !== onDisk) {
@@ -314,6 +334,37 @@ async function writeGhosttySky(
   }
   written.include = include
   if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($, ghostty))
+  written.isTicking = isWanted && ghostty.isIncluded && rules.isTicking
+  if (written.isTicking) startTicks($, ghostty)
+}
+
+// Writes the tab's mark PACE_HZ times a second while the sky ticks, on a
+// grid of frames held against the clock, so that a late write puts no
+// later one off and a tick woken long after its time does not make up for
+// the ones it missed. Each wakes Ghostty, which draws a frame of the sky.
+// Stops by itself once the sky ticks no more or the session has ended.
+export function startTicks($: EngineInterface, ghostty: Ghostty): void {
+  const { ticks, written } = ghostty
+  if (ticks.isRunning) return
+  ticks.isRunning = true
+  const tick = async (): Promise<void> => {
+    if (!written.isTicking || written.isEnded) {
+      ticks.isRunning = false
+      return
+    }
+    ticks.writing = markTab($, ghostty, written.mark)
+    await ticks.writing
+    ticks.writing = null
+    const now = await $.clock.now()
+    $.clock.after(Math.max(1, nextTickAt(now, ticks.origin, PACE_HZ) - now), () => void tick().catch(stop))
+  }
+  const stop = () => {
+    ticks.isRunning = false
+  }
+  void (async () => {
+    ticks.origin = await $.clock.now()
+    $.clock.after(Math.round(1000 / PACE_HZ), () => void tick().catch(stop))
+  })().catch(stop)
 }
 
 // The session is ending: its heartbeat goes, and the sky with it unless
@@ -322,6 +373,7 @@ async function writeGhosttySky(
 export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
+  await ghostty.ticks.writing?.catch(() => undefined)
   await markTab($, ghostty, UNMARK_TAB)
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty

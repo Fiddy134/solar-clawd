@@ -17,6 +17,7 @@ import {
   includeVsync,
   isIncluded,
   isVsyncOff,
+  readPace,
   reloadGhostty,
   runtimeFolder,
   setVsync,
@@ -29,7 +30,8 @@ import {
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
 import { issVisible } from './iss'
-import { AWAY_MS, needsVsyncLine, versionOf } from './pace'
+import { AWAY_MS, FULL_STILL_MS, needsVsyncLine, versionOf } from './pace'
+import type { Pace } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
@@ -210,8 +212,10 @@ export const register: Register = on => {
   // wallpaper files go.
   let iterm: { sessionId: string; folder: string } | null = null
   const wallpaper = { at: 0, count: 0, isBusy: false, isShown: false, key: '', last: '' }
-  // Whether the person is at the computer, and iTerm2 in front, as last asked.
-  const activity = { isAway: false, isFrontmost: true }
+  // Whether the person is at the computer (and how long they have been
+  // away from the keys), iTerm2 or Ghostty in front, and the sky's pace for
+  // every session, as last asked.
+  const activity = { isAway: false, idleMs: null as number | null, isFrontmost: true, isGhosttyInFront: null as boolean | null, pace: 'spar' as Pace }
   // Set when this session runs in Ghostty: where the sky's files go, and
   // the background the terminal draws.
   let ghostty: Ghostty | null = null
@@ -290,6 +294,13 @@ export const register: Register = on => {
   // window on the keeper's line.
   const isInGhosttySky = () => ghostty !== null && ghostty.isIncluded && ghostty.written.include !== ''
 
+  // What of the person, the app in front and the pace decides whether the
+  // sky ticks, as one text to compare.
+  const paceKey = () => {
+    const idle = activity.idleMs ?? 0
+    return `${activity.pace}|${idle >= AWAY_MS}|${idle >= FULL_STILL_MS}|${activity.isGhosttyInFront}`
+  }
+
   const viewAt = (now: number, columns: number) => {
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
@@ -333,7 +344,15 @@ export const register: Register = on => {
 
     return momentAt(now).mode === 'demo' || eventsNow(now).events.length > 0 || isWet || isWindForced || isFire
   }
-  const skyState = (): SkyState => ({ isAway: activity.isAway, isOnBattery: power.isOnBattery, waiting, catchAt, livelyAt })
+  const skyState = (): SkyState => ({
+    idleMs: activity.idleMs,
+    isOnBattery: power.isOnBattery,
+    isGhosttyInFront: activity.isGhosttyInFront,
+    pace: activity.pace,
+    waiting,
+    catchAt,
+    livelyAt,
+  })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   // What was in the Ghostty sky last time it was drawn; null before the first.
@@ -404,7 +423,19 @@ export const register: Register = on => {
         stagePx: STAGE_PT,
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
-        written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
+        ticks: { origin: 0, isRunning: false, writing: null },
+        written: {
+          shader: '',
+          include: '',
+          mark: '',
+          heartbeatAt: -Infinity,
+          isReloadOwed: false,
+          isEnded: false,
+          isTicking: false,
+          canTick: false,
+          running: null,
+          isAgain: false,
+        },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // A Ghostty that draws the sky at its own pace with vsync on needs no
@@ -437,9 +468,12 @@ export const register: Register = on => {
     if (ghostty !== null) {
       const sky = ghostty
       const update = () => updateGhosttySky($, sky, shaderAt, skyState)
-      // Whether the person is here, and the power, before the first sky.
+      // Whether the person is here, the power and the pace, before the
+      // first sky.
       const idle = await idleMs($, isOnLinux)
+      activity.idleMs = idle
       if (idle !== null) activity.isAway = idle >= AWAY_MS
+      activity.pace = await readPace($, sky)
       power.isOnBattery = await isOnBattery($, isOnLinux)
       $.clock.every(BATTERY_MS, () => {
         void (async () => {
@@ -484,9 +518,19 @@ export const register: Register = on => {
     $.clock.every(ACTIVITY_MS, () => {
       void (async () => {
         const wasIdle = activity.isAway || !activity.isFrontmost
+        const before = paceKey()
         // An ioreg that failed says nothing: the last answer stands.
         const idle = await idleMs($, isOnLinux)
         if (idle !== null) activity.isAway = idle >= AWAY_MS
+        if (idle !== null) activity.idleMs = idle
+        // What the sky's ticks depend on, which another session's /solar
+        // or the person may have changed: the sky is updated at once.
+        if (ghostty !== null) {
+          activity.pace = await readPace($, ghostty)
+          // Ghostty in front matters only to spar's ticks.
+          if (ghostty.written.canTick && activity.pace === 'spar') activity.isGhosttyInFront = await isGhosttyInFront($, isOnLinux)
+          if (paceKey() !== before) refreshSky?.()
+        }
         if (iterm !== null && !activity.isAway && (wasIdle || !activity.isFrontmost)) {
           const { stdout } = await $.process.run(['/usr/bin/osascript', ...ITERM_FRONTMOST], { timeoutMs: 5_000 })
           activity.isFrontmost = stdout.trim() === 'true'
@@ -729,6 +773,7 @@ export const register: Register = on => {
       if (ghostty !== null) {
         if (wasHidden) await $.process.run(['/bin/rm', '-f', ghostty.hidden]).catch(() => undefined)
         else await $.fs.write(ghostty.hidden, '')
+        refreshSky?.()
       }
 
       return { text: wasHidden ? 'Solar: the sky is back.' : 'Solar: the sky is hidden.' }

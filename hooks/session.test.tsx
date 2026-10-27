@@ -915,13 +915,14 @@ const VSYNC_INCLUDE = `config-file = ?${VSYNC}`
 
 // A Ghostty session on a Mac whose Ghostty is `version`, its config as
 // given; answers /solar as text.
-async function paceWorld($: Engine, on: On, version: string | null, config: string | null = 'font-size = 14\n') {
+async function paceWorld($: Engine, on: On, version: string | null, config: string | null = 'font-size = 14\n', idle = { value: 1 }) {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
-  const world = ghosttyWorld(on, { value: 1 })
+  const world = ghosttyWorld(on, idle)
   world.tick(start)
   if (version !== null) world.env.set('TERM_PROGRAM_VERSION', version)
   if (config !== null) world.files.set(CONFIG, { text: config, mtimeMs: start })
+  on('classic.Notification', () => ({}))
   const runtime = await startGhostty($, on, clock, world)
   const solar = async (args: string) =>
     ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
@@ -1014,4 +1015,122 @@ test('on Linux the pace stays as it is, and nothing is written for it', async ($
     expect(answer.text).toBe(NOT_ON_LINUX)
   }
   expect(world.writes.some(path => path.endsWith('/sky.json') || path.includes('vsync.ghostty'))).toBe(false)
+})
+
+// A Ghostty 1.3.1 session on a Mac showing the sky, at this pace, with or
+// without the vsync line, with another app in front; and how many times the
+// tab's mark is written over a stretch of time.
+async function tickWorld($: Engine, on: On, pace: 'full' | 'spar', isVsyncOff: boolean, version: string | null = '1.3.1', idle = { value: 1 }) {
+  const world = await paceWorld($, on, version, 'font-size = 14\n', idle)
+  await world.solar('ghostty')
+  const start = world.clock.now()
+  world.world.files.set(SETTINGS, { text: JSON.stringify({ pace }), mtimeMs: start })
+  if (isVsyncOff) world.world.files.set(VSYNC, { text: 'window-vsync = false\n', mtimeMs: start })
+  await world.clock.advance(11_000)
+  const marks = async (ms: number) => {
+    const before = world.world.writes.filter(path => path === TTY).length
+    await world.clock.advance(ms)
+
+    return world.world.writes.filter(path => path === TTY).length - before
+  }
+  const include = () => world.world.files.get(`${RUNTIME}/solar-clawd.ghostty`)?.text ?? ''
+  const shader = () => world.world.files.get(`${RUNTIME}/sky.glsl`)?.text ?? ''
+
+  return { ...world, marks, include, shader }
+}
+const within = (count: number, expected: number) => Math.abs(count - expected) <= 1
+
+test('full with the vsync line ticks the mark 24 times a second, as the animation false', async ($, on) => {
+  const idle = { value: 1 }
+  const { world, marks, include, shader, clock } = await tickWorld($, on, 'full', true, '1.3.1', idle)
+  world.power.text = "Now drawing from 'Battery Power'\n"
+  await clock.advance(61_000)
+  expect(within(await marks(10_000), 240)).toBe(true)
+  expect(include()).toContain('custom-shader-animation = false')
+  expect(shader()).toContain('const float LIGHT = 0.0;')
+  // Twenty minutes without the person: still. Back: moving again.
+  idle.value = 20 * 60
+  await clock.advance(3_100)
+  expect(await marks(10_000)).toBeLessThanOrEqual(1)
+  idle.value = 1
+  await clock.advance(3_100)
+  expect(within(await marks(1_000), 24)).toBe(true)
+})
+
+test('spar ticks only in front while something moves, and the sweep behind', async ($, on) => {
+  const { world, marks, solar, clock } = await tickWorld($, on, 'spar', true)
+  await solar('event dolphin')
+  await clock.advance(4_000)
+  expect(await marks(10_000)).toBeLessThanOrEqual(1)
+  world.front.value = 'com.mitchellh.ghostty'
+  await clock.advance(4_000)
+  expect(within(await marks(10_000), 240)).toBe(true)
+  world.front.value = 'com.apple.Safari'
+  await clock.advance(4_000)
+  expect(await marks(10_000)).toBeLessThanOrEqual(1)
+  await $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' })
+  await clock.advance(100)
+  expect(within(await marks(10_000), 240)).toBe(true)
+  await clock.advance(300_000)
+  expect(await marks(10_000)).toBeLessThanOrEqual(1)
+})
+
+for (const [name, version, isVsyncOff] of [['without a version Ghostty says', null, true], ['on Ghostty 1.3 without the vsync line', '1.3.1', false]] as const) {
+  test(`no ticks ${name}: everything as before`, async ($, on) => {
+    const { marks, include, solar, clock } = await tickWorld($, on, 'full', isVsyncOff, version)
+    await solar('event dolphin')
+    await clock.advance(11_000)
+    expect(include()).toContain('custom-shader-animation = true')
+    expect(await marks(10_000)).toBeLessThanOrEqual(1)
+  })
+}
+
+test('on Linux the sky ticks not, whatever the pace and the vsync file say', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  world.env.set('TERM_PROGRAM_VERSION', '1.3.1')
+  world.files.set(SETTINGS.replace('/Users/test/Library/Application Support', '/Users/test/.local/state'), { text: '{"pace":"full"}', mtimeMs: start })
+  await startGhostty($, on, clock, world)
+  const runtime = [...world.files.keys()].find(path => path.endsWith('/runtime/sky.glsl'))!.slice(0, -'/sky.glsl'.length)
+  world.files.set(`${runtime}/vsync.ghostty`, { text: 'window-vsync = false\n', mtimeMs: start })
+  await clock.advance(11_000)
+  const before = world.writes.filter(path => path === TTY).length
+  await clock.advance(10_000)
+  expect(world.writes.filter(path => path === TTY).length - before).toBeLessThanOrEqual(1)
+})
+
+test('another session changes the pace: this one follows within seconds', async ($, on) => {
+  const { world, marks, solar, include, clock } = await tickWorld($, on, 'full', true)
+  await solar('event dolphin')
+  await clock.advance(1_000)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  world.files.set(SETTINGS, { text: '{"pace":"spar"}', mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(await marks(5_000)).toBeLessThanOrEqual(1)
+  world.files.set(SETTINGS, { text: '{"pace":"full"}', mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  world.files.set(VSYNC, { text: '', mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(include()).toContain('custom-shader-animation = true')
+  expect(await marks(5_000)).toBeLessThanOrEqual(1)
+})
+
+test('hidden, or ended, the sky ticks no more, and the last word to the tab is its unmarking', async ($, on) => {
+  const { world, marks, solar, clock } = await tickWorld($, on, 'full', true)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  await solar('')
+  await clock.advance(100)
+  expect(await marks(5_000)).toBeLessThanOrEqual(1)
+  expect(world.files.get(VSYNC)?.text).toBe('window-vsync = false\n')
+  await solar('')
+  await clock.advance(100)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  await $.session.end({ reason: 'clear', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(within(await marks(1_000), 24)).toBe(true)
+  await clock.advance(17)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
+  expect(await marks(5_000)).toBe(0)
 })
