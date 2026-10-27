@@ -181,3 +181,100 @@ Rejected: no licence (hackrdotsh/ghostty-shaders, lexrus and others), GPL or
 NC/SA, overwriting the user's config, `background-opacity = 0` (a restart on
 macOS). Unsettled: which way `fragCoord.y` runs on Metal (projects disagree; the
 mod already has `Y_UP` and probed it on 2026-10-25).
+
+## Everything else the sweeps found
+
+Kept so that nothing found is lost; less likely to matter than the above.
+
+Config (ghostty.org/docs/config/reference, checked against the 1.3.1 man page):
+
+- `minimum-contrast` (a WCAG ratio, 1–21) compares text with `background`,
+  never with the shader's output. [hypotes] Writing a mean sky colour per
+  time of day into `background` (ratio ~3) would make Ghostty lift text
+  against that stand-in; but `background` also feeds `iBackgroundColor`, which
+  the sky keys text on. `faint-opacity` (1.2.0) and `font-thicken` (macOS) are
+  further levers for text over a bright sky.
+- `config-file`: a `?` prefix keeps a missing file from being an error, and an
+  included file loads after the whole file that includes it, so the include
+  wins over the person's own lines. Whether `~` works in it is untested.
+- `osc-color-report-format`: OSC 4/10/11 queries are answered (16-bit by
+  default), so a hook could read the mark back with `ESC]4;16;?ESC\` to check
+  it. `palette-generate` (1.3.0, off by default) leaves set indices alone.
+- OSC 11 sets a surface's background colour, and with the default
+  `macos-titlebar-style = transparent` the titlebar follows it. [hypotes] A
+  per-tab `iBackgroundColor` and a titlebar in the sky's colour; a poor
+  channel, though, since the sky keys text on that colour.
+- `window-vsync` (macOS, new terminals only); no key caps the frame rate;
+  `window-padding-x/y` reach only new terminals; `window-padding-color =
+  extend`; `toggle_background_opacity` (a macOS action); the quick terminal is
+  one shared window and `quick-terminal-position` needs a restart on macOS;
+  `notify-on-command-finish` (1.3.0) needs OSC 133, which Claude Code's long
+  session does not give.
+
+Features and VT (ghostty.org/docs/features, /docs/vt):
+
+- AppleScript (1.3.1 sdef): the application has `frontmost` and `front
+  window`, a window its `selected tab`, a tab `selected` and `focused
+  terminal`, a terminal `id`, `name` and `working directory` (all read-only).
+  [design] One `osascript` call can answer "Ghostty in front and this tab
+  selected" if the tab has a unique title (OSC 2) to match by `name`; it
+  still costs a process, and Claude Code rewriting the title would break it.
+  On Ghostty's main a terminal also has `pid` and `tty`, and tabs and
+  terminals a writable `name override` (PR
+  [#14733](https://github.com/ghostty-org/ghostty/pull/14733)): a hook could
+  find its own terminal by tty.
+- Titles: OSC 2 is read as UTF-8; the `set_tab_title` action sets an override
+  (empty clears it). [design] A state glyph in the tab title.
+- OSC 22 sets the pointer shape by CSS name (a `progress` pointer while Claude
+  works; the docs advise against the sequence). OSC 7, 5/105, 52 are of no
+  use here; OSC 1 is unimplemented; OSC 21 (Kitty colours) is only linked to
+  Kitty's spec.
+- The docs list `iCurrentCursorStyle` and `iCursorVisible` as vec4, the 1.3.1
+  prelude declares them int.
+- [design] The shader can tell a light theme from a dark one by the
+  brightness of `iBackgroundColor`, which it already reads.
+
+Ghostty's code and GitHub:
+
+- `iTime` advances only on frames actually drawn, and `iFrame` counts drawn
+  frames (`generic.zig#L2435-L2455`).
+- [Discussion #8818](https://github.com/ghostty-org/ghostty/discussions/8818):
+  a no-op animated shader holds ~120 Hz with the graphics pipe ~27 %, against
+  ~45 Hz and < 1 % without; macOS's power scheduler sets the vsync rate; no
+  cooldown or trigger option was added. A battery-aware rendering request was
+  closed as not planned
+  ([#11928](https://github.com/ghostty-org/ghostty/issues/11928)). So the mod's
+  own idle policy stays necessary.
+- Not read in depth: closed PR #12153 (an `iSurfaceOffset` uniform), open issue
+  #10995 (debouncing cursor positions).
+
+Community (r/Ghostty and the repos it links):
+
+- [akiyosi/ghostty-hyperspace](https://github.com/akiyosi/ghostty-hyperspace)
+  ([post](https://www.reddit.com/r/Ghostty/comments/1u6bcvn/)): a space sky
+  behind text that keys terminal against sky by luma
+  (`smoothstep(0.12, 0.22, max(rgb))`), drops its motion blur to one sample
+  in cruise and runs the costly passes only in rare warps or nebulae;
+  `WARP_INTERVAL=0` gives a still sky. [design] Spend the heavy effects on rare
+  events; [hypotes] keying on `iBackgroundColor`, as we do, holds better on
+  light themes than a fixed luma.
+- [elisaliman/ghostty-shaders](https://github.com/elisaliman/ghostty-shaders)
+  ([post](https://www.reddit.com/r/Ghostty/comments/1tnmdq7/)): pixel-art snow
+  and stars on a `PIXEL_SIZE` grid with parallax layers; CC BY-NC-SA 3.0, so a
+  reference only, never code.
+- ghostty-blackhole, beyond its mark: hooks have no controlling tty, so it
+  finds the pty by walking up the parent processes; it reloads with SIGUSR2
+  after finding the PID with `ps` (`pgrep` skips its own ancestors); tmux needs
+  passthrough; it glides between levels with `iPreviousCursorColor` and
+  `iTimeCursorChange`.
+- iglass also refuses an opacity below 0.66 without `--force`, and says
+  transparency is read only at launch.
+- [Battery thread](https://www.reddit.com/r/Ghostty/comments/1ux5eek/): shaders
+  drop to 20–30 Hz on battery under Linux's tlp.
+- Cursor-shader users: pulses freeze unfocused unless
+  `custom-shader-animation = always`; the warp-shader README asks for absolute
+  shader paths and a `ghostty +validate-config` after editing.
+- pixel-agents-terminal (no licence, an idea only): it follows Claude Code's
+  transcript by byte offset.
+- The raw reports of the five sweeps were in session scratch files and are
+  not kept; this document is their record.
