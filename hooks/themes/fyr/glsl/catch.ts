@@ -217,7 +217,7 @@ vec3 grill(vec3 sky, vec2 p, Lighthouse l, int grilled, int state, float k) {
   // Their glow over the pit, after the fire, screened orange.
   if (state == CONTEXT_CLEARED) sky = mix(sky, INK_ORANGE, screen(p, 0.55 * exp(-length(v / (vec2(0.3, 0.12) * s))), fine, 45.0) * 0.8);
   if (state == CONTEXT_CLEARING) sky = fire(sky, p, at, 0.12 * s, 0.3 * s, 0.13 * s, fine);
-  for (int i = 1; i < 4; i++) sky = grillStone(sky, p, at, i, s, fine, off, k);
+  for (int i = 1; i < 4; i++) { sky = grillStone(sky, p, at, i, s, fine, off, k); }
   // The grate over it, one clear bar of iron.
   float top = at.y - 0.12 * s;
   if (abs(v.x) < 0.28 * s) sky = ink(sky, keeperInk(mix(INK_INDIGO, CREAM, 0.35), k), abs(p.y - top) - 0.5 * max(1.0, 0.25 * c), 1.0);

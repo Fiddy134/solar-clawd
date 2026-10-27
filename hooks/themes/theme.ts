@@ -274,11 +274,48 @@ function loopIndex(header: string): string | null {
   return index
 }
 
+// How deep a theme's loops go, a loop that calls a function counting that
+// function's own loops beneath it. GLSL has no recursion, so the functions
+// a theme calls form no circle; one that seemed to is counted once.
+function deepestLoops(text: string, loops: readonly [number, number][]): number {
+  const functions = new Map<string, [number, number]>()
+  for (let i = 0, top = 0; i < text.length; i++) {
+    if (text[i] === ';' || text[i] === '}') top = i + 1
+    if (text[i] !== '{') continue
+    const end = closing(text, i)
+    const name = /(\w+)\s*\([^()]*\)\s*$/.exec(text.slice(top, i))?.[1]
+    if (name) functions.set(name, [i, end])
+    i = end
+    top = end + 1
+  }
+  const around = (at: number) => loops.filter(([from, to]) => from < at && at < to).length
+  const known = new Map<string, number>()
+  const depthOf = (name: string, seen: Set<string>): number => {
+    const body = functions.get(name)
+    if (!body || seen.has(name)) return 0
+    if (known.has(name)) return known.get(name)!
+    let deepest = 0
+    for (const [from] of loops) if (from > body[0] && from < body[1]) deepest = Math.max(deepest, around(from) + 1)
+    const call = /\b(\w+)\s*\(/g
+    const inside = text.slice(body[0], body[1])
+    for (let m = call.exec(inside); m; m = call.exec(inside)) {
+      if (m[1] === name || !functions.has(m[1]!)) continue
+      deepest = Math.max(deepest, around(body[0] + m.index) + depthOf(m[1]!, new Set([...seen, name])))
+    }
+    known.set(name, deepest)
+
+    return deepest
+  }
+
+  return Math.max(0, ...[...functions.keys()].map(name => depthOf(name, new Set())))
+}
+
 // What is wrong with a theme's GLSL, empty when nothing is: a subset of GLSL
 // that cannot read the terminal, hang the GPU or redefine the engine. Its
 // loops keep to GLSL ES 1.00's Appendix A (loopIndex): an int index set to a
 // constant, compared with a constant of at most 48, stepped toward it by a
-// constant, never assigned in the body, and nested at most two deep. `engineNames` are the
+// constant, never assigned in the body, its body a { } block, and nested at
+// most two deep counting the loops of the functions it calls. `engineNames` are the
 // engine's top-level names (topLevelNames of the shader without the
 // theme); the four entry points are the theme's to define.
 export function lintTheme(glsl: string, engineNames: readonly string[]): string[] {
@@ -293,6 +330,10 @@ export function lintTheme(glsl: string, engineNames: readonly string[]): string[
     [/#/, 'the preprocessor'],
     [/\bdiscard\b/, 'discard'],
     [/\bmainImage\b/, 'mainImage'],
+    // Each of these writes an int through an out parameter, which could
+    // set a loop's index back where the body cannot be seen doing it.
+    [/\b(?:frexp|imulExtended|umulExtended|uaddCarry|usubBorrow)\s*\(/, 'a built-in that writes an int through an out parameter'],
+    [/\b(?:out|inout)\s+(?:(?:highp|mediump|lowp)\s+)?u?int\b/, 'an int out or inout parameter (one could set a loop index back)'],
   ]
   for (const [pattern, what] of forbidden) if (pattern.test(text)) problems.push(`uses ${what}`)
 
@@ -317,6 +358,9 @@ export function lintTheme(glsl: string, engineNames: readonly string[]): string[
     const whole = text.slice(m.index, close + 1)
     const body = loopBody(text, close + 1)
     loops.push(body)
+    // A body without braces could hide a loop or an assignment where this
+    // reading does not reach (a for or an if as its one statement).
+    if (text[body[0]] !== '{') problems.push(`has a loop whose body is not a { } block: "${whole.replace(/\s+/g, ' ')}"`)
     const index = loopIndex(text.slice(m.index + m[0].length, close))
     if (!index) {
       problems.push(`has a loop not of the form for (int i = constant; i < constant up to 48; i++): "${whole.replace(/\s+/g, ' ')}"`)
@@ -327,10 +371,7 @@ export function lintTheme(glsl: string, engineNames: readonly string[]): string[
       problems.push(`assigns its loop index ${index} in the loop`)
     }
   }
-  for (const [start] of loops) {
-    const depth = loops.filter(([from, to]) => from < start && start < to).length
-    if (depth >= 2) problems.push('nests loops more than two deep')
-  }
+  if (deepestLoops(text, loops) > 2) problems.push('nests loops more than two deep, counting the loops of the functions a loop calls')
 
   return problems
 }

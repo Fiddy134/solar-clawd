@@ -118,18 +118,32 @@ test("the lint keeps a theme from the terminal's image, the GPU's time and the e
     'float f() { float s = 0.0; for (int i = 0; i < 2; i++) { for (int j = 0; j < 2; j++) { for (int n = int(0.0); n < 2; n++) s += 1.0; } } return s; }',
     'more than two deep',
   )
+  // Nor a loop that hides what it does: a body without braces, an index
+  // set back through an out parameter, loops deeper than two through a call.
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i++) s += 1.0; return s; }', 'not a { } block')
+  flags(
+    'float f() { float s = 0.0; for (int i = 0; i < 40; i++) for (int j = 0; j < 40; j++) for (int n = 0; n < 40; n++) s += 1.0; return s; }',
+    'not a { } block',
+  )
+  flags('void z(inout int a) { a = 0; } float f() { float s = 0.0; for (int i = 0; i < 4; i++) { z(i); } return s; }', 'int out or inout')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i++) { s += frexp(1.0, i); } return s; }', 'writes an int through an out')
+  flags(
+    'float g() { float s = 0.0; for (int a = 0; a < 48; a++) { s += 1.0; } return s; } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { for (int j = 0; j < 48; j++) { s += g(); } } return s; }',
+    'more than two deep',
+  )
   // What is fine: its own names, a local that shadows the engine's, two
-  // loops deep, an out parameter, and the four entry points.
+  // loops deep, a loop calling a function without one, an out parameter,
+  // and the four entry points.
   expect(
     lint(`
 // A comment may say while, texture( or #define.
 const float MY_LEVEL = 0.5;
 float wave(float x, out float y) { float pitch = 3.0; y = pitch; return x * MY_LEVEL; }
 vec3 scenery(vec3 sky, vec2 p, float u, float k) {
-  for (int i = 0; i < 3; i++) { for (int j = 4; j > 0; j--) sky *= 0.99; }
-  for (int i = 0; i < 48; i += 2) sky += 0.001;
-  for (int i = -48; i <= 48; ++i) sky += 0.0001;
-  for (int i = 48; i >= -48; i -= 3) sky -= 0.0001;
+  for (int i = 0; i < 3; i++) { for (int j = 4; j > 0; j--) { sky *= 0.99; } }
+  for (int i = 0; i < 48; i += 2) { sky += 0.001; }
+  for (int i = -48; i <= 48; ++i) { sky += 0.0001; }
+  for (int i = 48; i >= -48; i -= 3) { float y; sky -= 0.0001 * wave(float(i), y); }
   return sky;
 }
 float themeWindow(vec2 p, float u) { return 1.0; }
