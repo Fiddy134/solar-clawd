@@ -393,6 +393,28 @@ test('the dolphin, the leaves and the feathers share one smin and one tumble, in
   expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
 })
 
+test('a leaf is boxed before it is turned or printed', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  for (const name of ['drift']) {
+    const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
+    expect(body).not.toBe('')
+    const box = body.indexOf('abs(q.x) >')
+    expect(box).toBeGreaterThan(0)
+    expect(body.indexOf('Print(')).toBeGreaterThan(box)
+    expect(body).not.toMatch(/mat2|tumble\(/)
+  }
+})
+
+test('every plate of a leaf is a lifted ink', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  for (const name of ['driftPrint']) {
+    const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
+    const inks = body.match(/ink\(sky, [^,]*/g) ?? []
+    expect(inks.length).toBeGreaterThan(1)
+    for (const ink of inks) expect(ink).toMatch(/^ink\(sky, lift\(/)
+  }
+})
+
 // --- Fixes from the final review ----------------------------------------
 
 test('the ISS shows only where the window shows it', () => {
