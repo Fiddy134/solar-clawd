@@ -570,24 +570,65 @@ vec3 witch(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   return ink(sky, NIGHT_INK, (length(pot / vec2(1.0, 1.2)) - 0.17) * 2.2 * u, 0.95);
 }
 
-// Feathers drifting down, dyed as for the påskris.
-vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
+// A feather in its own frame, its shaft along x with the quill at +x, in
+// units of its size: the vane, a capsule broadening from the quill to its
+// round tip, and the bare quill.
+float featherShape(vec2 q) {
+  float vane = limb(q, vec2(0.2, 0.0), vec2(-0.34, 0.0), 0.09, 0.16);
+  return min(vane, segment(q, vec2(0.2, 0.0), vec2(0.55, 0.0)) - 0.02);
+}
+
+// Feather i printed at q from its place: hanging quill down, swaying, and
+// turning over as the leaves do; the vane in its dye with cream dots down
+// the shaft, and the key plate's outline a little off register.
+vec3 featherPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, float k) {
   vec3 dye[5] = vec3[5](INK_PINK, INK_YELLOW, INK_GREEN, INK_ORANGE, INK_VIOLET);
+  float a = seeded(seed, i * 4 + 50);
+  float b = seeded(seed, i * 4 + 51);
+  float s = 1.3 * u;
+  float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
+  float flip = widthShown(cos(iTime * (1.1 + 1.3 * a) + 7.0 * b), 0.3);
+  // Its frame turned a quarter from the sway, so the quill hangs down.
+  vec2 f = tumble(q, sway + 0.5 * PI, flip) / s;
+  float scale = s * abs(flip);
+  float shaft = 0.9 * (1.0 - smoothstep(0.0, 0.07 * u, abs(f.y) * scale)) * step(f.x, 0.2);
+  vec3 color = mix(dye[i % 5], CREAM, screen(p, shaft, max(3.0, u * 0.24), 0.0));
+  sky = ink(sky, lift(color, k), featherShape(f) * scale, 0.95);
+  vec2 f2 = tumble(q - vec2(0.12, 0.1) * u, sway + 0.5 * PI, flip) / s;
+  return ink(sky, lift(INK_INDIGO, k), abs(featherShape(f2) * scale) - 0.05 * u, 0.45);
+}
+
+// Feathers drifting down, dyed as for the påskris, swaying as they fall.
+// As with the leaves, the loop only finds which feathers box this pixel,
+// and those are printed after it.
+vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
+  int hits = 0;
+  int first = 0;
+  int second = 0;
+  vec2 q1 = vec2(0.0);
+  vec2 q2 = vec2(0.0);
   for (int i = 0; i < 14; i++) {
     float a = seeded(seed, i * 4 + 50);
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
-    // A feather is drawn within 1.23u of its place, which the cursor shoves
+    // A feather is drawn within 1.04u of its place, which the cursor shoves
     // at most 3u.
     if (abs(p.x - x) > 4.3 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
     vec2 q = p - shy(vec2(x, y), u);
-    if (dot(q, q) > 1.5 * u * u) continue;
-    float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
-    q = mat2(cos(sway), -sin(sway), sin(sway), cos(sway)) * q;
-    sky = ink(sky, lift(dye[i % 5], k), (length(q / vec2(0.18 * u, 0.55 * u)) - 1.0) * 0.18 * u, 0.9);
-    sky = ink(sky, vec3(0.97, 0.95, 0.9), abs(q.x) - 0.03 * u + max(0.0, abs(q.y) - 0.6 * u), 0.8);
+    // The box round it before any turning: its reach, the key plate's
+    // shift and the outline.
+    if (abs(q.x) > 1.04 * u || abs(q.y) > 1.04 * u) continue;
+    if (hits == 0) {
+      first = i;
+      q1 = q;
+    } else if (hits == 1) {
+      second = i;
+      q2 = q;
+    }
+    hits++;
   }
+  for (int j = 0; j < min(hits, 2); j++) sky = featherPrint(sky, p, j == 0 ? q1 : q2, j == 0 ? first : second, u, seed, k);
   return sky;
 }
 

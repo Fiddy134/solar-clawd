@@ -403,9 +403,9 @@ test('the birds are printed in lifted inks, so they dim with the sky', () => {
   expect(birds + print).not.toContain('vec3(0.0)')
 })
 
-test('a leaf is boxed before it is turned or printed', () => {
+test('a leaf or a feather is boxed before it is turned or printed', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
-  for (const name of ['drift']) {
+  for (const name of ['drift', 'feathers']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
     expect(body).not.toBe('')
     const box = body.indexOf('abs(q.x) >')
@@ -415,9 +415,9 @@ test('a leaf is boxed before it is turned or printed', () => {
   }
 })
 
-test('every plate of a leaf or a bird is a lifted ink', () => {
+test('every plate of a leaf, a feather or a bird is a lifted ink', () => {
   const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
-  for (const name of ['driftPrint', 'birdPrint']) {
+  for (const name of ['driftPrint', 'featherPrint', 'birdPrint']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
     const inks = body.match(/ink\(sky, [^,]*/g) ?? []
     expect(inks.length).toBeGreaterThan(1)
