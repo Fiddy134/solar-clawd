@@ -35,9 +35,11 @@ Innan fråga 1 startar: lägg arbetet på en gren så att `main` är ren och mä
 
 | Roll | Modell (`model` i `agent()`) | Effort | Används till |
 |---|---|---|---|
-| Design, visuell GLSL-författning, domare, arkitektur | `fable` (sessionsmodellen; utelämna `model`) | `xhigh`/`max` för domare, annars `high` | tema-kontrakt, löv/fåglar/fisk-varianter, bedömning mot stilreferenser, adversariell granskning |
+| Design, visuell GLSL-författning, domare, arkitektur | `opus` (Opus 5.5, sessionsmodellen; utelämna `model`) – ersätter `fable` från 2026-10-27 | `xhigh`/`max` för domare, annars `high` | tema-kontrakt, löv/fåglar/fisk-varianter, bedömning mot stilreferenser, adversariell granskning |
 | Implementation av välspecade uppgifter, refaktor med tester, kodgranskning | `opus` | `high` | TS/GLSL-ändringar enligt plan, `/solar doctor`, mätskript, README |
 | Mekaniska svep, renderingar, mätkörningar, dokumentation, torrkörningar | `sonnet` | `low`/`medium` | preview-ark, kataloger, "färsk Claude följer README", parity-renderingar |
+
+**Från 2026-10-27 (Vincent): ingen `fable`.** Där en workflow-tabell nedan säger `fable` körs Opus 5.5 med samma effort (`fable / max` → `opus / max`, `fable / high` → `opus / high`). Undantag: F3a:s workflow `lov-faglar`, som redan körde med `fable` när beslutet togs.
 
 Regler: högst ~10 agenter per workflow (sessionens riktlinje), `pipeline()` som standard, `isolation: 'worktree'` bara när agenter redigerar GLSL parallellt, adversariell verifiering (2–3 refuterare) för beslut som är dyra att ångra (tema-kontraktet, GPU-policyn, fiskens design). Det en bakgrundsagent **inte** kan göra: ta skärmfokus på Vincents Mac, köra en interaktiv auto mode-session (utom via tmux), installera på Mac minin. Sådana steg märks **[Vincent]** eller **[tmux]**.
 
