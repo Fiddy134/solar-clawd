@@ -61,6 +61,29 @@ That protection exists so that code the engine runs is not changed with nobody r
 
 `claude plugin test .` runs the tests; `tools/preview/run.sh shader` and `tools/preview/run.sh band` render the sky and the band to PNGs without Ghostty (their flags are listed at the top of each file in `tools/preview/`), and `tools/preview/gif.sh` makes the GIF above.
 
+#### The engine and its themes
+
+The sky is an engine and a theme. The engine (`hooks/shader.ts` and `hooks/glsl/`) draws what every sky has: the sun, moon and stars, the clouds and the weather, the events that come and go, and it knows when Claude waits and how full the context window is. A theme draws a world under it. fyr, the one built in, is the lighthouse, its sea and its keeper ([`hooks/themes/fyr/README.md`](hooks/themes/fyr/README.md)).
+
+A theme is a manifest and some GLSL. The manifest (`ThemeManifest` in `hooks/themes/theme.ts`) names the theme and the engine contract it is written for (`"engine": 1`), says what Claude waiting looks like in it, whether it shows the context window itself or leaves the engine's wastebasket in, and lists its own events: when they may come (the sun, the wind, the clouds, rain, the months), how often and for how long. Together they may keep the sky moving no more than 8 % of the time. The GLSL defines the four functions the engine declares and calls, and whatever they need:
+
+```glsl
+vec3 scenery(vec3 sky, vec2 p, float u, float k);   // the ground, the props, and the light that shows Claude waits
+vec3 resident(vec3 sky, vec2 p, float u, float k);  // the characters and their things
+vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind);
+float themeWindow(vec2 p, float u);                 // how much of the clouds, the events and the weather shows at p
+```
+
+A theme's text comes after the engine's in the shader, so it can call the engine's helpers (`COMMON` in `hooks/glsl/common.ts`: `pitch`, `night`, `keyInk`, `keyPlate`, `nightInk`, `smin`, `box`, `noise2`, `fbm`, `steam`, `lamp`, `sprite` and the rest) and read its constants (`THEME_SIGNALS` in `hooks/shader.ts`: the scene and the weather, `WAITING`, `CLAWD_ASLEEP`, `CLAWD_ACTIVITY`, `LOCAL_HOUR`, the day and the temperature). A function a theme leaves out, the engine stubs. The contract, the four functions with the helpers' signatures and the signals, is held by a test: changing it means a new contract number, and every engine name added after contract 1 starts with `sky_`, so it cannot collide with a theme's own. A theme built in is a TypeScript wrapper round exactly the two, so a theme from elsewhere, a `manifest.json` and a `theme.glsl`, can do all that fyr does.
+
+The engine checks a theme's GLSL before it draws it. No `while` or `do`; `for` loops only with a constant bound of at most 48, an index the body leaves alone, and nested at most two deep; nothing that reads the terminal's image (`texture`, `iChannel`, `iPalette`: the context window comes through `contextFish()` and `contextState()`); no preprocessor, `discard`, `mainImage` or top-level `uniform`, `in` or `out`; and none of the engine's names defined again. And two caps: a theme's GLSL at most 80,000 characters, and the whole shader of a long night (04:00, the aurora, the ISS, the grill, every star up) at most 224,000, since every tab compiles the whole shader as it opens and on each reload.
+
+- `tools/theme/run.sh lint <name|folder>` checks a theme and says what it weighs.
+- `tools/theme/run.sh pack fyr <folder>` writes fyr as a `manifest.json` and a `theme.glsl`, and reads it back.
+- `tools/preview/run.sh shader --theme <name|folder|none>` draws the sky with a theme, or with `none` the engine alone; with `--bench 200` it prints what the theme costs a frame (its frame less the engine's alone), and that against fyr's.
+- `tools/preview/sheet.sh theme <name|folder>` draws a theme in the parity scenes, and each of its own events at three moments, as one contact sheet in `.preview/theme-<name>/contact.png`.
+- `tools/preview/parity.sh record|check <dir>` compares the sky before and after a change to the engine, frame by frame, and `node tools/theme/imports.mjs` checks that no engine file imports a theme's folder or the band's character.
+
 ## Linux
 
 Run by a few people so far; reports and fixes are welcome. `/solar ghostty` adds the include to `$XDG_CONFIG_HOME/ghostty/config.ghostty` (or to `config` if that is the file you have), defaulting to `~/.config/ghostty`.
