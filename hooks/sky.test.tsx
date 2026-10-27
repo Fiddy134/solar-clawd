@@ -386,6 +386,45 @@ test('confetti is an even rain: it ignores where its loop is', () => {
   expect(body).not.toMatch(/[^\w.]t \*|\(t\b|, t\)/)
 })
 
+test('the dolphin, the leaves and the feathers share one smin and one tumble, in the common part', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  expect(text.match(/float smin\(/g)).toHaveLength(1)
+  expect(text.indexOf('float smin(')).toBeLessThan(text.indexOf('float dolphinShape('))
+  expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
+})
+
+test('the birds are printed in lifted inks, so they dim with the sky', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  // The skein finds which birds box the pixel, and birdPrint inks them.
+  const birds = /vec3 birds\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  const print = /vec3 birdPrint\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
+  expect(birds).toContain('birdPrint(')
+  expect(print).toContain('lift(')
+  expect(birds + print).not.toContain('vec3(0.0)')
+})
+
+test('a leaf or a feather is boxed before it is turned or printed', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  for (const name of ['drift', 'feathers']) {
+    const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
+    expect(body).not.toBe('')
+    const box = body.indexOf('abs(q.x) >')
+    expect(box).toBeGreaterThan(0)
+    expect(body.indexOf('Print(')).toBeGreaterThan(box)
+    expect(body).not.toMatch(/mat2|tumble\(/)
+  }
+})
+
+test('every plate of a leaf, a feather or a bird is a lifted ink', () => {
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  for (const name of ['driftPrint', 'featherPrint', 'birdPrint']) {
+    const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
+    const inks = body.match(/ink\(sky, [^,]*/g) ?? []
+    expect(inks.length).toBeGreaterThan(1)
+    for (const ink of inks) expect(ink).toMatch(/^ink\(sky, lift\(/)
+  }
+})
+
 // --- Fixes from the final review ----------------------------------------
 
 test('the ISS shows only where the window shows it', () => {

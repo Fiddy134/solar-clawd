@@ -129,4 +129,29 @@ float limb(vec2 p, vec2 a, vec2 b, float ra, float rb) {
   float h = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
   return length(p - a - ab * h) - mix(ra, rb, h);
 }
+
+// Two shapes' union, rounded where they meet, as a cartoon's are.
+float smin(float a, float b, float r) {
+  float h = max(r - abs(a - b), 0.0) / r;
+  return min(a, b) - h * h * r * 0.25;
+}
+
+// How much of its width a thing tumbling on the air shows as it turns
+// over, for \`turn\` running from -1 to 1: all of it at either end, never
+// less than \`least\` of it edge-on in the middle, and signed as turn is,
+// for below 0 its back is toward you.
+float widthShown(float turn, float least) { return (turn < 0.0 ? -1.0 : 1.0) * mix(least, 1.0, abs(turn)); }
+
+// A thing spun by \`spin\` and turned over to show \`flip\` of its width, as
+// widthShown gives it: q in the thing's own frame, x along it and y
+// across, the across axis stretched as it goes edge-on and mirrored while
+// its back is up. A distance measured across it in that frame is up to
+// 1 / abs(flip) times the real one, so a shape's goes back through
+// abs(flip) before it is inked, or its edges would sharpen and its outline
+// thin as it turns. Along it the distance was right and comes out short,
+// so near edge-on the tips soften and their outline thickens a little.
+vec2 tumble(vec2 q, float spin, float flip) {
+  q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
+  return vec2(q.x, q.y / flip);
+}
 `

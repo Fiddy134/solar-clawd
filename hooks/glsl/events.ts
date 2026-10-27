@@ -82,21 +82,103 @@ vec3 balloon(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   return ink(sky, lift(INK_INDIGO, k), key, 0.7);
 }
 
-vec3 birds(vec3 sky, vec2 p, float u, float seed, float t) {
+// A bird's wing in its frame (x ahead, y down, in units of its size), two
+// tapering limbs from the shoulder: the arm swept back at \`f1\` from
+// straight behind, turning up, and the hand after it at \`f2\`.
+float birdWing(vec2 q, float f1, float f2) {
+  vec2 shoulder = vec2(0.0, -0.05);
+  vec2 elbow = shoulder + vec2(-cos(f1), -sin(f1)) * 0.4;
+  vec2 tip = elbow + vec2(-cos(f2), -sin(f2)) * 0.5;
+  return smin(limb(q, shoulder, elbow, 0.13, 0.09), limb(q, elbow, tip, 0.09, 0.035), 0.04);
+}
+
+// A goose or a crane flying toward +x, in profile, as a cartoon draws one:
+// a plump body tapering to the tail, the neck held out ahead, the head
+// running into the bill, and the near wing. A crane's neck is longer and
+// thinner, its bill longer, and its legs trail out behind it.
+float birdShape(vec2 q, bool isCrane, float f1, float f2) {
+  float body = limb(q, vec2(-0.5, 0.02), vec2(0.22, 0.0), 0.04, 0.15);
+  float neck = isCrane ? limb(q, vec2(0.22, -0.03), vec2(0.8, -0.2), 0.07, 0.04) : limb(q, vec2(0.22, -0.03), vec2(0.68, -0.16), 0.09, 0.055);
+  vec2 head = isCrane ? vec2(0.8, -0.2) : vec2(0.68, -0.16);
+  float bill = limb(q, head, head + (isCrane ? vec2(0.34, 0.04) : vec2(0.3, 0.04)), isCrane ? 0.065 : 0.075, isCrane ? 0.012 : 0.015);
+  float d = smin(smin(body, neck, 0.06), bill, 0.02);
+  if (isCrane) d = min(d, limb(q, vec2(-0.4, 0.03), vec2(-0.98, 0.12), 0.05, 0.04));
+  return smin(d, birdWing(q, f1, f2), 0.04);
+}
+
+// Bird i of the skein printed, q from its place in the window's pixels, s
+// its size, \`back\` the way the ranks trail: its wings beating on its own
+// count, and every sixth beat held out a little up in a glide, eased in
+// and out, that runs down the V behind the leader. Printed as the dolphin
+// is, two plates off register: a blue plate of the whole bird shifted
+// down and to the right, and the indigo plate over it. The far wing beats
+// with the near one from behind and above it, raised a little more so it
+// shows past it, and lighter, so it reads as the one behind.
+vec3 birdPrint(vec3 sky, vec2 q, float s, int i, float back, bool isCrane, float u, float k) {
+  float rank = float((i + 1) / 2);
+  float phase = iTime * 6.0 + 1.3 * float(i) - 0.6 * rank;
+  float beat = phase / (2.0 * PI);
+  float glide = mod(floor(beat), 6.0) > 4.5 ? smoothstep(0.0, 0.15, fract(beat)) * smoothstep(1.0, 0.85, fract(beat)) : 0.0;
+  float a1 = mix(0.55 * sin(phase), 0.15, glide);
+  float a2 = mix(0.5 * sin(phase - 0.6), 0.1, glide);
+  // Seen from the side the stroke runs from well above the back to below
+  // the belly, so the angles are opened out.
+  float f1 = 0.2 + 1.6 * a1;
+  float f2 = f1 + 1.2 * a2 + 0.3;
+  // The plate is shifted the print's way before the bird is turned to face
+  // its own.
+  vec2 turn = vec2(-back, 1.0) / s;
+  vec2 b2 = (q - vec2(0.1, 0.08) * u) * turn;
+  vec2 b = q * turn;
+  vec2 far = vec2(-0.12, -0.1);
+  sky = ink(sky, lift(INK_BLUE, k), min(birdShape(b2, isCrane, f1, f2), birdWing(b2 - far, f1 + 0.2, f2 + 0.2)) * s, 0.45);
+  sky = ink(sky, lift(INK_INDIGO, k), birdWing(b - far, f1 + 0.2, f2 + 0.2) * s, 0.6);
+  return ink(sky, lift(INK_INDIGO, k), birdShape(b, isCrane, f1, f2) * s, 0.9);
+}
+
+// A skein of nine, geese or cranes by the seed, in a V behind its leader,
+// the leader largest and each rank behind it a little smaller, no bird
+// holding its place exactly and each rank heaving slowly in turn. A pixel
+// lies in the box of at most two of them, so the loop only finds which,
+// and those are printed after it, as the leaves are.
+vec3 birds(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   bool isEast = seeded(seed, 1) < 0.5;
+  bool isCrane = seeded(seed, 3) < 0.5;
   vec2 lead = vec2(mix(-0.15, 1.15, isEast ? t : 1.0 - t) * iResolution.x, iResolution.y * (0.12 + 0.25 * seeded(seed, 2)));
   float back = isEast ? -1.0 : 1.0;
-  if (abs(p.x - lead.x) > 9.0 * u || abs(p.y - lead.y) > 6.0 * u) return sky;
-  float d = 1e9;
+  // The last rank is 6.4u back and 3.6u aside and strays 0.35u, its box
+  // reaches 1u, and the cursor shoves a bird at most 3u.
+  if (abs(p.x - lead.x) > 11.0 * u || abs(p.y - lead.y) > 8.0 * u) return sky;
+  int hits = 0;
+  int first = 0;
+  int second = 0;
+  vec2 q1 = vec2(0.0);
+  vec2 q2 = vec2(0.0);
   for (int i = 0; i < 9; i++) {
     float rank = float((i + 1) / 2);
     float side = i % 2 == 0 ? 1.0 : -1.0;
-    vec2 at = shy(lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u), u);
-    float flap = sin(iTime * 7.0 + float(i) * 1.3) * 0.35 * u;
-    d = min(d, segment(p, at, at + vec2(-0.6 * u, -flap)));
-    d = min(d, segment(p, at, at + vec2(0.6 * u, -flap)));
+    vec2 at = lead + vec2(back * rank * 1.6 * u, side * rank * 0.9 * u);
+    at += (vec2(seeded(seed, 10 + i * 2), seeded(seed, 11 + i * 2)) - 0.5) * 0.3 * u;
+    at.y += sin(iTime * 0.6 - 0.8 * rank) * 0.2 * u;
+    vec2 q = p - shy(at, u);
+    // Its box: the bill and a crane's legs ahead and behind, the wing tips
+    // above and below, and the plate's shift.
+    float s = 0.85 * u * (1.0 - 0.06 * rank);
+    if (abs(q.x) > 1.5 * s || abs(q.y) > 1.4 * s) continue;
+    if (hits == 0) {
+      first = i;
+      q1 = q;
+    } else if (hits == 1) {
+      second = i;
+      q2 = q;
+    }
+    hits++;
   }
-  return ink(sky, mix(INK_INDIGO, vec3(0.0), 0.3), d - 0.09 * u, 0.85);
+  for (int j = 0; j < min(hits, 2); j++) {
+    int i = j == 0 ? first : second;
+    sky = birdPrint(sky, j == 0 ? q1 : q2, 0.85 * u * (1.0 - 0.06 * float((i + 1) / 2)), i, back, isCrane, u, k);
+  }
+  return sky;
 }
 
 // An airliner seen from below, in its own frame (x towards the nose, y
@@ -199,26 +281,155 @@ vec3 kite(vec3 sky, vec2 p, float u, float seed, float k) {
   return ink(sky, lift(INK_INDIGO, k), abs(diamond) - 0.06 * u, 0.6);
 }
 
-// Leaves (or petals) tumbling across on the wind.
-vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
+// What the wind carries, each in its own frame: its midrib along x, the
+// stem at -x, in units of its size. A leaf is one shape from a table of
+// parts, so no leaf branches on its kind: a midrib capsule, three lobes
+// mirrored about it (a lobe with no radius is left out) and a stem, joined
+// with smin. A maple's midrib is its middle lobe, and two pairs more fan
+// from the base; a birch is the egg alone, drawn out to a point; an oak has
+// two pairs of round lobes along its midrib and one at its tip, the bays
+// between them cut deep enough to show at a window's scale (three pairs
+// there read as a caterpillar). A blossom is a cherry petal, notched between its two
+// lobes, or a whole flower, five petals round a heart.
+const int LEAF_MAPLE = 0;
+const int LEAF_BIRCH = 1;
+const int LEAF_OAK = 2;
+const int PETAL = 3;
+const int FLOWER = 4;
+// Per leaf kind: the midrib's ends and radii; three lobes, each a capsule
+// from xy to zw, with their radii beside; the stem's ends and the smin
+// radius; and the midrib's run as a line in the key plate.
+const vec4 LEAF_RIB[3] = vec4[3](vec4(-0.22, 0.24, 0.11, 0.03), vec4(-0.06, 0.36, 0.22, 0.04), vec4(-0.3, 0.34, 0.07, 0.11));
+const vec4 LEAF_LOBE[9] = vec4[9](
+  vec4(-0.22, 0.0, 0.14, 0.174), vec4(-0.22, 0.0, -0.009, 0.266), vec4(0.0, 0.0, 0.1, 0.0),
+  vec4(0.0, 0.0, 0.1, 0.0), vec4(0.0, 0.0, 0.1, 0.0), vec4(0.0, 0.0, 0.1, 0.0),
+  vec4(-0.18, 0.0, -0.13, 0.15), vec4(0.06, 0.0, 0.11, 0.15), vec4(0.0, 0.0, 0.1, 0.0));
+const vec2 LEAF_LOBE_R[9] = vec2[9](
+  vec2(0.1, 0.03), vec2(0.09, 0.03), vec2(-1.0),
+  vec2(-1.0), vec2(-1.0), vec2(-1.0),
+  vec2(0.08, 0.1), vec2(0.08, 0.1), vec2(-1.0));
+const vec3 LEAF_STEM[3] = vec3[3](vec3(-0.22, -0.42, 0.08), vec3(-0.28, -0.48, 0.05), vec3(-0.3, -0.5, 0.05));
+const vec2 LEAF_VEIN[3] = vec2[3](vec2(-0.3, 0.22), vec2(-0.36, 0.34), vec2(-0.3, 0.36));
+
+float leafShape(vec2 q, int kind) {
+  vec2 m = vec2(q.x, abs(q.y));
+  vec4 rib = LEAF_RIB[kind];
+  vec3 stem = LEAF_STEM[kind];
+  int n = kind * 3;
+  float d = limb(q, vec2(rib.x, 0.0), vec2(rib.y, 0.0), rib.z, rib.w);
+  d = smin(d, limb(m, LEAF_LOBE[n].xy, LEAF_LOBE[n].zw, LEAF_LOBE_R[n].x, LEAF_LOBE_R[n].y), stem.z);
+  d = smin(d, limb(m, LEAF_LOBE[n + 1].xy, LEAF_LOBE[n + 1].zw, LEAF_LOBE_R[n + 1].x, LEAF_LOBE_R[n + 1].y), stem.z);
+  d = smin(d, limb(m, LEAF_LOBE[n + 2].xy, LEAF_LOBE[n + 2].zw, LEAF_LOBE_R[n + 2].x, LEAF_LOBE_R[n + 2].y), stem.z);
+  return min(d, segment(q, vec2(stem.x, 0.0), vec2(stem.y, 0.0)) - 0.025);
+}
+
+float blossomShape(vec2 q, bool isFlower) {
+  if (isFlower) {
+    // The petal in this fifth of the way round, turned to lie along x.
+    float sector = floor(atan(q.y, q.x) / 1.2566 + 0.5) * 1.2566;
+    vec2 r = vec2(q.x * cos(sector) + q.y * sin(sector), q.y * cos(sector) - q.x * sin(sector));
+    return limb(r, vec2(0.05, 0.0), vec2(0.21, 0.0), 0.05, 0.11);
+  }
+  vec2 f = q - vec2(-0.24, 0.0);
+  return smin(limb(f, vec2(0.0), vec2(0.395, 0.144), 0.05, 0.12), limb(f, vec2(0.0), vec2(0.395, -0.144), 0.05, 0.12), 0.03);
+}
+
+float driftShape(vec2 q, int kind) { return kind >= PETAL ? blossomShape(q, kind == FLOWER) : leafShape(q, kind); }
+
+// Which of the eighteen piece i is, and its size: the leaves run through
+// their three kinds by threes, so a maple or a birch comes in each ink
+// (an oak is always russet); every
+// fourth piece of blossom is a whole flower, 1.4 times a petal's size.
+int pieceKind(int i, bool isBlossom) { return isBlossom ? (i % 4 == 0 ? FLOWER : PETAL) : (i / 3) % 3; }
+float pieceSize(int i, int kind, float u, float seed) { return u * (1.15 + 0.35 * seeded(seed, i * 4 + 2)) * (kind == FLOWER ? 1.4 : 1.0); }
+
+// Piece i printed at q from its place, as the dolphin is: the body in its
+// ink, one more plate screened over one half of it (yellow dots on the lit
+// half of an orange leaf, indigo on the shadow half of a yellow one or an
+// oak, pink densest at a petal's base or round a flower's heart), and the
+// indigo key plate a little off register, the midrib a line in it. It
+// turns over as it goes: edge-on, then its back, paler and unscreened. A
+// whole flower keeps its face up and never goes quite edge-on.
+vec3 driftPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, bool isBlossom, float k) {
   vec3 leaf[3] = vec3[3](INK_ORANGE, INK_YELLOW, mix(INK_ORANGE, INK_PINK, 0.5));
-  vec3 petal[3] = vec3[3](INK_PINK, vec3(0.98, 0.9, 0.93), mix(INK_PINK, vec3(1.0), 0.5));
+  vec3 petal[3] = vec3[3](mix(INK_PINK, CREAM, 0.55), mix(INK_PINK, CREAM, 0.7), mix(INK_PINK, CREAM, 0.4));
+  float a = seeded(seed, i * 4);
+  float b = seeded(seed, i * 4 + 1);
+  int kind = pieceKind(i, isBlossom);
+  float s = pieceSize(i, kind, u, seed);
+  float spin = iTime * (1.5 + 2.0 * a) + b * 6.0;
+  float turn = cos(iTime * (1.1 + 1.3 * a) + 7.0 * b);
+  float flip = kind == FLOWER ? mix(0.6, 1.0, abs(turn)) : widthShown(turn, 0.45);
+  vec2 f = tumble(q, spin, flip) / s;
+  float scale = s * abs(flip);
+  // An oak has gone russet whatever the cycle gives the others.
+  vec3 color = isBlossom ? petal[i % 3] : kind == LEAF_OAK ? mix(mix(INK_ORANGE, INK_YELLOW, 0.2), INK_INDIGO, 0.22) : leaf[i % 3];
+  if (flip < 0.0) {
+    color = mix(color, CREAM, 0.35);
+  } else {
+    float tone = 0.55 * step(f.y, 0.0);
+    float angle = 0.0;
+    vec3 over = INK_YELLOW;
+    if (isBlossom) {
+      tone = 0.8 * (kind == FLOWER ? smoothstep(0.32, 0.05, length(f)) : smoothstep(0.3, -0.2, f.x));
+      angle = 75.0;
+      over = INK_PINK;
+    } else if (kind == LEAF_OAK || i % 3 == 1) {
+      tone = 0.35 * step(0.0, f.y);
+      angle = 45.0;
+      over = mix(color, INK_INDIGO, 0.7);
+    }
+    color = mix(color, over, screen(p, tone, max(3.0, u * 0.24), angle));
+  }
+  sky = ink(sky, lift(color, k), driftShape(f, kind) * scale, 0.95);
+  if (kind == FLOWER) sky = ink(sky, lift(INK_YELLOW, k), (length(f) - 0.09) * scale, 0.95);
+  // The key plate a whole pixel or more off, so it never blurs.
+  vec2 f2 = tumble(q - max(vec2(1.0), floor(vec2(0.07, 0.06) * u)), spin, flip) / s;
+  float key = abs(driftShape(f2, kind) * scale) - 0.035 * u;
+  if (!isBlossom) key = min(key, segment(f2, vec2(LEAF_VEIN[kind].x, 0.0), vec2(LEAF_VEIN[kind].y, 0.0)) * scale - 0.015 * u);
+  return ink(sky, lift(INK_INDIGO, k), key, kind == FLOWER ? 0.4 : isBlossom ? 0.3 : 0.55);
+}
+
+// Leaves (or blossom) tumbling across on the wind: eighteen pieces, maple,
+// birch and oak leaves in three inks, or cherry petals with every fourth
+// piece a whole flower, fluttering a little on the way. Their places are
+// cheap to find and their prints are not, and a pixel lies in the box of
+// at most a couple of them; so the loop only finds which pieces box this
+// pixel, and those are printed after it, at most two, in the loop's order.
+// A loop body skipped by continue still costs SwiftShader (the preview's
+// bench) as if every pixel ran it.
+vec3 drift(vec3 sky, vec2 p, float u, float seed, bool isBlossom, float k) {
+  int hits = 0;
+  int first = 0;
+  int second = 0;
+  vec2 q1 = vec2(0.0);
+  vec2 q2 = vec2(0.0);
   for (int i = 0; i < 18; i++) {
     float a = seeded(seed, i * 4);
     float b = seeded(seed, i * 4 + 1);
     float span = iResolution.x + 4.0 * u;
     float x = mod(a * span + iTime * (2.0 + WIND * 0.6) * u * (0.6 + 0.8 * b), span) - 2.0 * u;
-    // A leaf is drawn within u of its place, which the cursor shoves at most 3u.
-    if (abs(p.x - x) > 4.0 * u) continue;
+    // A piece is drawn within 1.2u of its place, which flutters 0.15u and
+    // the cursor shoves at most 3u.
+    if (abs(p.x - x) > 4.5 * u) continue;
+    x += sin(iTime * 5.0 + 20.0 * a) * 0.15 * u;
     float y = mod(b * iResolution.y + iTime * 0.9 * u * (0.5 + a), iResolution.y + 4.0 * u) - 2.0 * u + sin(iTime * 1.7 + a * 9.0) * u;
     vec2 q = p - shy(vec2(x, y), u);
-    if (dot(q, q) > u * u) continue;
-    float spin = iTime * (1.5 + 2.0 * a) + b * 6.0;
-    q = mat2(cos(spin), -sin(spin), sin(spin), cos(spin)) * q;
-    vec2 size = isBlossom ? vec2(0.22, 0.14) * u : vec2(0.36, 0.17) * u;
-    float d = (length(q / size) - 1.0) * min(size.x, size.y);
-    sky = ink(sky, lift(isBlossom ? petal[i % 3] : leaf[i % 3], k), d, 0.95);
+    // The box round it before any turning: its reach, the key plate's
+    // shift and the outline.
+    int kind = pieceKind(i, isBlossom);
+    float reach = (isBlossom ? 0.5 : 0.75) * pieceSize(i, kind, u, seed);
+    if (abs(q.x) > reach || abs(q.y) > reach) continue;
+    if (hits == 0) {
+      first = i;
+      q1 = q;
+    } else if (hits == 1) {
+      second = i;
+      q2 = q;
+    }
+    hits++;
   }
+  for (int j = 0; j < min(hits, 2); j++) sky = driftPrint(sky, p, j == 0 ? q1 : q2, j == 0 ? first : second, u, seed, isBlossom, k);
   return sky;
 }
 
@@ -360,24 +571,65 @@ vec3 witch(vec3 sky, vec2 p, float u, float seed, float t, float k) {
   return ink(sky, NIGHT_INK, (length(pot / vec2(1.0, 1.2)) - 0.17) * 2.2 * u, 0.95);
 }
 
-// Feathers drifting down, dyed as for the påskris.
-vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
+// A feather in its own frame, its shaft along x with the quill at +x, in
+// units of its size: the vane, a capsule broadening from the quill to its
+// round tip, and the bare quill.
+float featherShape(vec2 q) {
+  float vane = limb(q, vec2(0.2, 0.0), vec2(-0.34, 0.0), 0.09, 0.16);
+  return min(vane, segment(q, vec2(0.2, 0.0), vec2(0.55, 0.0)) - 0.02);
+}
+
+// Feather i printed at q from its place: hanging quill down, swaying, and
+// turning over as the leaves do; the vane in its dye with cream dots down
+// the shaft, and the key plate's outline a little off register.
+vec3 featherPrint(vec3 sky, vec2 p, vec2 q, int i, float u, float seed, float k) {
   vec3 dye[5] = vec3[5](INK_PINK, INK_YELLOW, INK_GREEN, INK_ORANGE, INK_VIOLET);
+  float a = seeded(seed, i * 4 + 50);
+  float b = seeded(seed, i * 4 + 51);
+  float s = 1.3 * u;
+  float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
+  float flip = widthShown(cos(iTime * (1.1 + 1.3 * a) + 7.0 * b), 0.3);
+  // Its frame turned a quarter from the sway, so the quill hangs down.
+  vec2 f = tumble(q, sway + 0.5 * PI, flip) / s;
+  float scale = s * abs(flip);
+  float shaft = 0.9 * (1.0 - smoothstep(0.0, 0.07 * u, abs(f.y) * scale)) * step(f.x, 0.2);
+  vec3 color = mix(dye[i % 5], CREAM, screen(p, shaft, max(3.0, u * 0.24), 0.0));
+  sky = ink(sky, lift(color, k), featherShape(f) * scale, 0.95);
+  vec2 f2 = tumble(q - vec2(0.12, 0.1) * u, sway + 0.5 * PI, flip) / s;
+  return ink(sky, lift(INK_INDIGO, k), abs(featherShape(f2) * scale) - 0.05 * u, 0.45);
+}
+
+// Feathers drifting down, dyed as for the påskris, swaying as they fall.
+// As with the leaves, the loop only finds which feathers box this pixel,
+// and those are printed after it.
+vec3 feathers(vec3 sky, vec2 p, float u, float seed, float k) {
+  int hits = 0;
+  int first = 0;
+  int second = 0;
+  vec2 q1 = vec2(0.0);
+  vec2 q2 = vec2(0.0);
   for (int i = 0; i < 14; i++) {
     float a = seeded(seed, i * 4 + 50);
     float b = seeded(seed, i * 4 + 51);
     float x = a * iResolution.x + sin(iTime * (0.6 + a) + b * 7.0) * 1.5 * u;
-    // A feather is drawn within 1.23u of its place, which the cursor shoves
+    // A feather is drawn within 1.04u of its place, which the cursor shoves
     // at most 3u.
     if (abs(p.x - x) > 4.3 * u) continue;
     float y = mod(b * iResolution.y + iTime * 0.6 * u * (0.6 + a), iResolution.y + 4.0 * u) - 2.0 * u;
     vec2 q = p - shy(vec2(x, y), u);
-    if (dot(q, q) > 1.5 * u * u) continue;
-    float sway = 0.6 * sin(iTime * (1.1 + a) + b * 5.0);
-    q = mat2(cos(sway), -sin(sway), sin(sway), cos(sway)) * q;
-    sky = ink(sky, lift(dye[i % 5], k), (length(q / vec2(0.18 * u, 0.55 * u)) - 1.0) * 0.18 * u, 0.9);
-    sky = ink(sky, vec3(0.97, 0.95, 0.9), abs(q.x) - 0.03 * u + max(0.0, abs(q.y) - 0.6 * u), 0.8);
+    // The box round it before any turning: its reach, the key plate's
+    // shift and the outline.
+    if (abs(q.x) > 1.04 * u || abs(q.y) > 1.04 * u) continue;
+    if (hits == 0) {
+      first = i;
+      q1 = q;
+    } else if (hits == 1) {
+      second = i;
+      q2 = q;
+    }
+    hits++;
   }
+  for (int j = 0; j < min(hits, 2); j++) sky = featherPrint(sky, p, j == 0 ? q1 : q2, j == 0 ? first : second, u, seed, k);
   return sky;
 }
 
@@ -520,7 +772,7 @@ vec3 events(vec3 sky, vec2 p, float u, float k, bool isBehind) {
       continue;
     }
     if (kind == 2) sky = balloon(sky, p, u, seed, t, k);
-    if (kind == 3) sky = birds(sky, p, u, seed, t);
+    if (kind == 3) sky = birds(sky, p, u, seed, t, k);
     if (kind == 4) sky = plane(sky, p, u, seed, t, k);
     if (kind == 6) sky = kite(sky, p, u, seed, k);
     if (kind == 7 || kind == 8) sky = drift(sky, p, u, seed, kind == 8, k);
