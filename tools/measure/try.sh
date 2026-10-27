@@ -41,7 +41,7 @@ show() {
 case $mode in
   full|<->) print "the sky at $mode; close the window to end"; show $mode "solar-try $mode" ;;
   blind)
-    rates=(full 30 24 15) order=() i
+    rates=(full 30 24 15) order=() i=0
     # A shuffle with zsh's own random numbers, so the order is not told.
     while (( ${#rates} )); do i=$(( RANDOM % ${#rates} + 1 )); order+=$rates[i]; rates[i]=(); done
     key=$root/.preview/measure/try-blind-$(date +%H%M%S).txt
