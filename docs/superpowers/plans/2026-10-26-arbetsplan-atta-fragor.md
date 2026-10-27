@@ -351,6 +351,16 @@ Vincents önskan, preciserad samma kväll: **varje fångst och varje grill är e
 
 På 1.3.1 sparar `false` ingenting fokuserat (koden förklarar F2-tabellen, `docs/ghostty-research.md`), och rättelsen finns bara i Ghosttys nattbyggen. Hypotes: när himlen står still (borta, batteri, inget `livelyAt`) skriver modden en PNG av himlen just nu och `background-image` + ett tomt `custom-shader` i inkluderingen, laddar om, och byter tillbaka när något ska röra sig. Cellen prövar, i den ordningen: att `reload_config` byter bilden i öppna flikar; att läsbarheten (kanten runt texten finns inte i en bild) håller eller vad som behövs; vad viloläget kostar i mW mot `false` med shader (F2-protokollet, Vincent kör mätningen); och vad bytet kostar i flimmer. 3-rt/ghostty-landscapes gör redan så (stilla scen som bild, shadern ritar bara det som rör sig, filnamn efter innehåll). Släpps om nästa Ghostty-version kommer först och gör `false` gratis; mät då om i stället.
 
+## Labbcell före F6: himlens egen takt (Vincent, 2026-10-27)
+
+Himlen behöver inte 120 Hz: nästan allt i den rör sig långsamt (moln, ljus, fyrvaktarens steg), och bara stjärnfall, delfinens hopp och fyrverkerier skulle märkas hackiga under ~30 bilder per sekund. Vincents krav: **känslan ska vara kvar**, och den som har en svagare dator ska kunna köra himlen utan problem; går GPU-användningen att sänka så mycket är det värt det. I 1.3.1 går det inte att sänka himlen för sig: shadern körs i samma ritning som terminaltexten, ingen config-nyckel begränsar bildtakten, och fokuserat ritar 1.3.1 vid varje vsync (`docs/ghostty-research.md`). Cellen prövar, i den ordningen:
+
+1. **Nattbygget [Vincent]:** med `custom-shader-animation = false`, ritar en fokuserad flik ~0 bilder när inget händer, och exakt en bild per OSC 4-skrivning av markeringen (F2:s `iFrame`-probe)?
+2. **Om ja: modden sätter himlens takt.** Medan något rör sig skriver modden markeringen i en takt per scen (t.ex. 20–30 Hz under en promenad eller ett hopp, några Hz för moln och ljus, ingen alls när himlen står still); text och scrollning ritas ändå direkt när de ändras. Att mäta: mW mot `true` i samma scener (F2-protokollet), att skrivningarna inte stör Claude Codes TUI eller kostar CPU, och en blindjämförelse för Vincent av känslan vid 15/20/30 Hz.
+3. **Om nej, eller i väntan på nästa release:** vad researchen hittar för 1.3.1 (se nedan), och stillbilden ovan.
+
+Research (2026-10-27, pågår): sätt att sänka eller kringgå bildtakten i 1.3.1 utan att ändra skärmens frekvens; om Ghosttys `background-image` syns i shaderns `iChannel0` så att den stilla himlen kan vara en bild och shadern bara rita det som rör sig (3-rt/ghostty-landscapes); vad macOS strömsparläge gör med ProMotion; och kvalitetsnivåer efter dator (skärmens storlek, GPU) så att en svagare laptop får en lättare himmel automatiskt.
+
 ## F6. Installation som Claude sköter
 
 Körs efter F5; designad mot dagens kod men oberoende av filnamn (inkluderingslogiken i `hooks/ghostty.ts`, `/solar`-kommandot i `hooks/register.tsx`). Målbild: på en färsk Mac skriver man *"Install the Claude Code plugin from github.com/Fiddy134/solar-clawd and set it up on this Mac. Follow its README."* och Claude gör resten.
@@ -470,6 +480,7 @@ Förslag: en inställning `full` mot `spar` (standard `spar`, som idag), satt me
 | 5 | `motor-tema` | `motor-tema` | 8 | 3b (båda rör `main.ts`), 4½ | – |
 | 5½ | `markering` | – | – | 5 | köra probe-shadern för färgerna 17–19 |
 | 5¾ | – | labbcell stillbild | – | 5 | mätningen i mW |
+| 5⅞ | – | labbcell himlens takt | – | 5, nattbygget | köra nattbygget med probe; blindjämförelse av takterna; mätningen i mW |
 | 6 | `installation` | `installation` | 5 | 5 | Mac mini-protokollet, 2–3 rundor |
 | 7 | `tema-kok`, `tema-tak` | `teman` | 9 × 2 rundor | 5 | köksstycket; godkänna takstycket; granska utseendet; besluta om de blir inbyggda |
 | 8 | `community` | `community` | 9 | 5 (helst 7) | tillåta orakel-experimentet; godkänna designdokumentet |
