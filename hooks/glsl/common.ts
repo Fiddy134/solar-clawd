@@ -170,9 +170,9 @@ vec3 smoke(vec3 sky, vec2 p, vec2 from, float rise, float drift, float r, float 
   float tone = 0.0;
   for (int j = 0; j < 4; j++) {
     float age = fract(iTime * rate + float(j) * 0.25);
-    vec2 at = from + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 1.5 * r * age + drift * age * age, -age * rise);
+    vec2 at = from + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 1.5 * r * age + drift * age, -age * rise);
     float puff = smoothstep(1.0, 0.1, length((p - at) / vec2(1.0, 1.5)) / (r * (0.7 + 2.3 * age)));
-    tone = max(tone, puff * smoothstep(0.0, 0.1, age) * (1.0 - age) * strength);
+    tone = max(tone, puff * smoothstep(0.0, 0.1, age) * pow(1.0 - age, 0.6) * strength);
   }
   return mix(sky, color, screen(p, tone, pitch, 45.0) * 0.8);
 }

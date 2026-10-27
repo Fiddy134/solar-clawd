@@ -18,7 +18,8 @@ const int POSE_LANTERN = 9;
 const int POSE_PADDLE = 10;
 const int POSE_GAZE = 11;
 // Landing a fish, and at his grill (catch.ts): drawn as he fishes, his rod
-// bent over the water or left propped on the rocks.
+// bent over the water, or left propped on the rocks and an arm up holding
+// his tongs.
 const int POSE_LAND = 12;
 const int POSE_GRILL = 13;
 
@@ -93,14 +94,12 @@ int keeperGrid(ivec2 c, int pose, int stride) {
     if (c.y == 2) return c.x == 3 || c.x == 5 ? (pose == POSE_SLEEP ? 4 : 2) : c.x == 1 ? 3 : c.x >= 2 ? 1 : 0;
     return c.y == 3 ? (c.x == 0 ? 3 : 1) : 0;
   }
-  // An arm up: holding binoculars to his eyes, pointing up and out, or
-  // waving, up and out by turns.
-  bool isArmUp = pose == POSE_GAZE || pose == POSE_POINT || pose == POSE_WAVE;
+  // An arm up: holding binoculars to his eyes, pointing up and out,
+  // waving, up and out by turns, or holding his tongs over the grill.
+  bool isArmUp = pose == POSE_GAZE || pose == POSE_POINT || pose == POSE_WAVE || pose == POSE_GRILL;
   if (isArmUp && c == ivec2(5, 1)) return 1;
   bool isHandOut = pose == POSE_POINT || (pose == POSE_WAVE && stride == 0);
   if ((isHandOut && c == ivec2(6, 0)) || (pose == POSE_WAVE && stride == 1 && c == ivec2(5, 0))) return 1;
-  // At his grill, a hand out over it.
-  if (pose == POSE_GRILL && c == ivec2(6, 2)) return 1;
   if (c.x < 0 || c.x > 5 || c.y < 0 || c.y > 3) return 0;
   bool isLooking = pose == POSE_LOOK;
   // Head, and a hand up to his brow as he looks out.
