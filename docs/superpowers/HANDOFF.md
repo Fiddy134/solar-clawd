@@ -1,54 +1,53 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-27 kl 09, session `8d190692` (Opus 5.5, auto mode) → nästa.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-27 kväll, session `fbc36b4f` (Opus 5.5, auto mode) → nästa.
 
 ## Läge
 
-- **Arbetsplanen för åtta frågor:** `docs/superpowers/plans/2026-10-26-arbetsplan-atta-fragor.md`. F4 gjordes före F3 (Vincent, 2026-10-26).
-- **F1, F2 och F4 är klara och på `main`**, pushade som `Fiddy134` till **`818b0d4`** (sammanslagningen av `gpu`, version **0.5.0**). Ej pushad: den här handoffen.
-- **Grenen `gpu`** och worktreen `~/solar-clawd/.worktrees/gpu` har gjort sitt (allt är på `main`); Vincent kan ta bort dem (`git worktree remove .worktrees/gpu && git branch -d gpu`). Grenen `post6-moln-avvisad` sparas som avvisat försök.
-- **Nästa fråga är F3** (kontext-fisk och löv/fåglar). F4:s konvention gäller F3:s figurer: varje figur har ett lådtest, `events()`-anrop ett per rad, och ett steg per pixel frågar först om det kan ändra pixeln.
+- **Arbetsplanen:** `docs/superpowers/plans/2026-10-26-arbetsplan-atta-fragor.md`. **F1, F2, F3 och F4 är klara** och på `main`, pushade som `Fiddy134` till **`caf632c`** (version **0.6.0**). Ej pushad: den här handoffen.
+- **Nästa fråga är F5** (motor/tema-split). Planen har fått nya punkter i F5 (bredare flikmarkering med kontrollsumma, och "när tillståndet började" så att fyrvaktaren kan gå till grillen), en labbcell före F6 (stillbild i stället för shader när inget rör sig), F6-noter (SIGUSR2, iglass/ghostfx-installation) och "Senare: full himmel hela tiden" (Vincents beslut: gäller på batteri också, och himlen syns även i flikar utan Claude; `iFocus` sparar ofokuserat).
+- **Modellpolicy (Vincent, 2026-10-27): ingen `fable`.** Där planens tabeller säger `fable` körs Opus 5.5 med samma effort (står i planens policyavsnitt).
+- **Worktrees som gjort sitt** (allt är på `main`); Vincent kan ta bort dem från en terminal: `.worktrees/{gpu,lov-faglar,q2-a,q2-b,q2-c,fisk,fisk-m1,fisk-m2,fisk-i1,fisk-i2}` med `git worktree remove` och grenarna med `git branch -D`. `post6-moln-avvisad` sparas.
 
 ## Vad den här sessionen gjorde
 
-- **Fas 4-rapporten** (`0895775`, avsnittet "F4 phase 4" i `docs/gpu-measurements.md`), från körningen `.worktrees/gpu/.preview/measure/out/2026-10-27T002134/` (128 rader, `--twice`) och 60 Hz-raderna i `…/2026-10-27-rows/`:
-  - himlens egen kostnad, `ljus-himmel` → `gpu`: **38–44 % kvar i mW** (målet ≤ 50 % nått), **58–66 % i busy cycles** (MHz × residens, närmast arbetet; förhandsvisningen sa 57–63 %), 78–95 % i device-punkter;
-  - **device % kan inte mäta målet**: GPU:n sänker klockan tills den är upptagen det mesta av tiden, så varje scen står vid 75–77 %; vid 60 Hz visar `gpu:day-clear` 81 % på en tredjedel av effekten;
-  - **60 Hz:** baslinjens dagshimmel tappar exakt halva arbetet när bilderna halveras, alltså var den inte mättad vid 120 Hz; besparingen syns som mW, inte fler bilder. Natt- och händelsescenerna (toppklocka, 100 %) är inte prövade;
-  - övriga mål: ofokuserat på `none`-nivå, `always` ofokus 2 p från fokus, omarkerad flik +5,1 p (målet 5, på gränsen); lätta himlen −53 % dag, −40 % natt i mW;
-  - load 6,82 vid starten; proberaden vid 60 Hz med `--force` (PerfPowerService 84 %), noterat i dokumentet.
-- **Ljusbeslutet: (a)+(b)** (Vincent, 2026-10-27). (b) byggt i `7ff414e`: kanten tonas ut där himlens ljushet går från 0,2 till 0,1 (`SHADE_DARK` i `hooks/glsl/main.ts`) och dess skiva läses inte under 0,1. **Inte planens ~0,45**: skymningens grå text (153) behöver kanten där. Paritet: dagen identisk, natt/skymning bara inom 1 px från text (upp till 30/255 i blått), längre ut ≤ 1/255. Bench: natt-tänd −24 %, natt-mörk −15 %, skymning −6 %. **Inte mätt i Ghostty.**
-- **Uppgift 7** (`a36a903`): README "What it costs"; "What a scene language would and would not change" i `docs/gpu-measurements.md`.
-- **Version 0.5.0** (`a6696d2`), sammanslaget och pushat efter Vincents ja.
+- **F3a (löv, blommor, fåglar, fjädrar)**, workflow `lov-faglar` (8 agenter): tre designer, två domare (C > B > A, B > C > A), ympning: C:s löv och blommor, B:s gäss med C:s tranor, B:s fjädrar. Husreceptet: `limb`/`smin`, palettbläck via `lift`, raster, nyckelplåt; `tumble()` och `widthShown()` i `common.ts`, `smin` flyttad dit (delfinen byte-identisk). Kostnad löv **1,13× main** (median, lugn dator, mjukvarurendering). Vincent såg arket och animationerna: "ser bra ut".
+- **F3b (kontexten som fisk)**, workflows `fisk-mockups` (M1 lina mot M2 hjell, domare 31–26) och `fisk-bygg`: Vincent valde **linan med lån från M2** (skelett i glöden, mörkare dagsrök, droppar vid fångsten). Markeringen `[state, fish, 1]` (0 idle, 1 clearing/grill, 2 cleared/glöd, 3 gained/fångst), `ShaderParams.context`, `const int CONTEXT`, `hooks/glsl/catch.ts`, stolpen permanent (`post()`), `/solar catch|grill` med `toss/burn/kasta/bränn` som alias, bandets blick och `~`-lukt. `basket.ts` finns kvar men anropas inte (F5:s reserv).
+- **`/clear` grillar också** (Vincents fråga): 8 s grill som `/solar grill`, glöd, sedan tom lina (`playGrill` i `register.tsx`, test i `session.test.tsx`). Under 10 % kontext: ingen grill.
+- **Fångstens nyaste fisk** visas stadigt krämvit hela fångsten (blinket var osynligt halva tiden i en stillbild).
+- **README-GIF:en** i två scener med övertoning (fångst utan fyr, sedan grill med fyren som frågar), så han aldrig teleporterar; 9,5 s, 644 KB. I den riktiga himlen hoppar han fortfarande till grillen (shadern vet inte när komprimeringen började) – F5-punkten löser det.
+- **Ghostty-researchen**, `docs/ghostty-research.md`: hela config-referensen, features + VT, Ghosttys kod och GitHub, r/Ghostty och ett andra pass via GitHub. Viktigast: **vsync-rapporten (`docs/superpowers/ghostty-discussion-draft.md`) ska inte skickas** – felet är förklarat i 1.3.1:s kod och rättat på Ghosttys main (PR #13943, #14035), ännu inte släppt; **SIGUSR2 laddar om på macOS också** (kollat i koden, inte prövat); oanvända uniforms (`iFocus`, `iTimeFocus`, `iForegroundColor`); `iPalette[256]` når shadern; projekt att låna från (ghostfx, an0sunshy, ghostty-landscapes, ghostty-term-tag, shader-lab, linecast; licenser noterade).
+- **Verktyg:** `tools/preview/sheet.sh q2|fisk <namn>`, `--zoom x,y,w,h`, `tools/preview/parity.sh record|check <dir>` (nu med fiskscenerna), `--fish N[,catch|grill|embers]` (felstavat tillstånd ger fel).
 
 ## Regler som gäller nu
 
-- Edit och Write i `~/solar-clawd` fungerar i auto mode eftersom klonen inte är laddad; spegeln `~/solar-clawd-live` laddas. Ändringar når den levande himlen bara medan Vincent armerat spegeln (git-hookarna kopierar efter en merge).
-- **Aldrig genom Claude:** `tools/dev/bootstrap.sh`, `.claude/hooks/arm.sh`, `.claude/hooks/mirror.sh --now`, skrivningar i `~/.claude/settings.json`, `.claude/` och `.git/`. Lägg inte `"$defaults"` eller trust-rader i `autoMode.environment`.
-- **Worktrees:** i `.worktrees/` (inte `EnterWorktree`). I en ny worktree: `ln -s ../../../.claude-plugin/types <wt>/.claude-plugin/types`.
-- **Tester och typer:** `claude plugin test .` (99 tester) och `npx -y -p typescript@5.6.3 tsc -p . --noEmit`. Testutskriften till en fil, läs slutet.
-- **Förhandsvisningen:** `SOLAR_ROOT=$PWD npx -y esbuild@0.24.0 tools/preview/shader.mjs --bundle --platform=node --format=esm --outfile=.preview/shader.bundle.mjs`, sedan `node .preview/shader.bundle.mjs <flaggor> --out <namn>`. Före/efter: kopiera bunten före ändringen (`.preview/b/before.bundle.mjs`), jämför med `tools/preview/diff.mjs a.png b.png --terminal term.png`. Två samtidigt i samma worktree krockar. Under zsh: `${=VAR}` för flaggor med flera ord.
-- **Mätningen i Ghostty körs inte av Claude.** Vincent startar `row`, `live` och `plan` från Terminal.app med `sudo -v &&` före. `gpu.sh report <mapp>` skriver till stdout (bara `plan` skriver `report.md`). `--force` lämnar inget spår i `context.txt`.
-- **Läs GPU-kostnad i mW och busy cycles, inte device %**; skriv MHz och residens bredvid.
-- **Bench i förhandsvisningen får Claude köra**, bara växelvisa före/efter-par.
-- **Utåtriktat skickas av Vincent:** Ghostty-rapporten (`docs/superpowers/ghostty-discussion-draft.md`), PR:er; push bara efter Vincents ja, som `Fiddy134` (`gh auth switch -u Fiddy134`, push, tillbaka till `Iggy-Vincent`). Versionsbump i `.claude-plugin/plugin.json` när modden ändras.
-- `tool.check`-hooken i `hooks/register.tsx` förblir ren genomsläppning. Inget får göra himlen mer "lively" utan mätning.
-- Commit-ämnen beskriver världen som den nu är, specar på svenska, planer och kod på engelska.
+- Edit och Write i `~/solar-clawd` fungerar i auto mode; spegeln `~/solar-clawd-live` laddas och når den levande himlen bara medan Vincent armerat den.
+- **Aldrig genom Claude:** `tools/dev/bootstrap.sh`, `.claude/hooks/arm.sh`, `.claude/hooks/mirror.sh --now`, skrivningar i `~/.claude/settings.json`, `.claude/` och `.git/`. Skicka inga signaler till Vincents körande Ghostty utan att fråga.
+- **Worktrees:** i `.worktrees/` (inte `EnterWorktree`). I en ny: `ln -s ../../../.claude-plugin/types <wt>/.claude-plugin/types`.
+- **Tester och typer:** `claude plugin test .` (**108 tester**) och `npx -y -p typescript@5.6.3 tsc -p . --noEmit`. Testutskriften till en fil. Statistiktestet i `sky.test.tsx` kan slå i tidsgränsen under last; kör om.
+- **Hooks-modulen:** `$` får bara skickas till funktioner på filens toppnivå (motorns statiska kontroll), som `showCatch` och `playGrill`.
+- **Förhandsvisningen:** `SOLAR_ROOT=$PWD npx -y esbuild@0.24.0 tools/preview/shader.mjs --bundle --platform=node --format=esm --outfile=.preview/shader.bundle.mjs`, sedan `node .preview/shader.bundle.mjs <flaggor> --out <namn>`. Två samtidigt i samma worktree krockar. Bench bara i växelvisa par och helst på en lugn dator (samtidiga workflows gav brus upp till 1,4×).
+- **Att visa Vincent:** `open -a Preview <png…>`, animationer som mp4 (`ffmpeg` finns) i QuickTime, GIF i Safari.
+- **Mätningen i Ghostty körs inte av Claude.** Läs GPU-kostnad i mW och busy cycles, inte device %.
+- **Utåtriktat skickas av Vincent;** push bara efter Vincents ja, som `Fiddy134` (`gh auth switch -u Fiddy134`, push, tillbaka till `Iggy-Vincent`). Versionsbump i `.claude-plugin/plugin.json` när modden ändras.
+- `tool.check`-hooken förblir ren genomsläppning. Inget får göra himlen mer "lively" utan mätning.
 
 ## Lösa trådar
 
-- **(b) i Ghostty är omätt.** Vill Vincent ha det: `scenes.sh` för `main` (eller en ref från `7ff414e`) och en `row gpu:night-lit`-motsvarighet; skulle sänka nattens 44 %.
-- Ghostty-rapporten ligger kvar som utkast för Vincent.
-- Två ospårade säkerhetskopior i `.claude/` (`settings.local.json.bak-20261026-*`) kan tas bort av Vincent.
-- **Förhandsvisningens svagheter:** texturen upprepas vid kanterna (REPEAT); `diff.mjs` räknar varje icke-bakgrundspixel som text; med `--retina` går ersättningstexten över fyrremsan.
-- `tools/dev/watch.sh` kräver `fswatch` (inte installerat); valfritt.
+- **0.6.0 är inte sedd i riktiga Ghostty**, bara i förhandsvisningen. Vincent armerar spegeln och tittar; fel rättas i 0.6.1.
+- Avvikelser Vincent kan vilja ändra: gässens glid håller hela vart sjätte slag (planen sa 30 %, domarna valde så); fyrvaktaren går till grillen även när rutinen har honom inne.
+- F3a-granskningens kvarvarande småsaker: max två bitar per pixel i löven (den tredje klipps där tre överlappar); `--zoom` väntar inte på bildavkodning; kontaktarket i `sheet.sh q2` delar a/b-par över rader.
+- `(b)` (kanten bara där himlen är ljus) är fortfarande omätt i Ghostty.
+- `docs/superpowers/ghostty-discussion-draft.md` ligger kvar men ska inte skickas; kan tas bort eller skrivas om till en rad om att pröva nattbygget.
+- Två ospårade säkerhetskopior i `.claude/` kan tas bort av Vincent.
 
 ## Nästa steg
 
-1. **F3** enligt planen (F3a löv/blommor/fåglar, F3b fyrvaktarens kontext), med F4:s konventioner och en bench per ny figur mot `fyr`/himlen.
-2. Valfritt: (b) mätt i Ghostty; ta bort worktreen `gpu`.
+1. Vincent tittar på 0.6.0 i Ghostty (armerad spegel).
+2. **F5** (motor/tema-split) enligt planen, med de nya punkterna: markeringen i kontraktet (16–19, kontrollsumma, starttid för tillståndet), `basket.ts` som motorns reserv. Opus 5.5 i stället för fable.
+3. Valfritt före F6: labbcellen med stillbilden, och en snabb prövning av SIGUSR2 och av färgerna 17–19 per flik (probe-shader).
 
-Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Börja F3."*
+Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Börja F5."*
 
 ## Hur handoffen används
 
