@@ -1168,3 +1168,21 @@ them, and a per-pixel stage asks first whether it can change the pixel.
 Where a scene format would pay is in writing skies, the theme format of
 F5, F7 and F8, and there being no more costly than GLSL by hand is a
 requirement on it, not its purpose.
+
+## The sky at a frame rate of its own, 2026-10-27
+
+One pass of `tools/measure/gpu.sh plan fps` (27 rows, M1 Pro, built-in display, 120 Hz, AC, Ghostty 1.3.1, commit `dfab730`; the full table is `docs/measurements/2026-10-27-fps.md`). `false-novsync` is `custom-shader-animation = false` with `window-vsync = false`, so Ghostty draws only when something wakes the surface; `tick<hz>` is the terminal writing the tab's mark again that many times a second (`tools/measure/term.sh`). Ghostty warns that out-of-sync rendering on macOS 14.4+ can cause a kernel panic; none came during this run or the blind trial before it.
+
+What the probe counted, focused: idle 1.8 frames a second, ticking at 15, 24 and 30 gave 15.8, 24.3 and 30.2, a spinner 10.6, and fifty lines a second of output 38.8, so heavy output did not run past 120 without vsync. Ticking at 24: out of focus 23.8, covered by another window 24.1, minimized 1.5, behind another tab 1.9. A covered window goes on drawing what it is woken for; a minimized one and a tab behind another do not.
+
+What the whole GPU drew (mW, mean of 30 s):
+
+| scene | as now (`true`, 120 Hz) | 15 a second | 24 a second | 30 a second |
+|---|---|---|---|---|
+| floor (passthrough) | 885 | 312 | 363 | 355 |
+| day-clear | 5936 | 738 | 1256 | 1309 |
+| night-lit | 5461 | 728 | 953 | 1172 |
+| day-clear, out of focus | ~0 under `true` (F2) | | 1120 | |
+| day-clear, spinner | | | 660 (spinner alone, no ticks) | |
+
+At 24 a second the focused sky draws 79 % less power by day and 83 % less on a lit night than at 120, and the floor falls by 59 %. Ghostty's own CPU went from 14 % to 9 %. Out of focus at 24 it costs about as much as focused (1120 against 1256 mW), where `true` costs nothing today. The 15/24/30 rows are not in proportion (day 24 and 30 nearly equal), so one pass is good for the size of the saving and not for the shape of the curve; device % swings ±6–10 under ticking, since its frames come in bursts, and says little here. Vincent's blind trial the same evening found 24 and 30 a second "nästan exakt som 120" and 15 visible in the dolphin's leap.
