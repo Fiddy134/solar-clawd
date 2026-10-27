@@ -19,6 +19,15 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 
 Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
 
+## What it costs
+
+In Ghostty the sky is a shader run for every pixel of the window, every frame. Measured on an M1 Pro's built-in display, 3024×1964 at 120 Hz ([`docs/gpu-measurements.md`](docs/gpu-measurements.md)):
+
+- **Out of focus it costs nothing.** Ghostty stops drawing a window out of focus while its terminal is still, so the GPU falls to where it is with no shader. The exception is the lighthouse's sweep, up to five minutes after Claude finishes or asks, when the sky keeps moving behind other windows.
+- **In focus, any shader at all** keeps the GPU about 37 % busy at 0.8 W, an empty one as much as the sky: that is Ghostty drawing and compositing the window 120 times a second, and it halves at 60 Hz. The sky itself adds about 5 W by day and 6.5 W on a lit night.
+- **Busy % says little.** The GPU lowers its clock until it is busy most of the time, so a heavy sky and a light one can both show 75 %; watts tell them apart. macOS 27 gives no GPU time per process, so these are the whole GPU's numbers.
+- **On battery, and while you are away,** the sky leaves out its clouds, which takes about half of its cost by day.
+
 ## Requirements
 
 - macOS, or Linux (see [Linux](#linux))
@@ -64,7 +73,7 @@ The mod rewrites the shader and asks Ghostty to reload its config, which on Linu
 What differs from macOS:
 
 - Ghostty draws with OpenGL there, so the shader flips its coordinates and reads the terminal's colours in linear light as well.
-- Battery is read from `/sys/class/power_supply` (the sky stands still on battery).
+- Battery is read from `/sys/class/power_supply` (on battery the sky stands still and leaves out its clouds).
 - There is no idle detection, so the sky keeps animating while you are away.
 - No now-playing music in the band, and no iTerm2 background.
 

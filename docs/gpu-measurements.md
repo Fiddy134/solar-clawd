@@ -1135,3 +1135,36 @@ shader 2.66:
 
 In Ghostty this is not measured; the night's −24 % in the bench would
 come off the 44 % left in mW above.
+
+## What a scene language would and would not change
+
+F4 asked whether the sky should get a language of its own, a scene
+format compiled to GLSL, for the GPU's sake. No, and the runs above say
+why.
+
+What the sky costs is frames × pixels × work per pixel. The frames are
+Ghostty's: 120 a second while the window is in focus, whatever the shader
+says, and none out of focus under `true`. The pixels are the window's.
+Together they are the floor, 37 % busy and 0.8 W with an empty shader,
+halving at 60 Hz; no shader, written by hand or by a compiler, gets
+under it. A scene language reaches only the third factor, and only if
+its compiler makes the shader do less per pixel than the hand-written one.
+
+Everything F4 saved came from that third factor, by a handful of
+conventions applied by hand: ask where before who (the clouds placed
+before their kind is chosen), leave alone the pixels a thing cannot reach
+(each event's box test, the star chart's run of tiles, an unmarked tab
+returning the terminal first), read no more than the result needs (the
+rim's 13 places, not 21), and do no per-pixel work where it cannot show
+(the rim on a dark sky). A compiler could enforce the box test and emit
+the same early exits; it would not find better ones, and the
+measurements are the only way to tell which exits pay. The 60 Hz rows
+also say the sky by day was not dropping frames, so there was no hidden
+cost a different structure could have uncovered.
+
+What stays as convention, so the next scene keeps to it: every event has
+a box test, `events()` calls stand one to a line so `--without` can drop
+them, and a per-pixel stage asks first whether it can change the pixel.
+Where a scene format would pay is in writing skies, the theme format of
+F5, F7 and F8, and there being no more costly than GLSL by hand is a
+requirement on it, not its purpose.
