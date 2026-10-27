@@ -175,7 +175,7 @@ export function themeEventIndex(kind: ActiveEvent['kind'], theme: Theme): number
 
 // GLSL without its comments, each kept as spaces so the rest stays where
 // it was.
-function uncommented(glsl: string): string {
+export function uncommented(glsl: string): string {
   return glsl.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, c => c.replace(/[^\n]/g, ' '))
 }
 

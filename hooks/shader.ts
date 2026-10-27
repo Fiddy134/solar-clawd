@@ -23,7 +23,7 @@ import { EVENTS } from './glsl/events'
 import { CONTEXT_MARK } from './glsl/context'
 import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
-import { ENTRY_POINTS, themeEventIndex } from './themes/theme'
+import { ENTRY_POINTS, themeEventIndex, uncommented } from './themes/theme'
 import type { Theme } from './themes/theme'
 
 // Where the sky stands at one moment.
@@ -460,12 +460,13 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
 // engine's. The wastebasket (glsl/basket.ts) and its line in mainImage are
 // in it only for a theme that leaves the context window to the engine:
 // glslang keeps a branch never taken, and every tab compiles the whole
-// text. A theme that leaves one of the four out gets a stub that draws
-// nothing.
+// text. A theme that leaves one of the four out, or has it only in a
+// comment, gets a stub that draws nothing.
 function bodyOf(theme: Theme): string {
   const isBasket = theme.manifest.context === 'engine'
   const main = isBasket ? MAIN : MAIN.replace(BASKET_CALL, '')
-  const stubs = ENTRY_POINTS.filter(name => !new RegExp(`\\b${name}\\s*\\([^)]*\\)\\s*\\{`).test(theme.glsl)).map(name => STUBS[name])
+  const text = uncommented(theme.glsl)
+  const stubs = ENTRY_POINTS.filter(name => !new RegExp(`\\b${name}\\s*\\([^)]*\\)\\s*\\{`).test(text)).map(name => STUBS[name])
 
   return [COMMON, PROTOTYPES, SKY, CLOUDS, EVENTS, CONTEXT_MARK, ...(isBasket ? [BASKET] : []), main, theme.glsl, ...stubs].join('\n')
 }

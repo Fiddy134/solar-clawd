@@ -264,6 +264,10 @@ test('a theme that leaves out themeEvent or themeWindow gets the engine stubs', 
   expect(only).toContain('vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind) { return sky; }')
   expect(only).toContain('float themeWindow(vec2 p, float u) { return 1.0; }')
   expect(only.match(/vec3 scenery\(vec3 sky, vec2 p, float u, float k\) \{/g)).toHaveLength(1)
+  // A comment that reads like a definition defines nothing.
+  const commented = skyShader(params, { ...bare, glsl: '// themeEvent(...) { ... }\n/* float themeWindow(vec2 p, float u) { return 0.0; } */\n' })
+  expect(commented).toContain('vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind) { return sky; }')
+  expect(commented).toContain('float themeWindow(vec2 p, float u) { return 1.0; }')
   // fyr defines all four, once each.
   const fyr = skyShader(params, FYR)
   for (const name of ['scenery', 'resident', 'themeEvent', 'themeWindow']) expect(fyr.match(new RegExp(`\\b${name}\\([^)]*\\) \\{`, 'g'))).toHaveLength(1)
