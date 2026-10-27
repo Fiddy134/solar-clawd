@@ -141,7 +141,13 @@ test("the lint keeps a theme from the terminal's image, the GPU's time and the e
     'float f(float x) { float s = 0.0; for (int a = 0; a < 48; a++) { s += x; } return s; } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { for (int j = 0; j < 48; j++) { s += f(1.0); } } return s; }',
     'more than two deep',
   )
-  flags('float f(float x[2], vec2 y) { return 1.0; } float h(float a = (1.0)) { return a; }', 'cannot read')
+  flags('float f(float x[2], vec2 y) { return 1.0; } float h(float a = (1.0)) { return a; }', 'cannot count')
+  // A depth counted while a circle of overloads was cut short is not
+  // reused: x(float) reaches y's two loops, and a loop calling it is three.
+  flags(
+    'float y(float t) { float s = 0.0; for (int a = 0; a < 48; a++) { for (int b = 0; b < 48; b++) { s += x(vec2(t)); } } return s; } float x(vec2 v) { return v.x; } float x(float t) { return y(t); } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { s += x(1.0); } return s; }',
+    'more than two deep',
+  )
   // What is fine: its own names, a local that shadows the engine's, two
   // loops deep, a loop calling a function without one, an out parameter,
   // and the four entry points.
