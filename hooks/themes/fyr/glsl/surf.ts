@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the keeper's surf,
+// The sky shader's GLSL, part of the theme fyr: the keeper's surf,
 // now and then, on a wave of his own.
 export const SURF = `
 // --- His surf ----------------------------------------------------------------
@@ -9,7 +9,7 @@ export const SURF = `
 // The salt gives none in the first eight rounds, so a Ghostty just started
 // doesn't open on him surfing round after round.
 bool isSurfLoop(float n) {
-  if (KEEPER_FORCE != 0) return KEEPER_FORCE == 2;
+  if (THEME_FORCE != 0) return THEME_FORCE == 2;
   return PRECIPITATION == 0 && rand(int(n) * 19 + 41) < 0.1;
 }
 
@@ -20,7 +20,7 @@ const float SURF_LOOP = 40.0;
 // the lantern lit, and not asleep or at night unless it is forced.
 float surfTime(float time) {
   if (BEACON != 0) return -1.0;
-  if (KEEPER_FORCE == 2) return mod(time, SURF_LOOP);
+  if (THEME_FORCE == 2) return mod(time, SURF_LOOP);
   if (KEEPER_ASLEEP > 0.5 || night() > 0.6) return -1.0;
   float n = floor(time / DAY_LOOP);
   float t = time - n * DAY_LOOP;

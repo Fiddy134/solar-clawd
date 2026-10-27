@@ -5,8 +5,8 @@ import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './beacon'
 import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
 import type { Mode, Reaction } from './clawd'
-import { contextAt, EVENT_WORDS, eventsAt, OLD_EVENT_WORDS, PREVIEW_MS, showerAt, shootingRate } from './events'
-import type { EventKind, Forced } from './events'
+import { contextAt, EVENTS, eventsAt, kindOf, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
+import type { Forced } from './events'
 import {
   endGhosttySky,
   ghosttyConfigs,
@@ -34,6 +34,8 @@ import { shaderParams, skyShader } from './shader'
 import type { ShaderParams } from './shader'
 import { skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
+import { BASE_THEME, THEMES } from './themes/index'
+import type { Theme } from './themes/theme'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
 
@@ -145,6 +147,9 @@ export const register: Register = on => {
   const where: Where = { place: STOCKHOLM, isChosen: false, weather: null, offsetMs: undefined, kp: null, lastRainAt: null }
   // Events played on request (/solar event) or earned (a long turn done).
   let forced: Forced[] = []
+  // What the sky's engine draws its world with: its scenery, who lives
+  // there and the events of its own.
+  let theme: Theme = THEMES[BASE_THEME]
   // Claude's state as Clawd shows it: a turn running, waiting on the person,
   // and the last passing reaction.
   const claude = {
@@ -258,7 +263,7 @@ export const register: Register = on => {
     const { ms } = momentAt(now)
     forced = forced.filter(event => now - event.at < PREVIEW_MS)
     const context = contextAt(ms, where.place, where.weather, where.lastRainAt, where.offsetMs)
-    const events = eventsAt(ms, context, forced.map(event => ({ ...event, at: event.at - now + ms })))
+    const events = eventsAt(ms, context, forced.map(event => ({ ...event, at: event.at - now + ms })), [...EVENTS, ...specsOf(theme)])
 
     return { events, context }
   }
@@ -291,7 +296,7 @@ export const register: Register = on => {
       paper: claude.fill,
       isContextInSky: isInGhosttySky(),
       track,
-      event: events.length > 0 ? EVENT_WORDS[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
+      event: events.length > 0 ? wordsOf(theme)[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
   }
 
@@ -328,7 +333,7 @@ export const register: Register = on => {
     if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now) }))
+    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now) }), theme)
   }
 
   on('session.start', async ($, e, next) => {
@@ -732,23 +737,25 @@ export const register: Register = on => {
     }
 
     if (word === 'events') {
-      const words = Object.values(EVENT_WORDS).join(', ')
+      const words = Object.values(wordsOf(theme)).join(', ')
 
       return { text: `Solar: ${words}. Play one with /solar event <name>.` }
     }
 
     if (word.startsWith('event')) {
       const name = word.slice('event'.length).trim()
-      const kind = (Object.keys(EVENT_WORDS) as EventKind[]).find(k => EVENT_WORDS[k] === name || k.toLowerCase() === name) ?? OLD_EVENT_WORDS[name]
+      const kind = kindOf(name, theme)
       if (!kind) return { text: `Solar: no event called "${name}". /solar events lists them.` }
-      // The keeper lives in Ghostty's sky alone: the band has no lighthouse.
-      if ((kind === 'abduction' || kind === 'surf') && ghostty === null) {
-        return { text: `Solar: the ${EVENT_WORDS[kind]} shows only in Ghostty's sky, and this session is not running in Ghostty.` }
+      const words = wordsOf(theme)
+      // A theme's previews (fyr's keeper surfing, a UFO taking him) play in
+      // Ghostty's sky alone: the band has no lighthouse.
+      if (theme.manifest.previews.some(preview => preview.kind === kind) && ghostty === null) {
+        return { text: `Solar: the ${words[kind]} shows only in Ghostty's sky, and this session is not running in Ghostty.` }
       }
       forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
       await update($, isHidden, () => false)
 
-      return { text: `Solar: ${EVENT_WORDS[kind]} for ${PREVIEW_MS / 1000} seconds.` }
+      return { text: `Solar: ${words[kind]} for ${PREVIEW_MS / 1000} seconds.` }
     }
 
     // The context window, played: the keeper's catch, a fish on his line

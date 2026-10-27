@@ -174,6 +174,16 @@ test('/solar event plays an event in the sky, and a long turn earns confetti', a
   // A preview ends.
   await clock.advance(100_000)
   expect(shader()).toContain('const int EVENT_COUNT = 0;')
+  // fyr's dolphins, by their old Swedish words too, are the theme's events
+  // from 100.
+  expect(await run('event rosa delfin')).toEqual(expect.objectContaining({ text: expect.stringContaining('pink dolphin') }))
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int EVENT_KIND[1] = int[1](101);')
+  expect(await run('event delfin')).toEqual(expect.objectContaining({ text: expect.stringContaining('dolphin') }))
+  await clock.advance(10_000)
+  expect(shader()).toContain('const int EVENT_KIND[2] = int[2](101, 100);')
+  await clock.advance(100_000)
+  expect(shader()).toContain('const int EVENT_COUNT = 0;')
 
   await $.turn.complete({ answer: 'done', durationMs: 4 * 60_000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(10_000)

@@ -6,11 +6,14 @@ import { localTime, STOCKHOLM, swedishOffsetMs } from './astro'
 import { swedish } from './test-kit'
 import { activityAt, activityOn, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
 import { fromBase64 } from './paint'
-import { CATCH } from './glsl/catch'
+import { CATCH } from './themes/fyr/glsl/catch'
 import { CONTEXT_MARK } from './glsl/context'
 import { MAIN } from './glsl/main'
 import { shaderParams, skyShader, tabMark } from './shader'
 import { wallpaperPng } from './sky'
+import { BASE_THEME, THEMES } from './themes/index'
+
+const FYR = THEMES[BASE_THEME]
 
 test('the hours map to what Clawd does, the same every day', () => {
   const day = [2, 3, 5, 6, 7, 8, 11, 12, 15, 16, 21, 22, 23].map(hour => activityAt({ hour }))
@@ -80,7 +83,7 @@ test('the wastebasket fills with the context window, a ball at a time, and burns
 })
 
 test("in Ghostty the context window hangs on the keeper's line, each tab's own carried in its mark", () => {
-  const text = (context: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context } as never))
+  const text = (context: object | null) => skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context } as never), FYR)
   expect(text(null)).toContain('const int CONTEXT = 0;')
   expect(text({ fish: 7, state: 'idle' })).toContain('const int CONTEXT = 1;')
   // The shader's text is one for every tab: what is on its line is not in it.
@@ -99,7 +102,7 @@ test("in Ghostty the context window hangs on the keeper's line, each tab's own c
 })
 
 test("the keeper's catch reads the tab's mark, and the shader's tab test lets every state of it through", () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context: { fish: 7, state: 'idle' } }))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, { context: { fish: 7, state: 'idle' } }), FYR)
   // The engine reads the mark; the keeper's catch only asks it.
   expect(CONTEXT_MARK).toContain('iPalette[16]')
   expect(text).toContain(CONTEXT_MARK)

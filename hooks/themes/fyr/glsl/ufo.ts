@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the UFO that comes
+// The sky shader's GLSL, part of the theme fyr: the UFO that comes
 // for the keeper now and then, and him drawn at the lighthouse.
 export const UFO = `
 // --- The UFO -----------------------------------------------------------------
@@ -21,7 +21,7 @@ const float HOVER = 2.6;
 // where he is. Forced (/solar event abduction), every slot, from its start.
 // Never in a demo's time-lapse, which has no time for one.
 float abductionStart(float slot, float period) {
-  if (KEEPER_FORCE == 1) return slot * period;
+  if (THEME_FORCE == 1) return slot * period;
   int n = int(mod(slot, 100000.0));
   if (DEMO_COUNT > 0 || rand(n * 5 + 3) >= 0.7) return -1.0;
   float earliest = slot * period + rand(n * 5 + 4) * (period - 40.0);
@@ -47,7 +47,7 @@ float abductionStart(float slot, float period) {
 // the top left (27.5 to 31.5).
 Abduction abductionAt(float time, Lighthouse l) {
   Abduction a = Abduction(false, -1.0, vec2(0.0), 0.0, 0.0, false);
-  float period = KEEPER_FORCE == 1 ? 60.0 : (night() > 0.6 ? 1800.0 : 5400.0);
+  float period = THEME_FORCE == 1 ? 60.0 : (night() > 0.6 ? 1800.0 : 5400.0);
   float slot = floor(time / period);
   float start = -1.0;
   for (int i = 0; i < 2; i++) {

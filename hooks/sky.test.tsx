@@ -4,7 +4,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import { horizontalAt, localTime, moonAt, occasionAt, STOCKHOLM, sunAt, swedishClock, swedishOffsetMs } from './astro'
-import { EVENT_WORDS, EVENTS, eventsAt, shootingRate } from './events'
+import { EVENT_WORDS, EVENTS, eventsAt, shootingRate, specsOf, wordsOf } from './events'
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import type { DomePoint } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
@@ -15,7 +15,10 @@ import { shaderParams, skyShader } from './shader'
 import { BASKET } from './glsl/basket'
 import { COMMON } from './glsl/common'
 import { PROTOTYPES } from './glsl/prototypes'
+import { BASE_THEME, THEMES } from './themes/index'
 import { contextFor, ISS_OMM, ISS_REFERENCE, ISS_PASS, swedish, DAY_KINDS, daysAt, kindsAt, someMinute } from './test-kit'
+
+const FYR = THEMES[BASE_THEME]
 
 test('Swedish time follows summer and winter time', () => {
   // 2026-10-24 is still CEST (+2), 2026-12-01 is CET (+1).
@@ -43,20 +46,20 @@ test('the sky shader is the same text for the same scene, its constants baked in
   const snowyNight = { temperature: -2, code: 71, cloudCover: 60, wind: 3 }
   const input = { ms: Date.UTC(2026, 9, 24, 20, 0), t: 0, place: STOCKHOLM, weather: snowyNight, kp: 5 }
   const options = {}
-  const shader = skyShader(shaderParams(input, options))
+  const shader = skyShader(shaderParams(input, options), FYR)
   // Within the same two minutes, nothing to reload.
-  expect(skyShader(shaderParams({ ...input, ms: input.ms + 30_000 }, options))).toBe(shader)
-  expect(skyShader(shaderParams({ ...input, ms: input.ms + 180_000 }, options))).not.toBe(shader)
+  expect(skyShader(shaderParams({ ...input, ms: input.ms + 30_000 }, options), FYR)).toBe(shader)
+  expect(skyShader(shaderParams({ ...input, ms: input.ms + 180_000 }, options), FYR)).not.toBe(shader)
   expect(shader).toContain('const float IS_DAY = 0.0;')
   expect(shader).toContain('const int PRECIPITATION = 4;')
   expect(shader).toContain('const int DEMO_COUNT = 0;')
   expect(shader).toContain('void mainImage(out vec4 fragColor, in vec2 fragCoord)')
-  expect(skyShader(shaderParams({ ...input, ms: Date.UTC(2026, 9, 24, 11) }, options))).toContain('const float IS_DAY = 1.0;')
+  expect(skyShader(shaderParams({ ...input, ms: Date.UTC(2026, 9, 24, 11) }, options), FYR)).toContain('const float IS_DAY = 1.0;')
   // A demo bakes in the whole day, played with iTime.
-  expect(skyShader(shaderParams(input, { ...options, demo: { seconds: 48 } }))).toContain('const int DEMO_COUNT = 96;')
+  expect(skyShader(shaderParams(input, { ...options, demo: { seconds: 48 } }), FYR)).toContain('const int DEMO_COUNT = 96;')
   // The lighter sky, on battery or with the person away, leaves the clouds out.
   expect(shader).toContain('const float LIGHT = 0.0;')
-  expect(skyShader(shaderParams(input, { ...options, isLight: true }))).toContain('const float LIGHT = 1.0;')
+  expect(skyShader(shaderParams(input, { ...options, isLight: true }), FYR)).toContain('const float LIGHT = 1.0;')
   expect(shader).toContain('if (LIGHT < 0.5) sky = clouds(')
 })
 
@@ -93,6 +96,33 @@ test('events keep to their conditions and come about as often as they should', (
   const comets = count('comet', Date.UTC(2026, 0, 1), 365, { temperature: 0, code: 0, cloudCover: 0, wind: 2 })
   expect(comets).toBeGreaterThan(2)
   expect(comets).toBeLessThan(9)
+})
+
+// Pinned before the dolphins left the engine's list for the theme fyr:
+// every event of a fortnight of slots, under three weathers, at the same
+// start and in the same order as then.
+test('the schedule is as it was: a fortnight under three weathers, the same events in the same order', () => {
+  const schedule = (at: number, ctx: ReturnType<typeof contextFor>) => eventsAt(at, ctx, [], [...EVENTS, ...specsOf(FYR)])
+  const weathers = [undefined, { temperature: 8, code: 61, cloudCover: 90, wind: 4 }, { temperature: 10, code: 2, cloudCover: 40, wind: 8 }]
+  const from = Date.UTC(2026, 9, 20)
+  const kinds = new Set<string>()
+  // FNV-1a over each moment's list, kind and start, in order.
+  let digest = 0x811c9dc5
+  const add = (text: string) => {
+    for (let i = 0; i < text.length; i++) digest = Math.imul(digest ^ text.charCodeAt(i), 0x01000193) >>> 0
+  }
+  for (const weather of weathers) {
+    for (let at = from; at < from + 14 * 86_400_000; at += 60_000) {
+      for (const event of schedule(at, contextFor(at, weather))) {
+        kinds.add(event.kind)
+        add(`${event.kind}@${event.start};`)
+      }
+      add('\n')
+    }
+  }
+  expect(kinds.has('dolphin')).toBe(true)
+  expect(kinds.has('pinkDolphin')).toBe(true)
+  expect(digest.toString(16)).toBe('61c0e64b')
 })
 
 test('a rainbow needs the sun out after rain', () => {
@@ -198,7 +228,7 @@ test('the moon stands where it is, and is gone below the horizon', () => {
   expect(Math.abs(params.moon.at!.y - domePoint(moon).y)).toBeLessThan(0.002)
   const down = Date.UTC(2026, 9, 24, 8)
   expect(shaderParams({ ms: down, t: 0, place: STOCKHOLM, weather: null }, {}).moon.at).toBeNull()
-  expect(skyShader(params)).toContain('const vec2 MOON_AT')
+  expect(skyShader(params, FYR)).toContain('const vec2 MOON_AT')
 })
 
 test('the chart: Orion south on a January night, Vega overhead in August, Polaris always', () => {
@@ -236,10 +266,10 @@ test('a southern sky charts without Polaris, and every star sits in its own tile
 })
 
 test('a night shader carries the real stars, a day shader none', () => {
-  const night = skyShader(shaderParams({ ms: Date.UTC(2026, 0, 15, 21), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const night = skyShader(shaderParams({ ms: Date.UTC(2026, 0, 15, 21), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   expect(Number(/const int STAR_COUNT = (\d+);/.exec(night)?.[1])).toBeGreaterThan(50)
   expect(Number(/const int LINE_COUNT = (\d+);/.exec(night)?.[1])).toBeGreaterThan(5)
-  const day = skyShader(shaderParams({ ms: Date.UTC(2026, 5, 15, 10), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const day = skyShader(shaderParams({ ms: Date.UTC(2026, 5, 15, 10), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   expect(day).toContain('const int STAR_COUNT = 0;')
 })
 
@@ -251,13 +281,13 @@ test('the comet hangs at its place among the stars and turns with them', () => {
   const later = params(ms + 80_000).comet! // the same preview, a scene later
   expect(now).not.toBeNull()
   expect(Math.hypot(later.at.x - now.at.x, later.at.y - now.at.y)).toBeGreaterThan(0)
-  expect(skyShader(params(ms))).toContain('const vec2 COMET_AT')
+  expect(skyShader(params(ms), FYR)).toContain('const vec2 COMET_AT')
   expect(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}).comet).toBeNull()
 })
 
 test('the lighthouse: orange when Claude asks, white when done', () => {
   const ms = Date.UTC(2026, 9, 24, 20)
-  const text = (options: object) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, options))
+  const text = (options: object) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, options), FYR)
   expect(text({})).toContain('const int BEACON = 0;')
   expect(text({ beacon: { mode: 'asking', isUrgent: false } })).toContain('const int BEACON = 1;')
   expect(text({ beacon: { mode: 'done', isUrgent: false } })).toContain('const int BEACON = 2;')
@@ -268,7 +298,7 @@ test("glass knows Claude Code's own field colours, in linear light on Linux", ()
   const ms = Date.UTC(2026, 9, 24, 20)
   // The colours the shader is given, back in 0–255 sRGB.
   const fields = (isYUp: boolean) => {
-    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { isYUp }))
+    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { isYUp }), FYR)
     const list = /const vec3 FIELD_COLOURS\[(\d+)\] = vec3\[\d+\]\((.*)\);/.exec(text)
     expect(list).not.toBeNull()
     expect(text).toContain(`const int FIELD_COUNT = ${list![1]};`)
@@ -375,14 +405,14 @@ test('every Swedish day has a word, and /solar event can play it', () => {
 })
 
 test('the shader glances at the cursor, and never at iDate', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   expect(text).toContain('iCurrentCursor')
   expect(text).toContain('iTimeCursorChange')
   expect(text).not.toContain('iDate')
 })
 
 test('confetti is an even rain: it ignores where its loop is', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   const body = /vec3 confetti\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
   expect(body).not.toBe('')
   expect(body).not.toMatch(/float t\b/)
@@ -390,14 +420,14 @@ test('confetti is an even rain: it ignores where its loop is', () => {
 })
 
 test('the dolphin, the leaves and the feathers share one smin and one tumble, in the common part', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   expect(text.match(/float smin\(/g)).toHaveLength(1)
   expect(text.indexOf('float smin(')).toBeLessThan(text.indexOf('float dolphinShape('))
   expect(text.match(/vec2 tumble\(/g)).toHaveLength(1)
 })
 
 test('the parts share pitch, night, keyInk and the key plate from COMMON, each defined once', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   const helpers = ['float pitch(', 'float night(', 'vec3 keyInk(', 'vec2 keyShift(', 'vec3 keyPlate(', 'float box(', 'vec3 nightInk(']
   for (const helper of [...helpers, 'float noise2(', 'float fbm(', 'float steam(', 'vec3 lamp(', 'int spriteAt(', 'vec3 sprite(']) {
     expect(COMMON).toContain(helper)
@@ -411,7 +441,7 @@ test('the parts share pitch, night, keyInk and the key plate from COMMON, each d
 })
 
 test('the sky draws its scenery, resident and theme events through four prototypes', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   expect(text).toContain(`${COMMON}\n${PROTOTYPES}`)
   const main = /void mainImage\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
   expect(main).not.toMatch(/\b(beacon|keeper)\(/)
@@ -427,7 +457,7 @@ test('the sky draws its scenery, resident and theme events through four prototyp
 })
 
 test('the birds are printed in lifted inks, so they dim with the sky', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   // The skein finds which birds box the pixel, and birdPrint inks them.
   const birds = /vec3 birds\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
   const print = /vec3 birdPrint\([^)]*\) \{[\s\S]*?\n\}/.exec(text)?.[0] ?? ''
@@ -437,7 +467,7 @@ test('the birds are printed in lifted inks, so they dim with the sky', () => {
 })
 
 test('a leaf or a feather is boxed before it is turned or printed', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   for (const name of ['drift', 'feathers']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
     expect(body).not.toBe('')
@@ -449,7 +479,7 @@ test('a leaf or a feather is boxed before it is turned or printed', () => {
 })
 
 test('every plate of a leaf, a feather or a bird is a lifted ink', () => {
-  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}))
+  const text = skyShader(shaderParams({ ms: Date.UTC(2026, 9, 24, 20), t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
   for (const name of ['driftPrint', 'featherPrint', 'birdPrint']) {
     const body = new RegExp(`vec3 ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n\\}`).exec(text)?.[0] ?? ''
     // The key plate is lifted too: keyInk and keyPlate are lift(INK_INDIGO, k).
@@ -491,14 +521,14 @@ test("Midsummer's Eve has blossom drifting by its maypole", () => {
 
 test('the lighthouse stands on the stage strip when its width is known', () => {
   const at = Date.UTC(2026, 9, 25, 20, 0)
-  const text = (stagePx?: number) => skyShader(shaderParams({ ms: at, t: 0, place: STOCKHOLM, weather: null }, { stagePx }))
+  const text = (stagePx?: number) => skyShader(shaderParams({ ms: at, t: 0, place: STOCKHOLM, weather: null }, { stagePx }), FYR)
   expect(text()).toContain('const float STAGE_PX = 0.0;')
   expect(text(480)).toContain('const float STAGE_PX = 480.0;')
 })
 
 test('the keeper sleeps when Clawd does', () => {
   const asleep = (ms: number) => {
-    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null, offsetMs: swedishOffsetMs(ms) }, {}))
+    const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null, offsetMs: swedishOffsetMs(ms) }, {}), FYR)
     return text.includes('const float KEEPER_ASLEEP = 1.0;') ? true : text.includes('const float KEEPER_ASLEEP = 0.0;') ? false : null
   }
   expect(asleep(swedish(2026, 10, 25, 4))).toBe(true)
@@ -507,24 +537,25 @@ test('the keeper sleeps when Clawd does', () => {
   expect(asleep(swedish(2027, 1, 1, 1))).toBe(false)
 })
 
-test("/solar event plays the keeper's abduction and surf, and the shader schedules them itself", () => {
+test("/solar event plays fyr's previews, the keeper's abduction and surf, and the shader schedules them itself", () => {
   const ms = swedish(2026, 8, 10, 12)
   const ctx = contextFor(ms)
   const shaderOf = (kind: 'abduction' | 'surf') => {
     const events = eventsAt(ms, ctx, [{ kind, at: ms }])
     expect(events.some(e => e.kind === kind)).toBe(true)
-    return skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { events }))
+    return skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, { events }), FYR)
   }
   const ufo = shaderOf('abduction')
-  expect(ufo).toContain('const int KEEPER_FORCE = 1;')
+  // THEME_FORCE is the preview's place in fyr's manifest, from 1.
+  expect(ufo).toContain('const int THEME_FORCE = 1;')
   expect(ufo).toContain('const int EVENT_COUNT = 0;')
-  expect(shaderOf('surf')).toContain('const int KEEPER_FORCE = 2;')
-  expect(skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}))).toContain('const int KEEPER_FORCE = 0;')
-  expect(EVENT_WORDS.abduction).toBe('ufo abduction')
-  expect(EVENT_WORDS.surf).toBe('surf')
+  expect(shaderOf('surf')).toContain('const int THEME_FORCE = 2;')
+  expect(skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}), FYR)).toContain('const int THEME_FORCE = 0;')
+  expect(wordsOf(FYR).abduction).toBe('ufo abduction')
+  expect(wordsOf(FYR).surf).toBe('surf')
   const start = swedish(2026, 8, 10, 0)
   for (let t = start; t < start + 7 * 86_400_000; t += 30_000) {
-    const kinds = eventsAt(t, contextFor(t)).map(e => e.kind)
+    const kinds = eventsAt(t, contextFor(t), [], [...EVENTS, ...specsOf(FYR)]).map(e => e.kind)
     expect(kinds).not.toContain('abduction')
     expect(kinds).not.toContain('surf')
   }

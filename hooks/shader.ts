@@ -10,7 +10,7 @@ import { chartAt, tileLines, tileStars } from './chart'
 import type { ChartStar } from './chart'
 import { domePoint } from './dome'
 import type { DomePoint } from './dome'
-import type { ActiveEvent, EventKind } from './events'
+import type { ActiveEvent, EngineEventKind, EventKind } from './events'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
 import { clamp, INKS, rand } from './paint'
@@ -18,16 +18,12 @@ import { COMMON } from './glsl/common'
 import { PROTOTYPES } from './glsl/prototypes'
 import { SKY } from './glsl/sky'
 import { CLOUDS } from './glsl/clouds'
-import { SEA } from './glsl/sea'
 import { EVENTS } from './glsl/events'
-import { KEEPER } from './glsl/keeper'
-import { SURF } from './glsl/surf'
-import { NIGHT } from './glsl/night'
-import { ROUTINE } from './glsl/routine'
-import { UFO } from './glsl/ufo'
-import { CATCH } from './glsl/catch'
 import { CONTEXT_MARK } from './glsl/context'
+import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
+import { ENTRY_POINTS, themeEventIndex } from './themes/theme'
+import type { Theme } from './themes/theme'
 
 // Where the sky stands at one moment.
 export type Scene = {
@@ -70,13 +66,15 @@ export type ShaderParams = {
   aurora: number
   auroraFloor: number
   // Events up now, each looped over its length (Ghostty's iTime cannot say
-  // when one began), and shooting stars an hour.
+  // when one began), and shooting stars an hour. A theme's previews are
+  // among the events: skyShader plays them through THEME_FORCE, the
+  // theme's GLSL scheduling them itself.
   events: { kind: EventKind; seed: number; seconds: number }[]
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
-  // The keeper at the lighthouse: asleep when Clawd is, and a preview forced.
-  keeper: { isAsleep: boolean; force: 'none' | 'ufo' | 'surf' }
+  // The keeper at the lighthouse: asleep when Clawd is.
+  keeper: { isAsleep: boolean }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
   // The width of the strip at the right where the lighthouse stands, in
@@ -101,8 +99,9 @@ export function tabMark(context: ShaderParams['context']): [number, number, numb
   return [state, fish, 1]
 }
 
-// The shader's number for each event.
-const EVENT_INDEX: Record<EventKind, number> = {
+// The shader's number for each of the engine's events, from
+// ENGINE_EVENT_BASE; a theme's are numbered from THEME_EVENT_BASE.
+const EVENT_INDEX: Record<EngineEventKind, number> = {
   satellite: 1,
   balloon: 2,
   birds: 3,
@@ -123,12 +122,10 @@ const EVENT_INDEX: Record<EventKind, number> = {
   christmasStar: 18,
   sleigh: 19,
   fireworks: 20,
-  // The island's own, drawn by its themeEvent() as 0 and 1.
-  dolphin: 100,
-  pinkDolphin: 101,
-  // The shader schedules these itself; they are never drawn as events.
-  abduction: 23,
-  surf: 24,
+}
+
+function eventIndex(kind: EventKind, theme: Theme): number {
+  return EVENT_INDEX[kind as EngineEventKind] ?? themeEventIndex(kind, theme)
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
@@ -225,14 +222,10 @@ export function shaderParams(
     auroraFloor: isAuroraForced ? 0.4 : 0,
     // A shooting star asked for is a shower: one every few seconds.
     events: (options.events ?? [])
-      .filter(event => event.kind !== 'shootingStar' && event.kind !== 'abduction' && event.kind !== 'surf')
-      .slice(0, 4)
+      .filter(event => event.kind !== 'shootingStar')
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
-    keeper: {
-      isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep',
-      force: options.events?.some(event => event.kind === 'abduction') ? 'ufo' : options.events?.some(event => event.kind === 'surf') ? 'surf' : 'none',
-    },
+    keeper: { isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep' },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -370,12 +363,30 @@ function chartConstants(chart: ShaderParams['chart']): string[] {
   ]
 }
 
-// The whole shader for these constants: the same text for the same params.
-export function skyShader(params: ShaderParams): string {
+// The constants a theme may read, as the shader declares them: the scene,
+// the weather, the inks, the events, Claude waiting, the context window's
+// mark and the stage. Contract 1 (themes/theme.ts).
+export const THEME_SIGNALS = [
+  'ELEVATION', 'PROGRESS', 'IS_DAY', 'MOON_ILLUMINATION', 'MOON_WAXING', 'MOON_AT', 'MOON_UP', 'CLOUDINESS', 'COVER', 'WIND',
+  'PRECIPITATION', 'AURORA', 'AURORA_FLOOR', 'DEMO_COUNT', 'DEMO_SECONDS', 'DEMO_ELEVATION', 'DEMO_PROGRESS', 'DEMO_DAY',
+  ...Object.keys(INKS).map(name => `INK_${name.toUpperCase()}`),
+  'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'BEACON', 'BEACON_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
+  'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'KEEPER_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
+] as const
+
+// The whole shader for these constants, drawn with `theme`: the same text
+// for the same params.
+export function skyShader(params: ShaderParams, theme: Theme): string {
   const { scene, moon, demo } = params
   const demoScenes = demo?.scenes ?? [scene]
+  // The theme's previews are not drawn as events: the first of them up is
+  // THEME_FORCE, its place in the manifest counted from 1. Of the rest,
+  // the first four.
+  const previews = theme.manifest.previews.map(preview => preview.kind)
+  const shown = params.events.filter(event => !previews.includes(event.kind)).slice(0, 4)
+  const force = previews.findIndex(kind => params.events.some(event => event.kind === kind)) + 1
   // GLSL has no empty arrays: a placeholder when no event is up.
-  const events = params.events.length > 0 ? params.events : [{ kind: 'satellite' as const, seed: 0, seconds: 1 }]
+  const events = shown.length > 0 ? shown : [{ kind: 'satellite' as const, seed: 0, seconds: 1 }]
   const constants = [
     `const float ELEVATION = ${f(scene.elevation)};`,
     `const float PROGRESS = ${f(scene.progress)};`,
@@ -416,11 +427,11 @@ export function skyShader(params: ShaderParams): string {
     `const float COMET_AWAY = ${f(params.comet?.away ?? 0)};`,
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const float FIREWORKS = ${f(params.fireworks)};`,
-    `const float FLAG_DAY = ${params.events.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
+    `const float FLAG_DAY = ${shown.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
     `const float KEEPER_ASLEEP = ${params.keeper.isAsleep ? '1.0' : '0.0'};`,
-    `const int KEEPER_FORCE = ${{ none: 0, ufo: 1, surf: 2 }[params.keeper.force]};`,
-    `const int EVENT_COUNT = ${params.events.length};`,
-    `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => EVENT_INDEX[e.kind] ?? 0).join(', ')});`,
+    `const int THEME_FORCE = ${force};`,
+    `const int EVENT_COUNT = ${shown.length};`,
+    `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => eventIndex(e.kind, theme)).join(', ')});`,
     `const float EVENT_SEED[${events.length}] = ${floats(events.map(e => e.seed))};`,
     `const float EVENT_SECONDS[${events.length}] = ${floats(events.map(e => Math.max(1, e.seconds)))};`,
     // The rare clouds' shapes, a row per uint, bit 0 the leftmost puff.
@@ -430,14 +441,33 @@ export function skyShader(params: ShaderParams): string {
     }),
   ]
 
-  return `// Solar Clawd's sky, written by hooks/shader.ts: edits here are overwritten.\n\n${constants.join('\n')}\n${BODY}`
+  return `// Solar Clawd's sky, written by hooks/shader.ts: edits here are overwritten.\n\n${constants.join('\n')}\n${bodyOf(theme)}`
 }
 
 // Everything but the constants. Coordinates are x right and y down from the
 // top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
 // flipped from OpenGL's y up (Linux) when Y_UP is set. The engine comes
 // first, the four functions a theme defines declared right after COMMON,
-// and the island's parts last, after mainImage, so they can call anything
-// of the engine's. The wastebasket (glsl/basket.ts) is not in it: the
-// keeper's catch shows the context window instead.
-const BODY = [COMMON, PROTOTYPES, SKY, CLOUDS, EVENTS, CONTEXT_MARK, MAIN, SEA, KEEPER, SURF, NIGHT, ROUTINE, CATCH, UFO].join('\n')
+// and the theme last, after mainImage, so it can call anything of the
+// engine's. The wastebasket (glsl/basket.ts) and its line in mainImage are
+// in it only for a theme that leaves the context window to the engine:
+// glslang keeps a branch never taken, and every tab compiles the whole
+// text. A theme that leaves one of the four out gets a stub that draws
+// nothing.
+function bodyOf(theme: Theme): string {
+  const isBasket = theme.manifest.context === 'engine'
+  const main = isBasket ? MAIN : MAIN.replace(BASKET_CALL, '')
+  const stubs = ENTRY_POINTS.filter(name => !new RegExp(`\\b${name}\\s*\\([^)]*\\)\\s*\\{`).test(theme.glsl)).map(name => STUBS[name])
+
+  return [COMMON, PROTOTYPES, SKY, CLOUDS, EVENTS, CONTEXT_MARK, ...(isBasket ? [BASKET] : []), main, theme.glsl, ...stubs].join('\n')
+}
+
+// The line of mainImage that draws the wastebasket, last before the rim.
+const BASKET_CALL = '  sky = basket(sky, p, unit, k);\n'
+
+const STUBS: Record<(typeof ENTRY_POINTS)[number], string> = {
+  scenery: 'vec3 scenery(vec3 sky, vec2 p, float u, float k) { return sky; }',
+  resident: 'vec3 resident(vec3 sky, vec2 p, float u, float k) { return sky; }',
+  themeEvent: 'vec3 themeEvent(vec3 sky, vec2 p, float u, float k, int kind, float seed, float t, bool isBehind) { return sky; }',
+  themeWindow: 'float themeWindow(vec2 p, float u) { return 1.0; }',
+}

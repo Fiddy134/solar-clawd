@@ -13,8 +13,11 @@ import type { LocalTime, Place } from './astro'
 import { hash, rand } from './paint'
 import { greyness, skyOf } from './sky'
 import type { Sky, Weather } from './sky'
+import type { Theme, ThemeWhen } from './themes/theme'
 
-export type EventKind =
+// The engine's own events. A theme brings its own kinds (its manifest's
+// events and previews), any string.
+export type EngineEventKind =
   | 'satellite'
   | 'balloon'
   | 'birds'
@@ -25,12 +28,8 @@ export type EventKind =
   | 'blossom'
   | 'comet'
   | 'constellation'
-  | 'dolphin'
-  | 'pinkDolphin'
   | 'milestone'
   | 'shootingStar'
-  | 'abduction'
-  | 'surf'
   // The Swedish days.
   | 'witch'
   | 'feathers'
@@ -40,6 +39,7 @@ export type EventKind =
   | 'christmasStar'
   | 'sleigh'
   | 'fireworks'
+export type EventKind = EngineEventKind | (string & {})
 
 // What an event's condition may look at.
 export type EventContext = {
@@ -63,7 +63,7 @@ export type ActiveEvent = {
   progress: number
 }
 
-type Spec = {
+export type Spec = {
   kind: EventKind
   // The word the band shows while it plays.
   word: string
@@ -71,6 +71,8 @@ type Spec = {
   chance: number
   durationMs: number
   when: (ctx: EventContext) => boolean
+  // Its schedule's seed: the same salt, the same slots taken.
+  salt: number
 }
 
 const MINUTE = 60_000
@@ -83,9 +85,11 @@ const isClear = (ctx: EventContext, most = 0.3) => ctx.cloudiness <= most
 const isWet = (sky: Sky) => sky === 'drizzle' || sky === 'rain' || sky === 'thunder' || sky === 'snow'
 const inMonths = (ctx: EventContext, ...months: number[]) => months.includes(ctx.time.month)
 
-// The catalogue, at a pace that leaves the sky mostly quiet.
+// The engine's catalogue, at a pace that leaves the sky mostly quiet. The
+// salts are each one's place in the list from before the dolphins left it
+// for the theme fyr (7 and 8 are theirs), so every schedule stays as it was.
 export const EVENTS: readonly Spec[] = [
-  { kind: 'balloon', word: 'balloon', slotMs: 3 * HOUR, chance: 1, durationMs: 4 * MINUTE, when: ctx => isDay(ctx) && ctx.wind < 6 && !isWet(ctx.sky) },
+  { kind: 'balloon', word: 'balloon', slotMs: 3 * HOUR, chance: 1, durationMs: 4 * MINUTE, when: ctx => isDay(ctx) && ctx.wind < 6 && !isWet(ctx.sky), salt: 0 },
   {
     kind: 'birds',
     word: 'migrating birds',
@@ -94,9 +98,10 @@ export const EVENTS: readonly Spec[] = [
     durationMs: 90_000,
     // Spring and autumn, around sunrise and sunset.
     when: ctx => inMonths(ctx, 3, 4, 5, 8, 9, 10) && ctx.elevation > -3 && ctx.elevation < 15 && !isWet(ctx.sky),
+    salt: 1,
   },
-  { kind: 'plane', word: 'plane', slotMs: HOUR, chance: 1, durationMs: 2 * MINUTE, when: ctx => isDay(ctx) && isClear(ctx) },
-  { kind: 'kite', word: 'kite', slotMs: HOUR, chance: 1, durationMs: 5 * MINUTE, when: ctx => isDay(ctx) && ctx.wind >= 6 && ctx.wind <= 12 && !isWet(ctx.sky) },
+  { kind: 'plane', word: 'plane', slotMs: HOUR, chance: 1, durationMs: 2 * MINUTE, when: ctx => isDay(ctx) && isClear(ctx), salt: 2 },
+  { kind: 'kite', word: 'kite', slotMs: HOUR, chance: 1, durationMs: 5 * MINUTE, when: ctx => isDay(ctx) && ctx.wind >= 6 && ctx.wind <= 12 && !isWet(ctx.sky), salt: 3 },
   {
     kind: 'leaves',
     word: 'autumn leaves',
@@ -104,13 +109,11 @@ export const EVENTS: readonly Spec[] = [
     chance: 0.8,
     durationMs: 3 * MINUTE,
     when: ctx => inMonths(ctx, 9, 10, 11) && ctx.wind >= 5 && ctx.elevation > -6,
+    salt: 4,
   },
-  { kind: 'blossom', word: 'cherry blossom', slotMs: HOUR, chance: 0.8, durationMs: 3 * MINUTE, when: ctx => inMonths(ctx, 5) && ctx.elevation > -6 },
-  { kind: 'comet', word: 'comet', slotMs: 60 * DAY, chance: 1, durationMs: 3 * DAY, when: ctx => isNight(ctx) && isClear(ctx, 0.6) },
-  { kind: 'dolphin', word: 'dolphin', slotMs: 30 * MINUTE, chance: 1, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
-  // Rarer: a pink one, as the Amazon's river dolphins are.
-  { kind: 'pinkDolphin', word: 'pink dolphin', slotMs: 6 * HOUR, chance: 0.5, durationMs: 60_000, when: ctx => isDay(ctx) && ctx.wind < 12 && !isWet(ctx.sky) },
-  { kind: 'constellation', word: 'clawd constellation', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5) },
+  { kind: 'blossom', word: 'cherry blossom', slotMs: HOUR, chance: 0.8, durationMs: 3 * MINUTE, when: ctx => inMonths(ctx, 5) && ctx.elevation > -6, salt: 5 },
+  { kind: 'comet', word: 'comet', slotMs: 60 * DAY, chance: 1, durationMs: 3 * DAY, when: ctx => isNight(ctx) && isClear(ctx, 0.6), salt: 6 },
+  { kind: 'constellation', word: 'clawd constellation', slotMs: 3.5 * DAY, chance: 1, durationMs: 10 * MINUTE, when: ctx => isNight(ctx) && isClear(ctx, 0.5), salt: 9 },
 ]
 
 // Not scheduled: while its condition holds, and when Claude says so. A
@@ -118,10 +121,6 @@ export const EVENTS: readonly Spec[] = [
 const RAINBOW = { kind: 'rainbow', word: 'rainbow' } as const
 const MILESTONE = { kind: 'milestone', word: 'milestone', durationMs: 20_000 } as const
 const SHOOTING_STAR = { kind: 'shootingStar', word: 'shooting star' } as const
-// The keeper's own: the shader schedules his abduction and surf from iTime,
-// so these are previews only.
-const ABDUCTION = { kind: 'abduction', word: 'ufo abduction' } as const
-const SURF = { kind: 'surf', word: 'surf' } as const
 const SATELLITE = { kind: 'satellite', word: 'satellite' } as const
 
 // The Swedish days' words, as the band and /solar say them.
@@ -137,24 +136,75 @@ const DAY_WORDS = {
 } as const
 type DayKind = keyof typeof DAY_WORDS
 
-// The words the mod once spoke, Swedish, still taken by /solar event.
-export const OLD_EVENT_WORDS: Record<string, EventKind> = {
+// The words the mod once spoke, Swedish, still taken by /solar event; a
+// theme's own are its manifest's aliases.
+export const OLD_EVENT_WORDS: Record<string, EngineEventKind> = {
   luftballong: 'balloon', flyttfåglar: 'birds', flygplan: 'plane', drake: 'kite', höstlöv: 'leaves', körsbärsblad: 'blossom',
-  komet: 'comet', delfin: 'dolphin', 'rosa delfin': 'pinkDolphin', 'clawd-stjärnbild': 'constellation', regnbåge: 'rainbow',
+  komet: 'comet', 'clawd-stjärnbild': 'constellation', regnbåge: 'rainbow',
   milstolpe: 'milestone', stjärnfall: 'shootingStar', satellit: 'satellite', påskkärring: 'witch', påskfjädrar: 'feathers',
   nationaldagen: 'flag', midsommarstång: 'maypole', luciatåg: 'luciaTrain', julstjärna: 'christmasStar', tomten: 'sleigh', fyrverkeri: 'fireworks',
 }
 
-// Every event the band and /solar can name, its word first.
-export const EVENT_WORDS: Record<EventKind, string> = {
-  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'abduction' | 'surf' | 'satellite' | DayKind>, string>),
+// Every event of the engine's the band and /solar can name, its word
+// first; wordsOf adds a theme's.
+export const EVENT_WORDS: Record<EngineEventKind, string> = {
+  ...(Object.fromEntries(EVENTS.map(spec => [spec.kind, spec.word])) as Record<Exclude<EngineEventKind, 'rainbow' | 'milestone' | 'shootingStar' | 'satellite' | DayKind>, string>),
   ...DAY_WORDS,
   satellite: SATELLITE.word,
   rainbow: RAINBOW.word,
   milestone: MILESTONE.word,
   shootingStar: SHOOTING_STAR.word,
-  abduction: ABDUCTION.word,
-  surf: SURF.word,
+}
+
+// A theme's events and previews among the engine's: every word the band
+// and /solar can say, by kind.
+export function wordsOf(theme: Theme): Record<EventKind, string> {
+  const own = [...theme.manifest.events, ...theme.manifest.previews].map(event => [event.kind, event.word])
+
+  return { ...EVENT_WORDS, ...Object.fromEntries(own) }
+}
+
+// The kind /solar event means by `name`: a word, a kind, a word the mod
+// once spoke or one of the theme's aliases; undefined for none.
+export function kindOf(name: string, theme: Theme): EventKind | undefined {
+  const words = wordsOf(theme)
+
+  return Object.keys(words).find(kind => words[kind] === name || kind.toLowerCase() === name) ?? OLD_EVENT_WORDS[name] ?? theme.manifest.aliases[name]
+}
+
+// A theme's condition for an event as a predicate, in the engine's own
+// terms: a day's sun above 2°, a night's below -8°, a low one between -3°
+// and 15°; how clear, how windy, dry, which months, how high the sun.
+export function whenOf(when: ThemeWhen): (ctx: EventContext) => boolean {
+  return ctx => {
+    if (when.sun === 'day' && !isDay(ctx)) return false
+    if (when.sun === 'night' && !isNight(ctx)) return false
+    if (when.sun === 'low' && !(ctx.elevation > -3 && ctx.elevation < 15)) return false
+    if (when.clearAtMost !== undefined && !isClear(ctx, when.clearAtMost)) return false
+    if (when.windBelow !== undefined && !(ctx.wind < when.windBelow)) return false
+    if (when.windAtLeast !== undefined && !(ctx.wind >= when.windAtLeast)) return false
+    if (when.windAtMost !== undefined && !(ctx.wind <= when.windAtMost)) return false
+    if (when.dry && isWet(ctx.sky)) return false
+    if (when.months !== undefined && !when.months.includes(ctx.time.month)) return false
+    if (when.elevationAbove !== undefined && !(ctx.elevation > when.elevationAbove)) return false
+    if (when.elevationBelow !== undefined && !(ctx.elevation < when.elevationBelow)) return false
+
+    return true
+  }
+}
+
+// A theme's events as the engine schedules them, after its own: each with
+// its manifest's salt, or 1000 and its place in the list.
+export function specsOf(theme: Theme): Spec[] {
+  return theme.manifest.events.map((event, i) => ({
+    kind: event.kind,
+    word: event.word,
+    slotMs: event.slotMinutes * MINUTE,
+    chance: event.chance,
+    durationMs: event.minutes * MINUTE,
+    when: whenOf(event.when),
+    salt: event.salt ?? 1000 + i,
+  }))
 }
 
 // How long a preview (`/solar event <name>`) plays an event that has no
@@ -269,20 +319,20 @@ export function dayEventsAt(ms: number, ctx: EventContext): ActiveEvent[] {
 
 export type Forced = { kind: EventKind; at: number }
 
-// The events up at `ms`: scheduled ones whose condition holds, a rainbow if
-// the sky makes one, and those `forced` (a preview or a milestone) still
-// within their length.
-export function eventsAt(ms: number, ctx: EventContext, forced: readonly Forced[] = []): ActiveEvent[] {
+// The events up at `ms`: those of `specs` (the engine's, and a theme's
+// after them) whose condition holds, a rainbow if the sky makes one, and
+// those `forced` (a preview or a milestone) still within their length.
+export function eventsAt(ms: number, ctx: EventContext, forced: readonly Forced[] = [], specs: readonly Spec[] = EVENTS): ActiveEvent[] {
   const active: ActiveEvent[] = []
 
-  EVENTS.forEach((spec, index) => {
+  for (const spec of specs) {
     const slot = Math.floor(ms / spec.slotMs)
-    const seed = hash(index * 1_000_003 + slot * 7919 + 17)
-    if (rand(seed) >= spec.chance) return
+    const seed = hash(spec.salt * 1_000_003 + slot * 7919 + 17)
+    if (rand(seed) >= spec.chance) continue
     const start = slot * spec.slotMs + Math.floor(rand(seed + 1) * (spec.slotMs - spec.durationMs))
-    if (ms < start || ms >= start + spec.durationMs || !spec.when(ctx)) return
+    if (ms < start || ms >= start + spec.durationMs || !spec.when(ctx)) continue
     active.push({ kind: spec.kind, seed: seed % 1000, start, durationMs: spec.durationMs, progress: (ms - start) / spec.durationMs })
-  })
+  }
 
   active.push(...dayEventsAt(ms, ctx))
 

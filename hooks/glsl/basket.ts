@@ -1,8 +1,9 @@
 // The sky shader's GLSL: the wastebasket in the bottom right corner, the
 // context window as balls of paper, read through the engine's mark
-// (context.ts). Not in hooks/shader.ts's BODY since the keeper's catch
-// (catch.ts) shows the context instead; kept for a sky that does not show
-// it itself. Its fire and smoke are COMMON's.
+// (context.ts). hooks/shader.ts joins it, and its line in mainImage, only
+// for a theme whose manifest leaves the context window to the engine;
+// fyr's keeper hangs it on his line instead. Its fire and smoke are
+// COMMON's.
 export const BASKET = `
 // --- The wastebasket -------------------------------------------------------
 

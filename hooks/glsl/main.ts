@@ -292,6 +292,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     sky = weather(sky, p, unit);
     if (window < 1.0) sky = mix(indoor, sky, window);
   }
+  sky = basket(sky, p, unit, k);
   // No rim under glass. Without glass, mask is still the terminal's own,
   // text on a coloured field being glass or else done with above.
   if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);

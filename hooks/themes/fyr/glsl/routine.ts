@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the keeper's day,
+// The sky shader's GLSL, part of the theme fyr: the keeper's day,
 // and what he is doing at any moment.
 export const ROUTINE = `
 // --- His day -----------------------------------------------------------------
@@ -7,7 +7,7 @@ export const ROUTINE = `
 // looking out, and back down to the rocks. Forced (/solar event abduction),
 // he fishes all day, so every UFO finds him on the rocks.
 Keeper keeperDay(float time, Lighthouse l) {
-  float t = KEEPER_FORCE == 1 ? 0.0 : time - floor(time / DAY_LOOP) * DAY_LOOP;
+  float t = THEME_FORCE == 1 ? 0.0 : time - floor(time / DAY_LOOP) * DAY_LOOP;
   vec2 spot = fishingSpot(l);
   vec2 door = vec2(l.x, l.foot);
   Keeper kp = Keeper(spot, POSE_FISH, -1.0, 0.0, true, true, 0.0);

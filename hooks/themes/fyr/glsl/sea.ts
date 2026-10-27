@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the lighthouse on
+// The sky shader's GLSL, part of the theme fyr: the lighthouse on
 // the horizon, its sea, and the dolphins in it.
 export const SEA = `
 // --- The lighthouse --------------------------------------------------------

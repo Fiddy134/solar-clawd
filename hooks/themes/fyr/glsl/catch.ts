@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the context window
+// The sky shader's GLSL, part of the theme fyr: the context window
 // as the keeper's catch, the fish he hangs on a line from the tower to his
 // hammock's post, and the grill he cooks them on as the conversation
 // compacts.
@@ -96,10 +96,11 @@ vec3 fishLine(vec3 sky, vec2 p, Lighthouse l, int fish, int state, float k) {
   sky = ink(sky, keyInk(k), length(p - vec2(off) - knot) - bead, 0.55);
   sky = ink(sky, keeperInk(CREAM, k), length(p - knot) - bead, 1.0);
   // The two slots either side of p: a fish swings less than half the way
-  // to the next.
+  // to the next. Counted from 0, so the loop's bounds are constants.
   int first = 10 - fish;
   int right = int(floor((p.x - slotX(0, l)) / (SLOT_GAP * s))) + 1;
-  for (int i = right - 1; i <= right; i++) {
+  for (int j = 0; j < 2; j++) {
+    int i = right - 1 + j;
     if (i < first || i > 9) continue;
     float x = slotX(i, l);
     float angle = 0.15 * sin(iTime * 1.3 + float(i)) * (0.5 + WIND / 10.0);

@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the keeper's
+// The sky shader's GLSL, part of the theme fyr: the keeper's
 // nights, his hammock, and his watch at the lit lantern.
 export const NIGHT = `
 // --- His night ---------------------------------------------------------------

@@ -6,7 +6,8 @@
 
 import { STOCKHOLM } from '../../hooks/astro.ts'
 import { drawFrame } from '../../hooks/clawd.ts'
-import { contextAt, eventsAt, shootingRate } from '../../hooks/events.ts'
+import { contextAt, EVENTS, eventsAt, shootingRate, specsOf } from '../../hooks/events.ts'
+import { BASE_THEME, THEMES } from '../../hooks/themes/index.ts'
 import { shaderParams, skyShader } from '../../hooks/shader.ts'
 import { options, weatherOf } from './lib.mjs'
 
@@ -26,10 +27,10 @@ function time(name, step) {
 time(`band frame, ${o.columns} columns`, i => drawFrame({ columns: Number(o.columns), ms: ms + i * 125, t: i / 8, mode: 'live', place: STOCKHOLM, weather }))
 time('events', i => {
   const at = ms + i * 10_000
-  eventsAt(at, contextAt(at, STOCKHOLM, weather, null))
+  eventsAt(at, contextAt(at, STOCKHOLM, weather, null), [], [...EVENTS, ...specsOf(THEMES[BASE_THEME])])
 })
 time('ghostty shader text', i => {
   const at = ms + i * 10_000
   const context = contextAt(at, STOCKHOLM, weather, null)
-  skyShader(shaderParams({ ms: at, t: at / 1000, place: STOCKHOLM, weather }, { events: eventsAt(at, context), shootingRate: shootingRate(context) }))
+  skyShader(shaderParams({ ms: at, t: at / 1000, place: STOCKHOLM, weather }, { events: eventsAt(at, context, [], [...EVENTS, ...specsOf(THEMES[BASE_THEME])]), shootingRate: shootingRate(context) }), THEMES[BASE_THEME])
 })

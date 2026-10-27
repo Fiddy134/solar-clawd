@@ -12,14 +12,16 @@
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
 //   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
+//   --theme fyr (the theme the sky is drawn with, fyr by default)
 
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { STOCKHOLM } from '../../hooks/astro.ts'
-import { contextAt, eventsAt, shootingRate } from '../../hooks/events.ts'
+import { contextAt, EVENTS, eventsAt, shootingRate, specsOf } from '../../hooks/events.ts'
 import { shaderParams, skyShader, tabMark } from '../../hooks/shader.ts'
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
+import { THEMES } from '../../hooks/themes/index.ts'
 import { cellsSvg, dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
@@ -32,7 +34,9 @@ const weather = o.weather ? weatherOf(o.weather) : null
 // --event balloon (or several, comma-separated) plays them as a preview would.
 const forced = o.event ? String(o.event).split(',').map(kind => ({ kind, at: ms })) : []
 const context = contextAt(ms, STOCKHOLM, weather, o.rained ? ms - 600_000 : null)
-const events = eventsAt(ms, context, forced)
+const theme = THEMES[o.theme ?? 'fyr']
+if (!theme) throw new Error(`--theme: no theme called "${o.theme}" (${Object.keys(THEMES).join(', ')})`)
+const events = eventsAt(ms, context, forced, [...EVENTS, ...specsOf(theme)])
 // --fish 7 or 7,catch or 7,grill or 0,embers: the tab's mark for its context
 // window, the keeper's line of fish (--basket the old name, burn the old grill).
 const [fish, fishState] = (o.fish ?? o.basket) === undefined ? [] : String(o.fish ?? o.basket).split(',')
@@ -62,7 +66,7 @@ const params = shaderParams(
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
 // --broken: a shader that cannot compile, to see the check catch it.
 // --ufo: every cloud a saucer, to see one.
-const whole = o.ufo ? skyShader(params).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params)
+const whole = o.ufo ? skyShader(params, theme).replace('if (rand(seed + 3) < 0.08) kind = 1 + int(hashi(seed) % 6u);', 'kind = 6;') : skyShader(params, theme)
 // --without clouds,scenery: mainImage without those stages, to see what each costs (with --bench).
 const left = o.without ? String(o.without).split(',') : []
 const sky = whole.split('\n').filter(line => !left.some(name => new RegExp(`sky = ${name}\\(`).test(line))).join('\n')

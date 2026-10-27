@@ -1,4 +1,4 @@
-// The sky shader's GLSL, part of hooks/shader.ts's BODY: the keeper, a small
+// The sky shader's GLSL, part of the theme fyr: the keeper, a small
 // Clawd who lives at the lighthouse: what he is, how he is drawn, and the
 // door in the tower.
 export const KEEPER = `
