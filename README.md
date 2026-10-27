@@ -27,6 +27,7 @@ In Ghostty the sky is a shader run for every pixel of the window, every frame. M
 - **In focus, any shader at all** keeps the GPU about 37 % busy at 0.8 W, an empty one as much as the sky: that is Ghostty drawing and compositing the window 120 times a second, and it halves at 60 Hz. The sky itself adds about 5 W by day and 6.5 W on a lit night.
 - **Busy % says little.** The GPU lowers its clock until it is busy most of the time, so a heavy sky and a light one can both show 75 %; watts tell them apart. macOS 27 gives no GPU time per process, so these are the whole GPU's numbers.
 - **On battery, and while you are away,** the sky leaves out its clouds, which takes about half of its cost by day.
+- **At the sky's own pace it costs a fifth.** With `/solar full` or `/solar spar` and vsync off (below), the mod writes the tab 24 times a second and Ghostty draws the sky that often instead of 120: focused by day 1.26 W against 5.9 W (−79 %), on a lit night −83 %, the floor −59 %. In a blind trial 24 a second looked like 120. `full` keeps the sky moving behind other windows and on battery too, at about the same cost as focused (1.1 W by day), and stands still after 20 minutes without you; `spar` moves only while Ghostty is in front and something in the sky moves, as without the pace, and costs nothing behind other windows.
 
 ## Requirements
 
@@ -84,6 +85,12 @@ The engine checks a theme's GLSL before it draws it. No `while` or `do`; `for` l
 - `tools/preview/sheet.sh theme <name|folder>` draws a theme in the parity scenes, and each of its own events at three moments, as one contact sheet in `.preview/theme-<name>/contact.png`.
 - `tools/preview/parity.sh record|check <dir>` compares the sky before and after a change to the engine, frame by frame, and `node tools/theme/imports.mjs` checks that no engine file imports a theme's folder or the band's character.
 
+### The sky's pace
+
+`/solar full` or `/solar spar` (the default) chooses the pace for every session. On Ghostty 1.3 the pace needs vsync off, which only you can turn on with `/solar vsync off`: Ghostty's own documentation warns that *out-of-sync rendering on macOS can cause kernel panics (macOS 14.4+)*. The mod writes `window-vsync = false` into a file of its own, `runtime/vsync.ghostty`, and includes that from the config beside the sky's include. It holds for **every Ghostty window, with Claude or without**, until `/solar vsync on`, whether or not the sky shows; it reaches tabs and windows opened after it (⌘T opens one), so restart Ghostty to have it everywhere. Until you say `/solar vsync off`, the sky runs as it always has. A later Ghostty that draws only when written to with vsync on needs no line, and the mod takes it away. On Linux the pace stays as it is for now.
+
+Before you remove the mod, run `/solar vsync on`, or delete the `config-file = ?…/runtime/vsync.ghostty` line from Ghostty's config: nothing runs when a plugin is uninstalled, so the line would stay.
+
 ## Linux
 
 Run by a few people so far; reports and fixes are welcome. `/solar ghostty` adds the include to `$XDG_CONFIG_HOME/ghostty/config.ghostty` (or to `config` if that is the file you have), defaulting to `~/.config/ghostty`.
@@ -117,6 +124,10 @@ What differs from macOS:
 | `/solar catch` | The keeper lands a fish, as when another tenth of the context window fills (without the shader, Clawd throws a ball of paper in the wastebasket) |
 | `/solar grill` | The keeper grills his catch for a while, as on `/compact` or `/clear`, or without the shader the wastebasket burns (the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
+| `/solar full` | The sky moves 24 times a second whenever it shows, in front or behind, on battery too, until 20 minutes without you (Ghostty on a Mac) |
+| `/solar spar` | The sky moves 24 times a second only where it moved before: Ghostty in front, something moving, on mains, you there; the default |
+| `/solar vsync off` | Turn Ghostty's vsync off for every window, which the pace needs on Ghostty 1.3 (see [The sky's pace](#the-skys-pace)) |
+| `/solar vsync on` | Turn it back on |
 
 
 
