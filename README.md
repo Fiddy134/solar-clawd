@@ -2,7 +2,7 @@
 
 A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a pixel Clawd lives in a band above the prompt through his day — early birdin', coffee sesh, workin', vibin', night owl, sleep sesh — cheering when Claude finishes and facepalming when a tool fails.
 
-![A low sun over the sea, the lighthouse lit, a dolphin, and Clawd at work above the prompt](assets/demo.gif)
+![A low sun over the sea, the lighthouse lit, a dolphin, the keeper landing a fish onto the line of the context window and then grilling them, and Clawd at work above the prompt](assets/demo.gif)
 
 Everything is printed in a risograph style: a handful of inks, halftone screens and a key plate slightly off register.
 
