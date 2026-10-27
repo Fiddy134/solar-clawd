@@ -1,14 +1,15 @@
 #!/bin/zsh
 # What the terminal does while it is measured (tools/measure/gpu.sh):
-#   tools/measure/term.sh <marked|unmarked> <idle|blink|spinner|stream> [token]
+#   tools/measure/term.sh <marked|unmarked> <idle|blink|spinner|stream|tick<hz>> [token]
 # A screen of text like a session's, so a sky that rims text has text to
 # rim, then one of four things until it is killed: nothing with a steady
-# cursor, a blinking cursor, a spinner ten times a second, or fifty lines a
-# second. Marked, the tab carries the mark a Claude session gives it
+# cursor, a blinking cursor, a spinner ten times a second, fifty lines a
+# second, or the tab's mark written again <hz> times a second and nothing
+# else (what the mod would do to set the sky's frame rate). Marked, the tab carries the mark a Claude session gives it
 # (palette colour 16, blue one step off black), without which the sky
 # draws nothing. The token makes every tab after the first a plain one:
 # what a tab opened in front of the measured one shows.
-zmodload zsh/zselect
+zmodload zsh/zselect zsh/datetime zsh/mathfunc
 mark=$1 mode=$2 token=${3-}
 
 if [[ -n $token ]]; then
@@ -68,6 +69,17 @@ case $mode in
       i=$(( i + 1 ))
       print -r -- "  ⎿  $i  hooks/glsl/main.ts: sky = clouds(sky, p, s); the frame's cost is pixels × work × frames"
       zselect -t 2
+    done ;;
+  tick<->)
+    # Against the clock rather than a fixed pause, so the rate holds when a
+    # write or a wake-up runs late: zselect waits in hundredths.
+    printf '\e[2 q'
+    step=$(( 1.0 / ${mode#tick} )) next=$EPOCHREALTIME
+    while :; do
+      printf '\e]4;16;rgb:00/00/01\e\\'
+      next=$(( next + step ))
+      wait=$(( int((next - EPOCHREALTIME) * 100 + 0.5) ))
+      (( wait > 0 )) && zselect -t $wait
     done ;;
   *) print -u2 "term.sh: no mode called $mode"; exit 2 ;;
 esac
