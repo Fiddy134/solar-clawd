@@ -24,7 +24,7 @@ import { SURF } from './glsl/surf'
 import { NIGHT } from './glsl/night'
 import { ROUTINE } from './glsl/routine'
 import { UFO } from './glsl/ufo'
-import { BASKET } from './glsl/basket'
+import { CATCH } from './glsl/catch'
 import { MAIN } from './glsl/main'
 
 // Where the sky stands at one moment.
@@ -428,5 +428,7 @@ export function skyShader(params: ShaderParams): string {
 
 // Everything but the constants. Coordinates are x right and y down from the
 // top left, as on sky.ts's Canvas: Ghostty's fragCoord on Metal (macOS),
-// flipped from OpenGL's y up (Linux) when Y_UP is set.
-const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, KEEPER, SURF, NIGHT, ROUTINE, UFO, BASKET, MAIN].join('\n')
+// flipped from OpenGL's y up (Linux) when Y_UP is set. The wastebasket
+// (glsl/basket.ts) is not in it: the keeper's catch shows the context
+// window instead, drawn with him, so before him.
+const BODY = [COMMON, SKY, CLOUDS, SEA, EVENTS, KEEPER, SURF, NIGHT, ROUTINE, CATCH, UFO, MAIN].join('\n')

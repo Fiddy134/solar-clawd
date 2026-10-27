@@ -129,4 +129,51 @@ float limb(vec2 p, vec2 a, vec2 b, float ra, float rb) {
   float h = clamp(dot(p - a, ab) / dot(ab, ab), 0.0, 1.0);
   return length(p - a - ab * h) - mix(ra, rb, h);
 }
+
+// --- Fire and smoke --------------------------------------------------------
+
+// A tongue of fire rising from \`foot\`, \`h\` tall and \`w\` wide at its base,
+// flickering; how much it covers \`p\`.
+float flame(vec2 p, vec2 foot, float h, float w, float phase) {
+  float f = (foot.y - p.y) / h;
+  if (f < 0.0 || f > 1.0) return 0.0;
+  float sway = sin(f * 3.0 + iTime * 6.0 + phase) * 0.18 * w * f;
+  float width = w * pow(1.0 - f, 0.7) * smoothstep(0.0, 0.12, f);
+  return smoothstep(width, width * 0.6, abs(p.x - foot.x - sway));
+}
+
+// A fire of three tongues \`spacing\` apart over \`foot\`, in pink, orange and
+// yellow, each ink's tongues smaller than the last's: as they flicker,
+// 1.4 to 2.3 times \`tall\` high, and \`wide\` at the base.
+vec3 fire(vec3 sky, vec2 p, vec2 foot, float spacing, float tall, float wide, float pitch) {
+  vec3 inks[3] = vec3[3](INK_PINK, INK_ORANGE, INK_YELLOW);
+  float angles[3] = float[3](75.0, 45.0, 0.0);
+  for (int layer = 0; layer < 3; layer++) {
+    float scale = 1.0 - float(layer) * 0.28;
+    float cover = 0.0;
+    for (int i = 0; i < 3; i++) {
+      float h = (1.4 + 0.9 * (0.5 + 0.5 * sin(iTime * (2.3 + float(i) * 0.7) + float(i) * 1.9))) * tall * scale;
+      cover = max(cover, flame(p, foot + vec2(float(i - 1) * spacing, 0.0), h, wide * scale, float(i * 3 + layer)));
+    }
+    sky = mix(sky, inks[layer], screen(p, cover * 0.95, pitch, angles[layer]));
+  }
+  return sky;
+}
+
+// Smoke from \`from\`, four puffs one after another, each rising \`rise\` in
+// 1 / \`rate\` seconds, swaying more from side to side and blown \`drift\`
+// off to the right as it goes, from 0.7 \`r\` across to three times \`r\`,
+// taller than wide, gathering as it leaves and thinning out toward its
+// edges and as it rises, so that together they make one column: \`strength\`
+// says how thick, screened once in \`color\`.
+vec3 smoke(vec3 sky, vec2 p, vec2 from, float rise, float drift, float r, float rate, float strength, vec3 color, float pitch) {
+  float tone = 0.0;
+  for (int j = 0; j < 4; j++) {
+    float age = fract(iTime * rate + float(j) * 0.25);
+    vec2 at = from + vec2(sin(float(j) * 2.1 + iTime * 0.5) * 1.5 * r * age + drift * age, -age * rise);
+    float puff = smoothstep(1.0, 0.1, length((p - at) / vec2(1.0, 1.5)) / (r * (0.7 + 2.3 * age)));
+    tone = max(tone, puff * smoothstep(0.0, 0.1, age) * pow(1.0 - age, 0.6) * strength);
+  }
+  return mix(sky, color, screen(p, tone, pitch, 45.0) * 0.8);
+}
 `
