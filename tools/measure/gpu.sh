@@ -5,18 +5,22 @@
 #   tools/measure/gpu.sh context                    the machine, as a run records it
 #   tools/measure/gpu.sh row <shader> <animation> <focus> <activity> [marked|unmarked]
 #   tools/measure/gpu.sh live <label>               the Ghostty already running, as it is
-#   tools/measure/gpu.sh plan [f2|f4] [--twice]     a run's list, unattended: the
+#   tools/measure/gpu.sh plan [f2|f4|fps] [--twice] a run's list, unattended: the
 #                                                   first run's (f2), or that and the
-#                                                   same on gpu (f4, phase 4)
+#                                                   same on gpu (f4, phase 4), or the
+#                                                   sky at a frame rate of its own (fps)
 #   tools/measure/gpu.sh report [dir]               a run's rows as markdown
 #   tools/measure/gpu.sh decode <png>               the frame count in a screenshot of the probe
 #
 #   shader     none, passthrough, probe, or <ref>:<scene> (tools/measure/scenes.sh)
-#   animation  true, false, always (custom-shader-animation)
+#   animation  true, false, always (custom-shader-animation), or false-novsync:
+#              false with window-vsync off, so a focused surface draws only
+#              when something wakes it (Ghostty warns that out-of-sync
+#              rendering on macOS 14.4+ can cause a kernel panic)
 #   focus      focused, unfocused (Finder in front), covered (a second,
 #              shader-less Ghostty maximized over it), minimized, tab (a
 #              plain tab in front of it)
-#   activity   idle, blink, spinner, stream (tools/measure/term.sh)
+#   activity   idle, blink, spinner, stream, tick<hz> (tools/measure/term.sh)
 #
 #   --settle 10 --sample 30   seconds to wait after each change, and to measure
 #   --no-sudo                 no powermetrics, so no per-process GPU or power
@@ -204,7 +208,12 @@ launch() {
     --window-padding-x=2,240 --title=solar-measure
     "--command=$root/tools/measure/term.sh $mark $activity $token" --wait-after-command=true
   )
-  [[ -n $file ]] && flags+=(--custom-shader=$file --custom-shader-animation=$animation)
+  if [[ -n $file ]]; then
+    case $animation in
+      false-novsync) flags+=(--custom-shader=$file --custom-shader-animation=false --window-vsync=false) ;;
+      *) flags+=(--custom-shader=$file --custom-shader-animation=$animation) ;;
+    esac
+  fi
   new_ghostty $flags
   pid=$REPLY
   for i in {1..100}; do
@@ -480,12 +489,40 @@ f4_list() {
   for s in day-clear night-lit; do print "gpu:$s-light true focused idle marked"; done
 }
 
+# The sky at a frame rate of its own (the work plan's cell "himlens egen
+# takt"): with window-vsync off and the animation false, Ghostty draws a
+# focused surface only when something wakes it, and the terminal writing
+# the tab's mark again at a steady rate is such a wake. First what the
+# probe counts, idle, ticking, under a spinner and under fifty lines a
+# second (without vsync nothing caps that), and ticking out of focus,
+# covered, minimized and behind another tab (a sky that may run unfocused
+# must still cost nothing where it cannot be seen); then the floor and the
+# sky as they are now against the sky at 15, 24 and 30 a second, and the
+# sky ticking out of focus.
+fps_list() {
+  local a f s hz
+  print 'probe true focused idle marked'
+  for a in idle tick15 tick24 tick30 spinner stream; do print "probe false-novsync focused $a marked"; done
+  for f in unfocused covered minimized tab; do print "probe false-novsync $f tick24 marked"; done
+  print 'passthrough true focused idle marked'
+  print 'passthrough false-novsync focused idle marked'
+  for hz in 15 24 30; do print "passthrough false-novsync focused tick$hz marked"; done
+  for s in day-clear night-lit; do
+    print "main:$s true focused idle marked"
+    for hz in 15 24 30; do print "main:$s false-novsync focused tick$hz marked"; done
+  done
+  print 'main:day-clear false-novsync unfocused tick24 marked'
+  print 'main:day-clear false-novsync focused spinner marked'
+  print 'passthrough false-novsync focused spinner marked'
+}
+
 plan() {
   local list
   case ${1:-f2} in
     f2) list=(${(f)"$(first_list)"}) ;;
     f4) list=(${(f)"$(f4_list)"}) ;;
-    *) die "no plan called $1 (f2, f4)" ;;
+    fps) list=(${(f)"$(fps_list)"}) ;;
+    *) die "no plan called $1 (f2, f4, fps)" ;;
   esac
   # Twice, the second time backwards (ABBA), so a slow drift in the
   # machine's heat falls evenly on every row.

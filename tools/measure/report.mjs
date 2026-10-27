@@ -137,7 +137,7 @@ if (probes.length) {
   const focuses = ['focused', 'unfocused', 'covered', 'minimized', 'tab'].filter(f => probes.some(r => r.focus === f))
   for (const activity of activities) {
     say(`**${activity}**`, '')
-    table(['animation', ...focuses], ['true', 'false', 'always'].filter(a => probes.some(r => r.animation === a && r.activity === activity)).map(a => [
+    table(['animation', ...focuses], ['true', 'false', 'always', 'false-novsync'].filter(a => probes.some(r => r.animation === a && r.activity === activity)).map(a => [
       a,
       ...focuses.map(f => {
         const key = `probe ${a} ${f} ${activity} marked`

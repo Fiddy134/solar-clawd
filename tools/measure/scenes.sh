@@ -23,6 +23,7 @@ scenes=(
   night-lit-light '--at 2026-10-26T22:00 --weather 0,5,2,10 --stage 480 --beacon asking --light'
   night-dark   '--at 2026-10-26T22:00 --weather 3,5,2,95 --stage 480'
   comet        '--at 2026-10-26T22:00 --weather 0,5,2,10 --stage 480 --event comet'
+  day-dolphin  '--at 2026-10-26T12:30 --weather 2,10,6,50 --stage 480 --event dolphin'
 )
 
 if (( $# < 2 )); then
