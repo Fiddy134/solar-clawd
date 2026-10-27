@@ -70,9 +70,9 @@ Keeper keeperDay(float time, Lighthouse l) {
 // lit, then a surf, then asleep, then the night (an aurora before a full
 // moon before the stars), else his day.
 int keeperMode(float time) {
-  if (BEACON != 0) return MODE_LANTERN;
+  if (WAITING != 0) return MODE_LANTERN;
   if (surfTime(time) >= 0.0) return MODE_SURF;
-  if (KEEPER_ASLEEP > 0.5) return MODE_HAMMOCK;
+  if (CLAWD_ASLEEP > 0.5) return MODE_HAMMOCK;
   float darkness = night();
   if (darkness <= 0.6) return MODE_DAY;
   if (AURORA * darkness > 0.3) return MODE_AURORA;

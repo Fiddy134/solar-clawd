@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import { localMidnight, STOCKHOLM } from './astro'
-import type { Waiting } from './beacon'
+import type { Waiting } from './waiting'
 import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
 import type { Mode, Reaction } from './clawd'
 import { contextAt, EVENTS, eventsAt, kindOf, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
@@ -329,7 +329,7 @@ export const register: Register = on => {
 
     const iss = issNow(now, mode)
     // Something new up there: Clawd looks up at it.
-    const sky = [...events.map(event => event.kind as string), ...(iss ? ['iss'] : []), ...(extras.beacon ? ['beacon'] : [])]
+    const sky = [...events.map(event => event.kind as string), ...(iss ? ['iss'] : []), ...(extras.waiting ? ['waiting'] : [])]
     if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 

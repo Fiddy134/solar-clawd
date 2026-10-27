@@ -95,14 +95,14 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   vec4 room = lanternRoom(tower);
   vec2 lantern = room.xy;
   vec2 v = p - lantern;
-  vec3 light = BEACON == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
-  float speed = BEACON_URGENT > 0.5 ? 1.2 : 0.6;
-  float strength = BEACON_URGENT > 0.5 ? 1.0 : 0.75;
+  vec3 light = WAITING == 1 ? INK_ORANGE : vec3(1.0, 0.97, 0.9);
+  float speed = WAITING_URGENT > 0.5 ? 1.2 : 0.6;
+  float strength = WAITING_URGENT > 0.5 ? 1.0 : 0.75;
   float phase = iTime * speed;
   float toward = max(0.0, sin(phase));
 
-  sky = sea(sky, p, u, k, light, BEACON != 0 ? 0.35 + 0.45 * toward : 0.0);
-  if (BEACON != 0) {
+  sky = sea(sky, p, u, k, light, WAITING != 0 ? 0.35 + 0.45 * toward : 0.0);
+  if (WAITING != 0) {
     // The beam, behind the tower.
     float across = cos(phase);
     vec2 dir = normalize(vec2(across >= 0.0 ? 1.0 : -1.0, -0.05));
@@ -153,7 +153,7 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   }
   // The lantern room, lit or dark, its glazing bars, the dome and its finial.
   vec2 r = abs(v);
-  vec3 glass = BEACON == 1 ? INK_ORANGE : BEACON == 2 ? vec3(1.0, 0.97, 0.9) : indigo;
+  vec3 glass = WAITING == 1 ? INK_ORANGE : WAITING == 2 ? vec3(1.0, 0.97, 0.9) : indigo;
   if (r.x < room.z && r.y < room.w) {
     sky = mix(sky, glass, 0.95);
     if (abs(abs(p.x - x) - 0.12 * s) < 0.035 * s) sky = mix(sky, indigo, 0.7);

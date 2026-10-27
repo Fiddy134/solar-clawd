@@ -4,7 +4,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
-import { BEACON_MS, BEACON_SWEEP_MS } from './beacon'
+import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
 import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS } from './test-kit'
 
@@ -619,11 +619,11 @@ test('a question lights the orange lighthouse at once, an answer puts it out', a
   const { clock, shader, include, ask } = await waitingWorld($, on)
   await ask()
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
   expect(include()).toContain('custom-shader-animation = always')
   await $.prompt.submit({ text: 'ja', wait: false, origin: { kind: 'composer' } })
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
   expect(include()).toContain('custom-shader-animation = false')
 })
 
@@ -631,16 +631,16 @@ test('idle_prompt lights nothing', async ($, on) => {
   const { clock, shader, ask } = await waitingWorld($, on)
   await ask('idle_prompt')
   await clock.advance(10_000)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
 })
 
 test('a finished turn lights the white lighthouse, and it never hurries', async ($, on) => {
   const { clock, shader } = await waitingWorld($, on)
   await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 2;')
+  expect(shader()).toContain('const int WAITING = 2;')
   await clock.advance(3 * 60_000)
-  expect(shader()).toContain('const float BEACON_URGENT = 0.0;')
+  expect(shader()).toContain('const float WAITING_URGENT = 0.0;')
 })
 
 test('the lighthouse sweeps five minutes, then stands still, and is out after thirty', async ($, on) => {
@@ -652,11 +652,11 @@ test('the lighthouse sweeps five minutes, then stands still, and is out after th
   await ask()
   await clock.advance(100)
   expect(include()).toContain('custom-shader-animation = always')
-  await pass(BEACON_SWEEP_MS + 10_000)
-  expect(shader()).toContain('const int BEACON = 1;')
+  await pass(WAITING_SWEEP_MS + 10_000)
+  expect(shader()).toContain('const int WAITING = 1;')
   expect(include()).toContain('custom-shader-animation = false')
-  await pass(BEACON_MS - BEACON_SWEEP_MS)
-  expect(shader()).toContain('const int BEACON = 0;')
+  await pass(WAITING_MS - WAITING_SWEEP_MS)
+  expect(shader()).toContain('const int WAITING = 0;')
   expect(include()).toContain('custom-shader-animation = false')
 })
 
@@ -668,7 +668,7 @@ test('away, the sky and the lit lighthouse stand still', async ($, on) => {
   await clock.advance(11_000)
   expect(include()).toContain('custom-shader = ')
   expect(include()).toContain('custom-shader-animation = false')
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
 })
 
 test('the white lighthouse goes out once Ghostty is in front and the person at it; a question waits for its answer', async ($, on) => {
@@ -676,19 +676,19 @@ test('the white lighthouse goes out once Ghostty is in front and the person at i
   const { clock, world, shader, ask } = await waitingWorld($, on, idle)
   await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
   await clock.advance(4_000)
-  expect(shader()).toContain('const int BEACON = 2;')
+  expect(shader()).toContain('const int WAITING = 2;')
   // Ghostty in front with no one at it: nobody has seen it.
   world.front.value = 'com.mitchellh.ghostty'
   idle.value = 400
   await clock.advance(4_000)
-  expect(shader()).toContain('const int BEACON = 2;')
+  expect(shader()).toContain('const int WAITING = 2;')
   idle.value = 1
   await clock.advance(4_000)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
   // A question is not put out by a look: Claude waits for the answer.
   await ask()
   await clock.advance(4_000)
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
 })
 
 test("another live session's question lights this sky; a dead session's does not", async ($, on) => {
@@ -696,10 +696,10 @@ test("another live session's question lights this sky; a dead session's does not
   world.files.set(`${runtime}/waiting-other`, { text: JSON.stringify({ mode: 'asking', since: start }), mtimeMs: start })
   world.files.set(`${runtime}/alive-other`, { text: '', mtimeMs: start })
   await clock.advance(10_000)
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
   world.files.set(`${runtime}/alive-other`, { text: '', mtimeMs: start - 10 * 60_000 })
   await clock.advance(10_000)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
 })
 
 test('AskUserQuestion lights the orange lighthouse while it waits, and it goes out once answered', async ($, on) => {
@@ -717,7 +717,7 @@ test('AskUserQuestion lights the orange lighthouse while it waits, and it goes o
   await clock.advance(100)
   expect(JSON.parse(during).mode).toBe('asking')
   expect(world.files.has(`${runtime}/waiting-this-session`)).toBe(false)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
 })
 
 test('on battery the sky stands still and lighter; a question still sweeps', async ($, on) => {
@@ -784,15 +784,15 @@ test("a question is put out by the end of the call that asked, not by another ca
   await clock.advance(10)
   await $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' })
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
   gates.Read!()
   await reading
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 1;')
+  expect(shader()).toContain('const int WAITING = 1;')
   gates.Bash!()
   await asking
   await clock.advance(100)
-  expect(shader()).toContain('const int BEACON = 0;')
+  expect(shader()).toContain('const int WAITING = 0;')
 })
 
 // The tab's mark as last written to its terminal.

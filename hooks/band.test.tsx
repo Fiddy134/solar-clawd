@@ -53,7 +53,7 @@ test('Clawd looks up when something new comes into the sky, once', () => {
   expect(skyGained([], ['comet'])).toBe(true)
   expect(skyGained(['comet'], ['comet'])).toBe(false)
   expect(skyGained(['comet', 'iss'], ['comet'])).toBe(false)
-  expect(skyGained(['comet'], ['comet', 'beacon'])).toBe(true)
+  expect(skyGained(['comet'], ['comet', 'waiting'])).toBe(true)
 })
 
 test('Clawd reads while every open call reads, and works otherwise', () => {

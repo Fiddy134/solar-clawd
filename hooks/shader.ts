@@ -38,9 +38,10 @@ export type ShaderParams = {
   scene: Scene
   // The real stars and constellation lines on the dome; empty by day.
   chart: { stars: ChartStar[]; lines: [DomePoint, DomePoint][] }
-  // The lighthouse: lit while Claude waits (orange asking, white done),
-  // hurrying once a question has waited.
-  beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null
+  // Claude waiting on the person (WAITING, 1 asking, 2 done), hurrying
+  // once a question has waited (WAITING_URGENT); fyr lights its lighthouse
+  // for it.
+  waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null
   // The context window as this tab's sky shows it: how many tenths of it
   // are full (the keeper's fish on his line), and what is happening to it:
   // `catch` a tenth has just filled, `grill` the conversation compacts,
@@ -73,12 +74,13 @@ export type ShaderParams = {
   shootingRate: number
   // New Year's fireworks: how much of the sky they fill, 0 to 1.
   fireworks: number
-  // The keeper at the lighthouse: asleep when Clawd is.
-  keeper: { isAsleep: boolean }
+  // Clawd's day: asleep at night (CLAWD_ASLEEP), as the band has him; fyr's
+  // keeper sleeps with him.
+  clawd: { isAsleep: boolean }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
-  // The width of the strip at the right where the lighthouse stands, in
-  // pixels; 0 while it is not known.
+  // The width of the strip at the right where the theme stands its scenery
+  // (fyr's lighthouse), in pixels; 0 while it is not known.
   stagePx: number
   // The lighter sky, without its clouds, for a Mac on battery or a person
   // away: Ghostty draws a focused window at every frame whatever the
@@ -169,7 +171,7 @@ export function shaderParams(
     demo?: { seconds: number; offsetMs?: number } | null
     events?: readonly ActiveEvent[]
     shootingRate?: number
-    beacon?: ShaderParams['beacon']
+    waiting?: ShaderParams['waiting']
     iss?: ShaderParams['iss']
     context?: ShaderParams['context']
     isYUp?: boolean
@@ -201,7 +203,7 @@ export function shaderParams(
     // In a demo the day plays from its table: a fixed scene keeps the text,
     // and with it Ghostty, still for the demo's length.
     scene,
-    beacon: options.beacon ?? null,
+    waiting: options.waiting ?? null,
     context: options.context ?? null,
     isYUp: !!options.isYUp,
     stagePx: Math.max(0, Math.round(options.stagePx ?? 0)),
@@ -225,7 +227,7 @@ export function shaderParams(
       .filter(event => event.kind !== 'shootingStar')
       .map(event => ({ kind: event.kind, seed: event.seed, seconds: Math.round(event.durationMs / 1000) })),
     shootingRate: options.events?.some(event => event.kind === 'shootingStar') ? 900 : options.shootingRate ?? 0,
-    keeper: { isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep' },
+    clawd: { isAsleep: activityOn(localTime(ms, input.offsetMs)) === 'sleep' },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -370,8 +372,8 @@ export const THEME_SIGNALS = [
   'ELEVATION', 'PROGRESS', 'IS_DAY', 'MOON_ILLUMINATION', 'MOON_WAXING', 'MOON_AT', 'MOON_UP', 'CLOUDINESS', 'COVER', 'WIND',
   'PRECIPITATION', 'AURORA', 'AURORA_FLOOR', 'DEMO_COUNT', 'DEMO_SECONDS', 'DEMO_ELEVATION', 'DEMO_PROGRESS', 'DEMO_DAY',
   ...Object.keys(INKS).map(name => `INK_${name.toUpperCase()}`),
-  'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'BEACON', 'BEACON_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
-  'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'KEEPER_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
+  'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'WAITING', 'WAITING_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
+  'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
 ] as const
 
 // The whole shader for these constants, drawn with `theme`: the same text
@@ -415,8 +417,8 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
     `const float ISS_UP = ${params.iss ? '1.0' : '0.0'};`,
     `const vec2 ISS_AT = vec2(${f(params.iss?.at.x ?? 0)}, ${f(params.iss?.at.y ?? 0)});`,
     `const vec2 ISS_TRAIL = vec2(${f(params.iss?.trail.x ?? 0)}, ${f(params.iss?.trail.y ?? 0)});`,
-    `const int BEACON = ${params.beacon ? (params.beacon.mode === 'asking' ? 1 : 2) : 0};`,
-    `const float BEACON_URGENT = ${params.beacon?.isUrgent ? '1.0' : '0.0'};`,
+    `const int WAITING = ${params.waiting ? (params.waiting.mode === 'asking' ? 1 : 2) : 0};`,
+    `const float WAITING_URGENT = ${params.waiting?.isUrgent ? '1.0' : '0.0'};`,
     `const int CONTEXT = ${params.context ? 1 : 0};`,
     `const float STAGE_PX = ${f(params.stagePx)};`,
     `const float Y_UP = ${params.isYUp ? '1.0' : '0.0'};`,
@@ -428,7 +430,7 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
     `const float SHOOTING_RATE = ${f(params.shootingRate)};`,
     `const float FIREWORKS = ${f(params.fireworks)};`,
     `const float FLAG_DAY = ${shown.some(e => e.kind === 'flag') ? '1.0' : '0.0'};`,
-    `const float KEEPER_ASLEEP = ${params.keeper.isAsleep ? '1.0' : '0.0'};`,
+    `const float CLAWD_ASLEEP = ${params.clawd.isAsleep ? '1.0' : '0.0'};`,
     `const int THEME_FORCE = ${force};`,
     `const int EVENT_COUNT = ${shown.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => eventIndex(e.kind, theme)).join(', ')});`,

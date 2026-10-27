@@ -1,7 +1,7 @@
 import type { EngineInterface } from 'claude-code'
 
-import { animationOf, beaconAt } from './beacon'
-import type { Waiting } from './beacon'
+import { animationOf, waitingAt } from './waiting'
+import type { Waiting } from './waiting'
 import { field, number } from './net'
 import { tabMark } from './shader'
 import type { ShaderParams } from './shader'
@@ -165,7 +165,7 @@ export type SkyState = {
 }
 
 // What the session's shader is asked to draw beyond the scene.
-export type SkyExtras = { beacon: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number; isLight: boolean }
+export type SkyExtras = { waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number; isLight: boolean }
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // sky is not hidden, nothing otherwise, and Ghostty animating it as the
@@ -268,7 +268,7 @@ async function writeGhosttySky(
     ghostty.isIncluded = await isIncluded($, ghostty)
   }
   const waits = [...(state.waiting ? [state.waiting] : []), ...(await othersWaiting($, ghostty, now))]
-  const beacon = beaconAt(waits, now)
+  const waiting = waitingAt(waits, now)
   const isHidden = await $.fs.exists(ghostty.hidden).catch(() => false)
   const isWanted = !isHidden
   let include = ''
@@ -276,7 +276,7 @@ async function writeGhosttySky(
     // Ghostty draws with OpenGL on Linux, where fragCoord has y up. On
     // battery or with the person away, the lighter sky.
     const extras = {
-      beacon: beacon && { mode: beacon.mode, isUrgent: beacon.isUrgent },
+      waiting: waiting && { mode: waiting.mode, isUrgent: waiting.isUrgent },
       isYUp: ghostty.isLinux,
       stagePx: ghostty.stagePx,
       isLight: state.isOnBattery || state.isAway,
@@ -289,7 +289,7 @@ async function writeGhosttySky(
       written.isReloadOwed = true
     }
     written.shader = shader
-    const animation = animationOf({ beacon, now, isAway: state.isAway, isOnBattery: state.isOnBattery, isLively: state.livelyAt(now) })
+    const animation = animationOf({ waiting, now, isAway: state.isAway, isOnBattery: state.isOnBattery, isLively: state.livelyAt(now) })
     include = `custom-shader = ${ghostty.shader}\ncustom-shader-animation = ${animation}\n`
   }
   const onDisk = await $.fs.read(ghostty.include).catch(() => null)

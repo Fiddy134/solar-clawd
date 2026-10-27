@@ -52,8 +52,9 @@ const params = shaderParams(
     demo: o.demo ? { seconds: 48 } : null,
     events,
     shootingRate: shootingRate(context),
-    // --beacon asking|done [--urgent]: the lighthouse.
-    beacon: o.beacon ? { mode: o.beacon, isUrgent: !!o.urgent } : null,
+    // --waiting asking|done [--urgent]: Claude waiting, fyr's lighthouse lit
+    // (--beacon the old name).
+    waiting: (o.waiting ?? o.beacon) ? { mode: o.waiting ?? o.beacon, isUrgent: !!o.urgent } : null,
     // --iss: the station halfway up the southern sky, heading east to west.
     iss: o.iss ? { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } } : null,
     // --y-up: fragCoord as OpenGL (Ghostty on Linux) gives it, to see the flip.

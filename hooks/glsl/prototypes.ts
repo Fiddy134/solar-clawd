@@ -5,7 +5,7 @@
 export const PROTOTYPES = `
 // --- What a theme draws ------------------------------------------------------
 
-// The ground, the props and the light that shows Claude waits (BEACON):
+// The ground, the props and the light that shows Claude waits (WAITING):
 // after the sun and the events behind the clouds, before resident() and
 // the clouds.
 vec3 scenery(vec3 sky, vec2 p, float u, float k);

@@ -8,7 +8,7 @@ import { EVENT_WORDS, EVENTS, eventsAt, shootingRate, specsOf, wordsOf } from '.
 import { domePoint, HORIZON, ZENITH_Y } from './dome'
 import type { DomePoint } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
-import { animationOf, BEACON_MS, BEACON_SWEEP_MS, BEACON_URGENT_MS, beaconAt } from './beacon'
+import { animationOf, WAITING_MS, WAITING_SWEEP_MS, WAITING_URGENT_MS, waitingAt } from './waiting'
 import { elementsOf, issAt, issVisible } from './iss'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
@@ -288,10 +288,12 @@ test('the comet hangs at its place among the stars and turns with them', () => {
 test('the lighthouse: orange when Claude asks, white when done', () => {
   const ms = Date.UTC(2026, 9, 24, 20)
   const text = (options: object) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, options), FYR)
-  expect(text({})).toContain('const int BEACON = 0;')
-  expect(text({ beacon: { mode: 'asking', isUrgent: false } })).toContain('const int BEACON = 1;')
-  expect(text({ beacon: { mode: 'done', isUrgent: false } })).toContain('const int BEACON = 2;')
-  expect(text({ beacon: { mode: 'asking', isUrgent: true } })).toContain('const float BEACON_URGENT = 1.0;')
+  expect(text({})).toContain('const int WAITING = 0;')
+  expect(text({ waiting: { mode: 'asking', isUrgent: false } })).toContain('const int WAITING = 1;')
+  expect(text({ waiting: { mode: 'done', isUrgent: false } })).toContain('const int WAITING = 2;')
+  expect(text({ waiting: { mode: 'asking', isUrgent: true } })).toContain('const float WAITING_URGENT = 1.0;')
+  // Claude's waiting is the engine's; the lighthouse is only how fyr shows it.
+  expect(text({ waiting: { mode: 'asking', isUrgent: true } })).not.toMatch(/\b(BEACON|BEACON_URGENT|KEEPER_ASLEEP)\b/)
 })
 
 test("glass knows Claude Code's own field colours, in linear light on Linux", () => {
@@ -320,27 +322,27 @@ test("glass knows Claude Code's own field colours, in linear light on Linux", ()
   for (const colour of fields(true)) expect(fields(false)).toContain(colour)
 })
 
-test('the lighthouse state: a question beats done, hurries after two minutes, is out after thirty', () => {
-  expect(beaconAt([], 0)).toBeNull()
-  expect(beaconAt([{ mode: 'done', since: 0 }, { mode: 'asking', since: 50_000 }], 60_000)).toEqual({ mode: 'asking', since: 50_000, isUrgent: false })
-  expect(beaconAt([{ mode: 'asking', since: 0 }], BEACON_URGENT_MS)!.isUrgent).toBe(true)
-  expect(beaconAt([{ mode: 'done', since: 0 }], 10 * 60_000)!.isUrgent).toBe(false)
-  expect(beaconAt([{ mode: 'asking', since: 30_000 }, { mode: 'asking', since: 0 }], 40_000)!.since).toBe(0)
-  expect(beaconAt([{ mode: 'asking', since: 0 }], BEACON_MS)).toBeNull()
+test("Claude's waiting: a question beats done, hurries after two minutes, is out after thirty", () => {
+  expect(waitingAt([], 0)).toBeNull()
+  expect(waitingAt([{ mode: 'done', since: 0 }, { mode: 'asking', since: 50_000 }], 60_000)).toEqual({ mode: 'asking', since: 50_000, isUrgent: false })
+  expect(waitingAt([{ mode: 'asking', since: 0 }], WAITING_URGENT_MS)!.isUrgent).toBe(true)
+  expect(waitingAt([{ mode: 'done', since: 0 }], 10 * 60_000)!.isUrgent).toBe(false)
+  expect(waitingAt([{ mode: 'asking', since: 30_000 }, { mode: 'asking', since: 0 }], 40_000)!.since).toBe(0)
+  expect(waitingAt([{ mode: 'asking', since: 0 }], WAITING_MS)).toBeNull()
 })
 
 test('Ghostty animates always while the lighthouse sweeps, stands still after it and on battery', () => {
-  const beacon = { mode: 'asking' as const, since: 0 }
-  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: false, isLively: true })).toBe('always')
-  expect(animationOf({ beacon, now: BEACON_SWEEP_MS, isAway: false, isOnBattery: false, isLively: true })).toBe('false')
-  expect(animationOf({ beacon, now: 1000, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
-  expect(animationOf({ beacon, now: 1000, isAway: false, isOnBattery: true, isLively: true })).toBe('always')
-  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: true, isLively: true })).toBe('false')
-  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false, isLively: true })).toBe('true')
-  expect(animationOf({ beacon: null, now: 0, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
+  const waiting = { mode: 'asking' as const, since: 0 }
+  expect(animationOf({ waiting, now: 1000, isAway: false, isOnBattery: false, isLively: true })).toBe('always')
+  expect(animationOf({ waiting, now: WAITING_SWEEP_MS, isAway: false, isOnBattery: false, isLively: true })).toBe('false')
+  expect(animationOf({ waiting, now: 1000, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
+  expect(animationOf({ waiting, now: 1000, isAway: false, isOnBattery: true, isLively: true })).toBe('always')
+  expect(animationOf({ waiting: null, now: 0, isAway: false, isOnBattery: true, isLively: true })).toBe('false')
+  expect(animationOf({ waiting: null, now: 0, isAway: false, isOnBattery: false, isLively: true })).toBe('true')
+  expect(animationOf({ waiting: null, now: 0, isAway: true, isOnBattery: false, isLively: true })).toBe('false')
   // Nothing lively up there: still, drawn as the terminal changes.
-  expect(animationOf({ beacon: null, now: 0, isAway: false, isOnBattery: false, isLively: false })).toBe('false')
-  expect(animationOf({ beacon: { mode: 'asking', since: 0 }, now: 1000, isAway: false, isOnBattery: false, isLively: false })).toBe('always')
+  expect(animationOf({ waiting: null, now: 0, isAway: false, isOnBattery: false, isLively: false })).toBe('false')
+  expect(animationOf({ waiting: { mode: 'asking', since: 0 }, now: 1000, isAway: false, isOnBattery: false, isLively: false })).toBe('always')
 })
 
 test('the ISS stands where satellite.js puts it', () => {
@@ -526,10 +528,10 @@ test('the lighthouse stands on the stage strip when its width is known', () => {
   expect(text(480)).toContain('const float STAGE_PX = 480.0;')
 })
 
-test('the keeper sleeps when Clawd does', () => {
+test('the keeper sleeps when Clawd does, through CLAWD_ASLEEP', () => {
   const asleep = (ms: number) => {
     const text = skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null, offsetMs: swedishOffsetMs(ms) }, {}), FYR)
-    return text.includes('const float KEEPER_ASLEEP = 1.0;') ? true : text.includes('const float KEEPER_ASLEEP = 0.0;') ? false : null
+    return text.includes('const float CLAWD_ASLEEP = 1.0;') ? true : text.includes('const float CLAWD_ASLEEP = 0.0;') ? false : null
   }
   expect(asleep(swedish(2026, 10, 25, 4))).toBe(true)
   expect(asleep(swedish(2026, 10, 25, 2))).toBe(false)

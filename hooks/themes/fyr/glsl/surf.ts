@@ -19,9 +19,9 @@ const float SURF_LOOP = 40.0;
 // Seconds into his surf at \`time\`, or -1 when he isn't surfing: never with
 // the lantern lit, and not asleep or at night unless it is forced.
 float surfTime(float time) {
-  if (BEACON != 0) return -1.0;
+  if (WAITING != 0) return -1.0;
   if (THEME_FORCE == 2) return mod(time, SURF_LOOP);
-  if (KEEPER_ASLEEP > 0.5 || night() > 0.6) return -1.0;
+  if (CLAWD_ASLEEP > 0.5 || night() > 0.6) return -1.0;
   float n = floor(time / DAY_LOOP);
   float t = time - n * DAY_LOOP;
   return t < SURF_LOOP && isSurfLoop(n) ? t : -1.0;
