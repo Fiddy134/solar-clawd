@@ -434,6 +434,16 @@ Användarmappen, laddaren med validering, `/solar theme` lista + växla med `$.s
 
 ---
 
+## Senare: valet "full himmel hela tiden" (Vincent, 2026-10-27)
+
+Den som har en kraftfull dator ska kunna välja bort sparandet och få en jämn himmel hela tiden. Idag sparar modden på tre sätt, alla automatiska:
+
+- **Animationen** (`animationOf` i `hooks/beacon.ts`): `false` medan man är borta (`AWAY_MS`, 5 min), på batteri, när fyren väntar efter de fem minuternas svep, och när himlen inte har något som rör sig (`livelyAt`); annars `true`. `true` och `false` ritar inget när fönstret saknar fokus (F2-raderna 3, 5, 10: ~0 bilder); `always` ritar vidare ofokuserat, och kostar då nästan som fokuserat (raderna 14–15: 36 mot 32 % device, 120 mot 114 bilder).
+- **Den lätta himlen** (`isLight` i `hooks/ghostty.ts`): utan moln på batteri och borta, ungefär halva kostnaden på dagen.
+- **Flikar:** himlen ritas bara i flikar där Claude kör (markeringen i palett 16); andra flikar visar terminalen som den är. Ghostty ritar bara den synliga fliken.
+
+Förslag: en inställning `full` mot `spar` (standard `spar`, som idag), satt med `/solar full` / `/solar spar` och sparad mellan sessioner (modden har ingen sparad inställning än). `full` betyder `always` och aldrig den lätta himlen; batteriet kan fortfarande få välja (öppen fråga till Vincent: ska `full` gälla även på batteri?). Himmel också i flikar utan Claude är en egen fråga och ingår inte. Lively-regeln bryts inte: valet är användarens och kostnaden är mätt (raderna 14–16). Hör hemma efter F5 (motorkontraktet) och före eller tillsammans med F6 (installationen kan fråga om valet). Tester: `animationOf` med `full` (testet som pinnar tabellen i `hooks/sky.test.tsx` utökas), README "What it costs" säger vad `full` kostar.
+
 ## Ordningen, sammanfattad
 
 | # | Gren | Workflow | Agenter | Blockeras av | Vincent behövs för |
