@@ -54,6 +54,19 @@ test("a manifest's kinds and words are its own, its events short and rare enough
   expect(errorOf(manifest({ aliases: { val: 'whale' } }))).toContain('names no kind')
 })
 
+test("no kind of a theme's is a name every JavaScript object has, and the shader numbers one by its own events alone", () => {
+  const dolphin = FYR.manifest.events[0]!
+  for (const kind of ['toString', 'constructor', 'valueOf', 'hasOwnProperty', '__proto__']) {
+    expect(errorOf(manifest({ events: [{ ...dolphin, kind, word: 'odd one' }] }))).not.toBeNull()
+    expect(errorOf(manifest({ previews: [{ kind, word: 'odd one' }] }))).not.toBeNull()
+  }
+  // Even a theme that skipped themeOf gets a number, never a function's source.
+  const odd: Theme = { ...bare, manifest: { ...bare.manifest, events: [{ ...dolphin, kind: 'toString', word: 'odd one' }] } }
+  const text = skyShader({ ...params, events: [{ kind: 'toString', seed: 0.5, seconds: 10 }] }, odd)
+  expect(text).toContain('const int EVENT_KIND[1] = int[1](100);')
+  expect(skyShader({ ...params, events: [{ kind: 'constructor', seed: 0.5, seconds: 10 }] }, bare)).toContain('const int EVENT_KIND[1] = int[1](0);')
+})
+
 test("the lint keeps a theme from the terminal's image, the GPU's time and the engine's names", () => {
   const lint = (glsl: string) => lintTheme(glsl, ENGINE_NAMES)
   const flags = (glsl: string, what: string) => expect(lint(glsl).join('\n')).toContain(what)

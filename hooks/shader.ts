@@ -120,7 +120,7 @@ const EVENT_INDEX: Record<EngineEventKind, number> = {
 }
 
 function eventIndex(kind: EventKind, theme: Theme): number {
-  return EVENT_INDEX[kind as EngineEventKind] ?? themeEventIndex(kind, theme)
+  return Object.hasOwn(EVENT_INDEX, kind) ? EVENT_INDEX[kind as EngineEventKind] : themeEventIndex(kind, theme)
 }
 
 // Scenes are worked out on this grid, so the shader's text (and with it a

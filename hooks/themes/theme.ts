@@ -127,6 +127,8 @@ export function themeOf(manifest: unknown, glsl: string): Theme | { error: strin
   const words = new Set<string>(Object.values(EVENT_WORDS))
   const claim = (kind: unknown, word: unknown): string | null => {
     if (typeof kind !== 'string' || !/^[A-Za-z][A-Za-z0-9]*$/.test(kind)) return `"${String(kind)}" is not a kind`
+    // A kind is a key the engine looks things up by, so none of an object's own.
+    if (kind in Object.prototype) return `the kind ${kind} is a name every JavaScript object has`
     if (typeof word !== 'string' || word === '') return `${kind} has no word`
     if (kinds.has(kind)) return `the kind ${kind} is taken`
     if (words.has(word)) return `the word "${word}" is taken`
