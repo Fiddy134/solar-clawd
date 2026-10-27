@@ -131,6 +131,17 @@ test("the lint keeps a theme from the terminal's image, the GPU's time and the e
     'float g() { float s = 0.0; for (int a = 0; a < 48; a++) { s += 1.0; } return s; } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { for (int j = 0; j < 48; j++) { s += g(); } } return s; }',
     'more than two deep',
   )
+  // An overload with loops counts, whichever is defined last, and so does
+  // one that shares the caller's name; a signature not read is not passed.
+  flags(
+    'float g(float x) { float s = 0.0; for (int a = 0; a < 48; a++) { s += x; } return s; } float g() { return 1.0; } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { for (int j = 0; j < 48; j++) { s += g(1.0); } } return s; }',
+    'more than two deep',
+  )
+  flags(
+    'float f(float x) { float s = 0.0; for (int a = 0; a < 48; a++) { s += x; } return s; } float f() { float s = 0.0; for (int i = 0; i < 48; i++) { for (int j = 0; j < 48; j++) { s += f(1.0); } } return s; }',
+    'more than two deep',
+  )
+  flags('float f(float x[2], vec2 y) { return 1.0; } float h(float a = (1.0)) { return a; }', 'cannot read')
   // What is fine: its own names, a local that shadows the engine's, two
   // loops deep, a loop calling a function without one, an out parameter,
   // and the four entry points.

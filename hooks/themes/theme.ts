@@ -275,39 +275,46 @@ function loopIndex(header: string): string | null {
 }
 
 // How deep a theme's loops go, a loop that calls a function counting that
-// function's own loops beneath it. GLSL has no recursion, so the functions
-// a theme calls form no circle; one that seemed to is counted once.
+// function's own loops beneath it; a call to a name overloaded counts its
+// deepest overload, since which one it reaches is the compiler's to say.
+// GLSL has no recursion, so the bodies a theme calls form no circle; one
+// that seemed to is counted once. A block at the top that follows a
+// parenthesis but whose name this cannot read counts as too deep: what is
+// not read is not passed. Infinity in that case.
 function deepestLoops(text: string, loops: readonly [number, number][]): number {
-  const functions = new Map<string, [number, number]>()
+  const functions = new Map<string, [number, number][]>()
   for (let i = 0, top = 0; i < text.length; i++) {
     if (text[i] === ';' || text[i] === '}') top = i + 1
     if (text[i] !== '{') continue
     const end = closing(text, i)
-    const name = /(\w+)\s*\([^()]*\)\s*$/.exec(text.slice(top, i))?.[1]
-    if (name) functions.set(name, [i, end])
+    const before = text.slice(top, i)
+    const name = /(\w+)\s*\([^()]*\)\s*$/.exec(before)?.[1]
+    if (name) functions.set(name, [...(functions.get(name) ?? []), [i, end]])
+    else if (/\)\s*$/.test(before)) return Infinity
     i = end
     top = end + 1
   }
   const around = (at: number) => loops.filter(([from, to]) => from < at && at < to).length
-  const known = new Map<string, number>()
-  const depthOf = (name: string, seen: Set<string>): number => {
-    const body = functions.get(name)
-    if (!body || seen.has(name)) return 0
-    if (known.has(name)) return known.get(name)!
+  const known = new Map<number, number>()
+  const depthOf = (body: [number, number], seen: Set<number>): number => {
+    if (seen.has(body[0])) return 0
+    if (known.has(body[0])) return known.get(body[0])!
+    const further = new Set([...seen, body[0]])
     let deepest = 0
     for (const [from] of loops) if (from > body[0] && from < body[1]) deepest = Math.max(deepest, around(from) + 1)
     const call = /\b(\w+)\s*\(/g
     const inside = text.slice(body[0], body[1])
     for (let m = call.exec(inside); m; m = call.exec(inside)) {
-      if (m[1] === name || !functions.has(m[1]!)) continue
-      deepest = Math.max(deepest, around(body[0] + m.index) + depthOf(m[1]!, new Set([...seen, name])))
+      for (const callee of functions.get(m[1]!) ?? []) {
+        deepest = Math.max(deepest, around(body[0] + m.index) + depthOf(callee, further))
+      }
     }
-    known.set(name, deepest)
+    known.set(body[0], deepest)
 
     return deepest
   }
 
-  return Math.max(0, ...[...functions.keys()].map(name => depthOf(name, new Set())))
+  return Math.max(0, ...[...functions.values()].flat().map(body => depthOf(body, new Set())))
 }
 
 // What is wrong with a theme's GLSL, empty when nothing is: a subset of GLSL
@@ -371,7 +378,9 @@ export function lintTheme(glsl: string, engineNames: readonly string[]): string[
       problems.push(`assigns its loop index ${index} in the loop`)
     }
   }
-  if (deepestLoops(text, loops) > 2) problems.push('nests loops more than two deep, counting the loops of the functions a loop calls')
+  const depth = deepestLoops(text, loops)
+  if (depth === Infinity) problems.push('has a function whose signature the lint cannot read, so its loops cannot be counted')
+  else if (depth > 2) problems.push('nests loops more than two deep, counting the loops of the functions a loop calls')
 
   return problems
 }
