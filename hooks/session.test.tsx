@@ -1,7 +1,9 @@
 // The mod in a session: Ghostty and iTerm2, the lighthouse, the keeper's
 // line of fish and the wastebasket, /solar.
 
+import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
+import type { Engine } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
 import { UNMARK_TAB } from './mark'
@@ -896,4 +898,120 @@ test('the tab is found once, and its marks are written to it without a process e
   expect(world.files.get(TTY)?.text).toContain(']4;16;rgb:')
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
+})
+
+// What /solar says about the sky's pace and Ghostty's vsync, word for word.
+const FULL = 'Solar: full. The sky moves 24 times a second whenever it shows, in front or behind, on battery too, and stands still after 20 minutes without you.'
+const SPAR = 'Solar: spar. The sky moves 24 times a second while Ghostty is in front and something in it moves, and stands still on battery, behind other apps and after 5 minutes without you; the lighthouse still sweeps behind them.'
+const NEEDS_VSYNC = ' On Ghostty 1.3 that takes vsync off: /solar vsync off turns it off in every Ghostty window, with Claude or without, until /solar vsync on. Ghostty warns that drawing out of sync can cause a kernel panic on macOS 14.4 and later. Until then the sky runs as it did.'
+const VSYNC_OFF = 'Solar: vsync is off in every Ghostty window, with Claude or without, until /solar vsync on. New tabs and windows draw the sky 24 times a second (⌘T opens one); tabs already open draw as before until they close, so restart Ghostty to have it everywhere. Ghostty warns that drawing out of sync can cause a kernel panic on macOS 14.4 and later.'
+const VSYNC_ON = 'Solar: vsync is on again for new Ghostty tabs and windows; tabs already open keep it off until they close.'
+const VSYNC_NOT_NEEDED = 'Solar: this Ghostty draws the sky 24 times a second with vsync on; there is nothing to turn off.'
+const NOT_ON_LINUX = 'Solar: on Linux the sky keeps its pace as it is, for now.'
+const INCLUDE_FIRST = "Solar: run /solar ghostty first; the sky is not in Ghostty's config yet."
+const SETTINGS = '/Users/test/Library/Application Support/solar-clawd/sky.json'
+const VSYNC = `${RUNTIME}/vsync.ghostty`
+const VSYNC_INCLUDE = `config-file = ?${VSYNC}`
+
+// A Ghostty session on a Mac whose Ghostty is `version`, its config as
+// given; answers /solar as text.
+async function paceWorld($: Engine, on: On, version: string | null, config: string | null = 'font-size = 14\n') {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  if (version !== null) world.env.set('TERM_PROGRAM_VERSION', version)
+  if (config !== null) world.files.set(CONFIG, { text: config, mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+
+  return { clock, world, runtime, solar, config: () => world.files.get(CONFIG)?.text ?? '' }
+}
+const count = (text: string, line: string) => text.split('\n').filter(row => row === line).length
+
+test('/solar full and spar are saved for every session, and on Ghostty 1.3 say what 24 a second takes', async ($, on) => {
+  const { world, solar } = await paceWorld($, on, '1.3.1')
+  await solar('ghostty')
+  expect(await solar('full')).toBe(FULL + NEEDS_VSYNC)
+  expect(world.files.get(SETTINGS)?.text).toBe('{"pace":"full"}')
+  await solar('vsync off')
+  expect(await solar('spar')).toBe(SPAR)
+  expect(world.files.get(SETTINGS)?.text).toBe('{"pace":"spar"}')
+})
+
+test('/solar vsync off writes the line in a file of its own, included once, and /solar vsync on empties it', async ($, on) => {
+  const { world, solar, config } = await paceWorld($, on, '1.3.1')
+  await solar('ghostty')
+  const reloads = RELOADS(world.runs)
+  expect(await solar('vsync off')).toBe(VSYNC_OFF)
+  expect(await solar('vsync   off')).toBe(VSYNC_OFF)
+  expect(count(config(), VSYNC_INCLUDE)).toBe(1)
+  const rows = config().split('\n')
+  expect(rows[rows.indexOf(VSYNC_INCLUDE) - 1]).toBe(`config-file = ?${RUNTIME}/solar-clawd.ghostty`)
+  expect(world.files.get(VSYNC)?.text).toBe('window-vsync = false\n')
+  expect(RELOADS(world.runs)).toBeGreaterThan(reloads)
+  expect(await solar('vsync on')).toBe(VSYNC_ON)
+  expect(world.files.get(VSYNC)?.text).toBe('')
+  expect(count(config(), VSYNC_INCLUDE)).toBe(1)
+})
+
+test('the vsync line outlives the hidden sky and the last session', async ($, on) => {
+  const { world, solar } = await paceWorld($, on, '1.3.1')
+  await solar('ghostty')
+  await solar('vsync off')
+  await solar('')
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(world.files.get(VSYNC)?.text).toBe('window-vsync = false\n')
+  expect(world.files.get(`${RUNTIME}/solar-clawd.ghostty`)?.text).toBe('')
+})
+
+test('an include moved from another folder keeps the vsync include beside it', async ($, on) => {
+  const old = `# Solar Clawd: the sky while a Claude session runs.\nconfig-file = ?/old/plugin/runtime/solar-clawd.ghostty\n${VSYNC_INCLUDE}\n`
+  const { config } = await paceWorld($, on, '1.3.1', `font-size = 14\n${old}`)
+  expect(config()).toContain(`config-file = ?${RUNTIME}/solar-clawd.ghostty`)
+  expect(config()).not.toContain('/old/plugin/')
+  expect(count(config(), VSYNC_INCLUDE)).toBe(1)
+})
+
+test('/solar vsync off never writes a config it cannot read, nor one without the sky', async ($, on) => {
+  const { world, solar, config } = await paceWorld($, on, '1.3.1')
+  expect(await solar('vsync off')).toBe(INCLUDE_FIRST)
+  expect(config()).toBe('font-size = 14\n')
+  expect(world.files.has(VSYNC)).toBe(false)
+  await solar('ghostty')
+  const before = config()
+  world.unreadable.add(CONFIG)
+  expect(await solar('vsync off')).toBe("Solar: could not read Ghostty's config, so it is left as it is.")
+  world.unreadable.delete(CONFIG)
+  expect(config()).toBe(before)
+  expect(world.files.has(VSYNC)).toBe(false)
+})
+
+test('a Ghostty later than 1.3 needs no vsync line: the session takes it away, and the words say so', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
+  world.files.set(VSYNC, { text: 'window-vsync = false\n', mtimeMs: start })
+  await startGhostty($, on, clock, world)
+  expect(world.files.get(VSYNC)?.text).toBe('')
+  const writes = world.writes.length
+  const answer = (await $.command.run({ command: 'solar', args: 'vsync off', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }
+  expect(answer.text).toBe(VSYNC_NOT_NEEDED)
+  expect(world.writes.slice(writes).some(path => path === VSYNC || path.startsWith(`${VSYNC}.tmp-`))).toBe(false)
+})
+
+test('on Linux the pace stays as it is, and nothing is written for it', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = linuxWorld(on, start, '1.3.1')
+  world.env.set('TERM_PROGRAM_VERSION', '1.3.1')
+  await startGhostty($, on, clock, world)
+  for (const word of ['full', 'spar', 'vsync off']) {
+    const answer = (await $.command.run({ command: 'solar', args: word, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }
+    expect(answer.text).toBe(NOT_ON_LINUX)
+  }
+  expect(world.writes.some(path => path.endsWith('/sky.json') || path.includes('vsync.ghostty'))).toBe(false)
 })

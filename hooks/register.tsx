@@ -14,9 +14,12 @@ import {
   hasOurInclude,
   hasOurStage,
   includeInGhostty,
+  includeVsync,
   isIncluded,
+  isVsyncOff,
   reloadGhostty,
   runtimeFolder,
+  setVsync,
   shareWaiting,
   STAGE_PT,
   tidy,
@@ -26,7 +29,7 @@ import {
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
 import { issVisible } from './iss'
-import { AWAY_MS } from './pace'
+import { AWAY_MS, needsVsyncLine, versionOf } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
@@ -126,6 +129,22 @@ function playGrill($: EngineInterface, claude: Grilled, refresh: () => void, now
     .catch(() => undefined)
   void $.clock.sleep(GRILL_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(refresh).catch(() => undefined)
 }
+
+// What /solar says of the sky's pace and Ghostty's vsync.
+const PACE_WORDS = {
+  full: 'Solar: full. The sky moves 24 times a second whenever it shows, in front or behind, on battery too, and stands still after 20 minutes without you.',
+  spar: 'Solar: spar. The sky moves 24 times a second while Ghostty is in front and something in it moves, and stands still on battery, behind other apps and after 5 minutes without you; the lighthouse still sweeps behind them.',
+  needsVsync:
+    ' On Ghostty 1.3 that takes vsync off: /solar vsync off turns it off in every Ghostty window, with Claude or without, until /solar vsync on. Ghostty warns that drawing out of sync can cause a kernel panic on macOS 14.4 and later. Until then the sky runs as it did.',
+  vsyncOff:
+    'Solar: vsync is off in every Ghostty window, with Claude or without, until /solar vsync on. New tabs and windows draw the sky 24 times a second (⌘T opens one); tabs already open draw as before until they close, so restart Ghostty to have it everywhere. Ghostty warns that drawing out of sync can cause a kernel panic on macOS 14.4 and later.',
+  vsyncOn: 'Solar: vsync is on again for new Ghostty tabs and windows; tabs already open keep it off until they close.',
+  vsyncNotNeeded: 'Solar: this Ghostty draws the sky 24 times a second with vsync on; there is nothing to turn off.',
+  notOnLinux: 'Solar: on Linux the sky keeps its pace as it is, for now.',
+  includeFirst: "Solar: run /solar ghostty first; the sky is not in Ghostty's config yet.",
+}
+const NOT_GHOSTTY = 'Solar: this session is not running in Ghostty.'
+const UNREADABLE_CONFIG = `Solar: could not read Ghostty's config, so it is left as it is.`
 
 // The notifications that ask the person something.
 const ASKING = ['permission_prompt', 'elicitation_dialog']
@@ -339,7 +358,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | full | spar | vsync off|on]',
       immediate: true,
     })
 
@@ -374,6 +393,9 @@ export const register: Register = on => {
         heartbeat: `${folder}/alive-${id}`,
         waiting: `${folder}/waiting-${id}`,
         hidden: `${folder}/hidden`,
+        settings: `${folder.slice(0, -'/runtime'.length)}/sky.json`,
+        vsync: `${folder}/vsync.ghostty`,
+        version: versionOf((await $.env.get('TERM_PROGRAM_VERSION')) ?? undefined),
         home,
         tty: await ttyOf($),
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
@@ -385,6 +407,10 @@ export const register: Register = on => {
         written: { shader: '', include: '', mark: '', heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, running: null, isAgain: false },
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
+      // A Ghostty that draws the sky at its own pace with vsync on needs no
+      // vsync line: the one the person asked for on an older one goes.
+      const { version } = ghostty
+      if (!isOnLinux && version !== null && !needsVsyncLine(version) && (await isVsyncOff($, ghostty))) await setVsync($, ghostty, false)
       // The sky shows only once Ghostty's config includes the mod's file.
       ghostty.isIncluded = await isIncluded($, ghostty)
       // An include the mod added before, to its own folder: moved here, and
@@ -722,11 +748,36 @@ export const register: Register = on => {
       return { text: 'Solar: following the sun again.' }
     }
 
+    // The sky's pace, for every session: Ghostty on a Mac only, this round.
+    const pace = word.replace(/\s+/g, ' ')
+    if (pace === 'full' || pace === 'spar' || pace === 'vsync off' || pace === 'vsync on') {
+      if (ghostty === null) return { text: NOT_GHOSTTY }
+      if (ghostty.isLinux) return { text: PACE_WORDS.notOnLinux }
+      const needsLine = ghostty.version === null || needsVsyncLine(ghostty.version)
+      if (pace === 'full' || pace === 'spar') {
+        await $.fs.write(ghostty.settings, JSON.stringify({ pace: pace }))
+        refreshSky?.()
+        const isLineMissing = ghostty.version !== null && needsLine && !(await isVsyncOff($, ghostty))
+
+        return { text: PACE_WORDS[pace] + (isLineMissing ? PACE_WORDS.needsVsync : '') }
+      }
+      if (!needsLine) return { text: PACE_WORDS.vsyncNotNeeded }
+      if (pace === 'vsync off') {
+        const included = await includeVsync($, ghostty)
+        if (included === 'unreadable') return { text: UNREADABLE_CONFIG }
+        if (included === 'no-include') return { text: PACE_WORDS.includeFirst }
+      }
+      await setVsync($, ghostty, pace === 'vsync off')
+      refreshSky?.()
+
+      return { text: pace === 'vsync off' ? PACE_WORDS.vsyncOff : PACE_WORDS.vsyncOn }
+    }
+
     if (word === 'ghostty') {
-      if (ghostty === null) return { text: 'Solar: this session is not running in Ghostty.' }
+      if (ghostty === null) return { text: NOT_GHOSTTY }
       if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty already shows the sky.' }
       const added = await includeInGhostty($, ghostty)
-      if (added === null) return { text: `Solar: could not read Ghostty's config, so it is left as it is.` }
+      if (added === null) return { text: UNREADABLE_CONFIG }
       const { line, config } = added
       ghostty.isIncluded = true
       ghostty.stagePx = await stagePxOf($, ghostty.isLinux)
@@ -829,7 +880,7 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch or /solar grill.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar full, /solar spar or /solar vsync off|on.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

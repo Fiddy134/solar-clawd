@@ -200,8 +200,14 @@ test('tidying takes the temp files a crashed write left, and no one else\'s', ()
     entry('solar-clawd.ghostty.tmp-old-session', now - 2 * 3_600_000),
     entry('sky.glsl.tmp-live-session', now - 60_000),
     entry('notes.txt.tmp-old-session', now - 2 * 3_600_000),
+    entry('vsync.ghostty.tmp-old-session', now - 2 * 3_600_000),
+    entry('vsync.ghostty', now - 2 * 3_600_000),
   ]
-  expect(staleFiles(entries, '/runtime', now, []).sort()).toEqual(['/runtime/sky.glsl.tmp-old-session', '/runtime/solar-clawd.ghostty.tmp-old-session'])
+  expect(staleFiles(entries, '/runtime', now, []).sort()).toEqual([
+    '/runtime/sky.glsl.tmp-old-session',
+    '/runtime/solar-clawd.ghostty.tmp-old-session',
+    '/runtime/vsync.ghostty.tmp-old-session',
+  ])
 })
 
 test('the dome: south horizon at the horizon line, east left, Polaris high in the north', () => {

@@ -2,6 +2,8 @@ import type { EngineInterface } from 'claude-code'
 
 import { field, number } from './json'
 import { markOf, UNMARK_TAB } from './mark'
+import { asPace } from './pace'
+import type { Pace } from './pace'
 import type { ShaderParams } from './shader'
 import { staleFiles } from './tidy'
 import { animationOf, waitingAt } from './waiting'
@@ -48,6 +50,14 @@ export type Ghostty = {
   waiting: string
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
+  // The sky's pace for every session (sky.json, beside the runtime folder),
+  // and the file with Ghostty's vsync line, which Ghostty's config includes
+  // apart from the sky's and nothing but /solar vsync empties.
+  settings: string
+  vsync: string
+  // Ghostty's major and minor version, as TERM_PROGRAM_VERSION says; null
+  // when it says none.
+  version: [number, number] | null
   home: string
   // The session's terminal (/dev/ttys004), where its tab's mark is written;
   // null when it could not be found.
@@ -325,6 +335,54 @@ export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason
     await writeWhole($, include, '', ghostty.id)
     await reloadGhostty($, ghostty)
   }
+}
+
+// The line that turns Ghostty's vsync off, in the mod's own file, for
+// every tab and window opened while it is there.
+export const VSYNC_OFF_LINE = 'window-vsync = false\n'
+
+// An include of the mod's vsync file, from any runtime folder.
+const VSYNC_INCLUDE = /^config-file\s*=\s*\??.*\/runtime\/vsync\.ghostty$/
+
+// The sky's pace, as the settings file says it; spar for anything else.
+export async function readPace($: EngineInterface, ghostty: Ghostty): Promise<Pace> {
+  return asPace(await $.fs.read(ghostty.settings).catch(() => ''))
+}
+
+// Whether the person has turned Ghostty's vsync off: the line in its file.
+export async function isVsyncOff($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
+  const text = await $.fs.read(ghostty.vsync).catch(() => '')
+
+  return text.split('\n').some(line => line.trim() === VSYNC_OFF_LINE.trim())
+}
+
+// Includes the vsync file in the config that includes the sky, on the line
+// after it, once; it stays there, saying nothing while the file is empty.
+// Nothing is written to a config that cannot be read, nor to one without
+// the sky's include.
+export async function includeVsync($: EngineInterface, ghostty: Ghostty): Promise<'added' | 'there' | 'unreadable' | 'no-include'> {
+  for (const path of ghostty.configs) {
+    if (!(await $.fs.exists(path).catch(() => false))) continue
+    const text = await $.fs.read(path).catch(() => null)
+    if (text === null) return 'unreadable'
+    const rows = text.split('\n')
+    const at = rows.findIndex(row => OUR_LINES[1]!.test(row.trim()))
+    if (at < 0) continue
+    if (rows.some(row => VSYNC_INCLUDE.test(row.trim()))) return 'there'
+    rows.splice(at + 1, 0, `config-file = ?${ghostty.vsync}`)
+    await $.fs.write(path, rows.join('\n'))
+
+    return 'added'
+  }
+
+  return 'no-include'
+}
+
+// Turns Ghostty's vsync off or back on for the tabs and windows opened
+// from now on, and has Ghostty read it.
+export async function setVsync($: EngineInterface, ghostty: Ghostty, isOff: boolean): Promise<void> {
+  await writeWhole($, ghostty.vsync, isOff ? VSYNC_OFF_LINE : '', ghostty.id)
+  await reloadGhostty($, ghostty)
 }
 
 // The width in points of the stage strip: the window padding on the right

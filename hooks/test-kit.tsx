@@ -43,7 +43,9 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // The session's terminal, as ps names it.
   answers.set('sh', 'ttys004\n')
   let now = 0
-  on('env.get', (_, e) => ({ value: ({ TERM_PROGRAM: 'ghostty', HOME: '/Users/test' } as Record<string, string>)[e.name] }))
+  // The session's environment: Ghostty's own variables, the home folder.
+  const env = new Map([['TERM_PROGRAM', 'ghostty'], ['HOME', '/Users/test']])
+  on('env.get', (_, e) => ({ value: env.get(e.name) }))
   on('fs.write', (_, e) => {
     files.set(e.path, { text: e.text, mtimeMs: now })
     writes.push(e.path)
@@ -82,7 +84,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, tick: (ms: number) => (now = ms) }
 }
 
 // The terminal a Ghostty session's tab is, where its mark is written.
