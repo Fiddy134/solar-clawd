@@ -17,6 +17,10 @@ const int POSE_SLEEP = 8;
 const int POSE_LANTERN = 9;
 const int POSE_PADDLE = 10;
 const int POSE_GAZE = 11;
+// Landing a fish, and at his grill (catch.ts): drawn as he fishes, his rod
+// bent over the water or left propped on the rocks.
+const int POSE_LAND = 12;
+const int POSE_GRILL = 13;
 
 // What he is about, by precedence (keeperMode): at the lit lantern, on
 // his board, asleep in his hammock, and the night's three, else his day.
@@ -95,6 +99,8 @@ int keeperGrid(ivec2 c, int pose, int stride) {
   if (isArmUp && c == ivec2(5, 1)) return 1;
   bool isHandOut = pose == POSE_POINT || (pose == POSE_WAVE && stride == 0);
   if ((isHandOut && c == ivec2(6, 0)) || (pose == POSE_WAVE && stride == 1 && c == ivec2(5, 0))) return 1;
+  // At his grill, a hand out over it.
+  if (pose == POSE_GRILL && c == ivec2(6, 2)) return 1;
   if (c.x < 0 || c.x > 5 || c.y < 0 || c.y > 3) return 0;
   bool isLooking = pose == POSE_LOOK;
   // Head, and a hand up to his brow as he looks out.

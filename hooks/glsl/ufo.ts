@@ -148,6 +148,12 @@ vec3 ufo(vec3 sky, vec2 p, Abduction a, float u, float k) {
 // and falling out (5 to 26.1 s into a visit) he kicks his legs, his
 // binoculars and snoring left off and his hammock empty under him; then he
 // bounces back into whatever he was doing, where he was doing it.
+// His catch, the tab's context window, hangs on the line from the tower
+// to the post. While the conversation compacts and just after, he is at
+// his grill under it, the hammock down and the surf left off, unless a UFO
+// is visiting or he is in the tower; his day goes on as keeperMode has it
+// all the same. A fish landed while he fishes is on his rod, not yet on
+// the line.
 vec3 keeper(vec3 sky, vec2 p, float u, float k) {
   Lighthouse l = lighthouse(u);
   float s = l.s;
@@ -165,18 +171,31 @@ vec3 keeper(vec3 sky, vec2 p, float u, float k) {
     kp.behind = 0.0;
     kp.isShown = !a.isInside;
   }
+  int fish = contextFish();
+  int state = contextState();
+  bool isAtGrill = (state == CONTEXT_CLEARING || state == CONTEXT_CLEARED) && !a.isOn && kp.isOutside;
+  if (isAtGrill) kp = keeperGrill(l);
+  bool isLanding = state == CONTEXT_GAINED && kp.pose == POSE_FISH;
+  if (isLanding) kp.pose = POSE_LAND;
+  bool isHammockUp = mode == MODE_HAMMOCK && !isAtGrill;
+  int grilled = state == CONTEXT_CLEARING ? min(fish, 3) : 0;
   sky = keeperDoor(sky, p, l, kp.door, k);
-  if (kp.pose != POSE_FISH) {
+  sky = post(sky, p, l, k);
+  sky = fishLine(sky, p, l, fish - grilled - (isLanding ? 1 : 0), isLanding ? CONTEXT_IDLE : state, k);
+  sky = grill(sky, p, l, grilled, state, k);
+  if (kp.pose != POSE_FISH && kp.pose != POSE_LAND) {
     vec2 spot = fishingSpot(l);
     sky = keeperLine(sky, p, spot - vec2(0.45 * s, 0.0), spot - vec2(1.0 * s, 0.95 * s), keeperInk(WOOD, k), max(1.5, 0.3 * keeperCell(s)), 1.0);
   }
-  sky = surf(sky, p, l, u, k);
+  if (!isAtGrill) sky = surf(sky, p, l, u, k);
   if (mode == MODE_MOON) sky = fishingLantern(sky, p, l, u, k);
-  if (mode == MODE_HAMMOCK && isTaken) sky = hammock(sky, p, l, k);
+  if (isHammockUp && isTaken) sky = hammock(sky, p, l, k);
   sky = ufoBeam(sky, p, a, u, k);
+  if (isLanding) sky = landing(sky, p, kp, k);
   if (kp.isShown && !keeperIsHidden(p, kp, l)) sky = keeperSprite(sky, p, kp, rise, k);
   if (kp.pose == POSE_GAZE && rise.y == 0.0) sky = binoculars(sky, p, kp, l, k);
-  if (mode == MODE_HAMMOCK && !isTaken) sky = snore(hammock(sky, p, l, k), p, l, k);
+  if (isHammockUp && !isTaken) sky = snore(hammock(sky, p, l, k), p, l, k);
+  sky = grillSmoke(sky, p, l, state, u, k);
   return ufo(sky, p, a, u, k);
 }
 `
