@@ -11,7 +11,9 @@ import type { ActiveEvent } from '../events'
 export { whenOf } from '../events'
 
 // The contract a theme is written against: the four functions, COMMON's
-// helpers and the signals (hooks/shader.ts, THEME_SIGNALS). Contract 1 is
+// helpers, the signals (hooks/shader.ts, THEME_SIGNALS), the context
+// window's contextFish(), contextState() and CONTEXT_ states
+// (glsl/context.ts), and shootingStarAge() (glsl/events.ts). Contract 1 is
 // the engine's unprefixed names as they are; every engine name added after
 // it starts with sky_, so it cannot collide with a theme's own.
 export const ENGINE_CONTRACT = 1

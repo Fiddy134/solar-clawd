@@ -10,6 +10,8 @@ import { shaderParams, skyShader, THEME_SIGNALS } from './shader'
 import type { Weather } from './sky'
 import { swedish } from './test-kit'
 import { COMMON } from './glsl/common'
+import { CONTEXT_MARK } from './glsl/context'
+import { EVENTS as EVENTS_GLSL } from './glsl/events'
 import { PROTOTYPES } from './glsl/prototypes'
 import { checkTheme, engineNames, longNight, NO_THEME, themeFiles, themeOfFiles, weightOf } from './themes/check'
 import { BASE_THEME, THEMES } from './themes/index'
@@ -187,6 +189,17 @@ test('the contract is what contract 1 says it is', () => {
     'int spriteAt(uint rows[8], ivec2 size, ivec2 c, bool flip)',
     'vec3 sprite(vec3 sky, vec2 p, vec2 origin, float cell, uint rows[8], ivec2 size, bool flip, vec3 palette[8], float k)',
   ])
+  // The context window, which a theme reads through these alone (never
+  // iPalette), and the shooting stars' schedule, which fyr's night keeps to.
+  expect([...CONTEXT_MARK.matchAll(/^(?:const \w+ \w+|\w+ \w+\([^)]*\))/gm)].map(m => m[0])).toEqual([
+    'const int CONTEXT_IDLE',
+    'const int CONTEXT_CLEARING',
+    'const int CONTEXT_CLEARED',
+    'const int CONTEXT_GAINED',
+    'int contextFish()',
+    'int contextState()',
+  ])
+  expect(/^\w+ shootingStarAge\([^)]*\)/m.exec(EVENTS_GLSL)?.[0]).toBe('float shootingStarAge(float time, out vec2 from)')
   expect([...THEME_SIGNALS]).toEqual([
     'ELEVATION', 'PROGRESS', 'IS_DAY', 'MOON_ILLUMINATION', 'MOON_WAXING', 'MOON_AT', 'MOON_UP', 'CLOUDINESS', 'COVER', 'WIND',
     'PRECIPITATION', 'AURORA', 'AURORA_FLOOR', 'DEMO_COUNT', 'DEMO_SECONDS', 'DEMO_ELEVATION', 'DEMO_PROGRESS', 'DEMO_DAY',
