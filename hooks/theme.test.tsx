@@ -79,8 +79,28 @@ test("the lint keeps a theme from the terminal's image, the GPU's time and the e
   flags('float f(int n) { float s = 0.0; for (int i = 0; i < n; i++) s += 1.0; return s; }', 'loop not of the form')
   flags('float f(int n) { float s = 0.0; for (int i = n - 1; i <= n; i++) s += 1.0; return s; }', 'loop not of the form')
   flags('float f() { float s = 0.0; for (int i = 0; i < 4; i += s > 1.0 ? 1 : 2) s += 1.0; return s; }', 'loop not of the form')
+  // A header with a parenthesis in it is read too, not passed over.
+  flags('float f() { float s = 0.0; for (int i = int(0.0); i < 100000000; i++) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < min(100000000, 200000000); i++) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i += (1)) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i++ s += 1.0; return s; }', 'loop not of the form')
+  // Nor one that would run some 2^31 times, or for ever: a start far off,
+  // a bound it never meets, no step, or a step away from the bound.
+  flags('float f() { float s = 0.0; for (int i = -2147483647; i < 0; i++) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i != 7; i += 2) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i += 0) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i -= 0) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i > -4; i++) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i < 4; i--) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 0; i <= 4; i -= 1) s += 1.0; return s; }', 'loop not of the form')
+  flags('float f() { float s = 0.0; for (int i = 4; i >= 0; ++i) s += 1.0; return s; }', 'loop not of the form')
   flags(
     'float f() { float s = 0.0; for (int i = 0; i < 2; i++) { for (int j = 0; j < 2; j++) { for (int n = 0; n < 2; n++) s += 1.0; } } return s; }',
+    'more than two deep',
+  )
+  // A loop whose header is not of the form still counts toward the depth.
+  flags(
+    'float f() { float s = 0.0; for (int i = 0; i < 2; i++) { for (int j = 0; j < 2; j++) { for (int n = int(0.0); n < 2; n++) s += 1.0; } } return s; }',
     'more than two deep',
   )
   // What is fine: its own names, a local that shadows the engine's, two
@@ -93,6 +113,8 @@ float wave(float x, out float y) { float pitch = 3.0; y = pitch; return x * MY_L
 vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   for (int i = 0; i < 3; i++) { for (int j = 4; j > 0; j--) sky *= 0.99; }
   for (int i = 0; i < 48; i += 2) sky += 0.001;
+  for (int i = -48; i <= 48; ++i) sky += 0.0001;
+  for (int i = 48; i >= -48; i -= 3) sky -= 0.0001;
   return sky;
 }
 float themeWindow(vec2 p, float u) { return 1.0; }

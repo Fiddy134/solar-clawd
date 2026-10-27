@@ -236,11 +236,45 @@ function loopBody(text: string, from: number): [number, number] {
   return [start, end < 0 ? text.length : end + 1]
 }
 
+// Where the parenthesis that opens at `open` closes, or the text's end.
+function parenClosing(text: string, open: number): number {
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '(') depth++
+    if (text[i] === ')' && --depth === 0) return i
+  }
+
+  return text.length
+}
+
+// The index of a loop whose header (between its parentheses) is of the
+// allowed form, else null: an int set to a whole number of at most 48 either
+// way, compared by <, <=, > or >= with another such, and stepped by a whole
+// number above 0 toward it. Nothing else reads as the form, so no loop of
+// it runs more than 97 times.
+function loopIndex(header: string): string | null {
+  const parts = header.split(';')
+  if (parts.length !== 3) return null
+  const [init, condition, step] = parts as [string, string, string]
+  const start = /^\s*int\s+(\w+)\s*=\s*(-?\d+)\s*$/.exec(init)
+  if (!start) return null
+  const index = start[1]!
+  const bound = new RegExp(`^\\s*${index}\\s*(<=?|>=?)\\s*(-?\\d+)\\s*$`).exec(condition)
+  if (!bound || Math.abs(Number(start[2])) > 48 || Math.abs(Number(bound[2])) > 48) return null
+  const by = new RegExp(`^\\s*(?:${index}\\s*(\\+\\+|--)|(\\+\\+|--)\\s*${index}|${index}\\s*([+-])=\\s*(\\d+))\\s*$`).exec(step)
+  if (!by) return null
+  const isUp = (by[1] ?? by[2] ?? `${by[3]}${by[3]}`) === '++'
+  if (by[4] !== undefined && Number(by[4]) === 0) return null
+  if (isUp !== bound[1]!.startsWith('<')) return null
+
+  return index
+}
+
 // What is wrong with a theme's GLSL, empty when nothing is: a subset of GLSL
 // that cannot read the terminal, hang the GPU or redefine the engine. Its
-// loops keep to GLSL ES 1.00's Appendix A: an int index set to a constant,
-// compared with a constant of at most 48, stepped by a constant, never
-// assigned in the body, and nested at most two deep. `engineNames` are the
+// loops keep to GLSL ES 1.00's Appendix A (loopIndex): an int index set to a
+// constant, compared with a constant of at most 48, stepped toward it by a
+// constant, never assigned in the body, and nested at most two deep. `engineNames` are the
 // engine's top-level names (topLevelNames of the shader without the
 // theme); the four entry points are the theme's to define.
 export function lintTheme(glsl: string, engineNames: readonly string[]): string[] {
@@ -270,16 +304,17 @@ export function lintTheme(glsl: string, engineNames: readonly string[]): string[
     else if (engine.has(name)) problems.push(`defines ${name}, which is the engine's`)
   }
 
+  // Every for counts, as a loop to nest and a header to check; one whose
+  // header this cannot read is not of the form.
   const loops: [number, number][] = []
-  const header = /\bfor\s*\(([^;)]*);([^;)]*);([^)]*)\)/g
+  const header = /\bfor\s*\(/g
   for (let m = header.exec(text); m; m = header.exec(text)) {
-    const [whole, init, condition, step] = m as unknown as [string, string, string, string]
-    const index = /^\s*int\s+(\w+)\s*=\s*-?\d+\s*$/.exec(init)?.[1]
-    const bound = index ? new RegExp(`^\\s*${index}\\s*(?:<|<=|>|>=|!=)\\s*(-?\\d+)\\s*$`).exec(condition) : null
-    const isStep = index ? new RegExp(`^\\s*(?:${index}\\s*(?:\\+\\+|--)|(?:\\+\\+|--)\\s*${index}|${index}\\s*[+-]=\\s*\\d+)\\s*$`).test(step) : false
-    const body = loopBody(text, m.index + whole.length)
+    const close = parenClosing(text, m.index + m[0].length - 1)
+    const whole = text.slice(m.index, close + 1)
+    const body = loopBody(text, close + 1)
     loops.push(body)
-    if (!index || !bound || !isStep || Math.abs(Number(bound[1])) > 48) {
+    const index = loopIndex(text.slice(m.index + m[0].length, close))
+    if (!index) {
       problems.push(`has a loop not of the form for (int i = constant; i < constant up to 48; i++): "${whole.replace(/\s+/g, ' ')}"`)
       continue
     }
