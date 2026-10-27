@@ -4,9 +4,10 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
+import { UNMARK_TAB } from './mark'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
-import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS } from './test-kit'
+import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
 
 // The comment the mod writes with its include and the stage, and the one it
 // wrote before there was a stage; where its runtime folder is on a Mac.
@@ -247,7 +248,7 @@ test('/clear keeps the sky: the session goes on', async ($, on) => {
 test('/clear empties the context at once: the keeper grills his catch, the embers glow over a bare line', async ($, on) => {
   const fill = { percent: 60 }
   const { clock, world, include } = await waitingWorld($, on, { value: 1 }, () => on('session.usage', () => usageOf(fill)))
-  const mark = () => lastMark(world.runs)
+  const mark = () => lastMark(world)
   expect(mark()).toContain('rgb:00/06/01')
   fill.percent = 2
   await $.session.end({ reason: 'clear', sessionId: 'this-session', resume: { id: 'this-session' } })
@@ -796,14 +797,14 @@ test("a question is put out by the end of the call that asked, not by another ca
 })
 
 // The tab's mark as last written to its terminal.
-const lastMark = (runs: string[][]) => runs.filter(argv => argv[0] === 'sh' && argv[4]?.includes(']4;16;')).at(-1)?.[4]
+const lastMark = (world: ReturnType<typeof ghosttyWorld>) => world.files.get(TTY)?.text
 // How full the context window is, as session.usage answers it.
 const usageOf = (fill: { percent: number }) => ({ value: { startedAt: 0, context: { window: 200_000, percent: fill.percent }, rateLimits: [] } })
 
 test("/solar catch lands a fish on the keeper's line, /solar grill grills the catch for a while, and the old words still work", async ($, on) => {
   const { clock, world, include } = await waitingWorld($, on)
   const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
-  const mark = () => lastMark(world.runs)
+  const mark = () => lastMark(world)
   expect(mark()).toContain('rgb:00/00/01')
   await solar('catch')
   await clock.advance(10)
@@ -834,7 +835,7 @@ test("/solar catch lands a fish on the keeper's line, /solar grill grills the ca
 test('another tenth of the context window filled: the keeper lands a fish at once, and hangs it on the line once the catch is over', async ($, on) => {
   const fill = { percent: 8 }
   const { clock, world } = await waitingWorld($, on, { value: 1 }, () => on('session.usage', () => usageOf(fill)))
-  const mark = () => lastMark(world.runs)
+  const mark = () => lastMark(world)
   expect(mark()).toContain('rgb:00/00/01')
   fill.percent = 12
   await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
@@ -856,7 +857,7 @@ test('a compaction grills the catch while it runs, leaves embers over a bare lin
     on('session.usage', () => usageOf(fill))
     on('session.compact', (_, e) => new Promise(done => (finish = () => done({ messages: e.messages }))) as never)
   })
-  const mark = () => lastMark(world.runs)
+  const mark = () => lastMark(world)
   expect(mark()).toContain('rgb:00/06/01')
   const messages = [{ role: 'user', text: 'the plan', toolUses: [] }]
   const compacting = $.session.compact({ trigger: 'manual', messages } as never)
@@ -881,4 +882,18 @@ test('a shader changed on disk behind this session is written again', async ($, 
   world.files.set(`${runtime}/sky.glsl`, { text: '// another session lit a lighthouse here', mtimeMs: 0 })
   await clock.advance(10_000)
   expect(shader()).toBe(mine)
+})
+
+test('the tab is found once, and its marks are written to it without a process each', async ($, on) => {
+  const { clock, world } = await waitingWorld($, on)
+  const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  await solar('catch')
+  await clock.advance(3_000)
+  await solar('grill')
+  await clock.advance(70_000)
+  expect(world.runs.filter(argv => argv[0] === 'sh').length).toBe(1)
+  expect(world.writes.filter(path => path === TTY).length).toBeGreaterThan(3)
+  expect(world.files.get(TTY)?.text).toContain(']4;16;rgb:')
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
 })

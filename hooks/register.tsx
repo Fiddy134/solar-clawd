@@ -20,6 +20,7 @@ import {
   shareWaiting,
   STAGE_PT,
   tidy,
+  ttyOf,
   updateGhosttySky,
 } from './ghostty'
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
@@ -376,6 +377,7 @@ export const register: Register = on => {
         waiting: `${folder}/waiting-${id}`,
         hidden: `${folder}/hidden`,
         home,
+        tty: await ttyOf($),
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
         // Asked below, once the config is known to include the sky.

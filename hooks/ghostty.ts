@@ -49,6 +49,9 @@ export type Ghostty = {
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
   home: string
+  // The session's terminal (/dev/ttys004), where its tab's mark is written;
+  // null when it could not be found.
+  tty: string | null
   configs: string[]
   isLinux: boolean
   // The stage strip's width in device pixels: STAGE_PT times the screen scale.
@@ -98,10 +101,20 @@ export async function tidy($: EngineInterface, folder: string, keep: string[]): 
 // window. A session marks its own tab instead: palette colour 16 (black,
 // in the colour cube) one step off, which no one sees and the shader looks
 // for, so the sky shows only where Claude runs. Written to the session's
-// own terminal: the tty of the process the mod's commands run under.
-export async function markTab($: EngineInterface, sequence: string): Promise<void> {
-  const script = 'tty=$(ps -o tty= -p $PPID | tr -d " "); case "$tty" in ""|"?"*) exit 1;; esac; printf "%s" "$1" > "/dev/$tty"'
-  await $.process.run(['sh', '-c', script, 'sh', sequence], { timeoutMs: 5_000 }).catch(() => undefined)
+// own terminal, found once (ttyOf), with no process for each write: the
+// sky's ticks write it 24 times a second.
+export async function markTab($: EngineInterface, ghostty: Ghostty, sequence: string): Promise<void> {
+  if (ghostty.tty === null) return
+  await $.fs.write(ghostty.tty, sequence).catch(() => undefined)
+}
+
+// The session's own terminal: the tty of the process the mod's commands
+// run under, as ps names it; null when it has none.
+export async function ttyOf($: EngineInterface): Promise<string | null> {
+  const answer = await $.process.run(['sh', '-c', 'ps -o tty= -p $PPID'], { timeoutMs: 5_000 }).catch(() => null)
+  const name = answer?.exitCode === 0 ? answer.stdout.trim() : ''
+
+  return /^tty[\w.]+$/.test(name) ? `/dev/${name}` : null
 }
 
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
@@ -251,7 +264,7 @@ async function writeGhosttySky(
   // a `reset` in the tab would have cleared it.
   const mark = markOf(state.catchAt(now))
   if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
-    await markTab($, mark)
+    await markTab($, ghostty, mark)
     written.mark = mark
   }
   if (now - written.heartbeatAt >= HEARTBEAT_MS) {
@@ -299,7 +312,7 @@ async function writeGhosttySky(
 export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
-  await markTab($, UNMARK_TAB)
+  await markTab($, ghostty, UNMARK_TAB)
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty
   await $.process.run(['/bin/rm', '-f', heartbeat, ghostty.waiting]).catch(() => undefined)

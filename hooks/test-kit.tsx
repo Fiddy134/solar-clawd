@@ -40,6 +40,8 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   const power = { text: "Now drawing from 'AC Power'\n" }
   // The bundle id of the app in front, as lsappinfo says it.
   const front = { value: 'com.apple.Safari' }
+  // The session's terminal, as ps names it.
+  answers.set('sh', 'ttys004\n')
   let now = 0
   on('env.get', (_, e) => ({ value: ({ TERM_PROGRAM: 'ghostty', HOME: '/Users/test' } as Record<string, string>)[e.name] }))
   on('fs.write', (_, e) => {
@@ -82,6 +84,9 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
 
   return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, tick: (ms: number) => (now = ms) }
 }
+
+// The terminal a Ghostty session's tab is, where its mark is written.
+export const TTY = '/dev/ttys004'
 
 export const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
 
