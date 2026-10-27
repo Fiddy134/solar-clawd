@@ -33,7 +33,7 @@ float fish(vec2 q, float s) {
 // a pale blue (two plates do not fit on a dozen pixels), \`smoked\` toward
 // indigo and \`burnt\` toward the dark; an indigo eye, a glint of the paper
 // down its flank, and under it the key plate a whole pixel off register as
-// his is (\`key\` is p there, q in the same frame). \`blink\` flashes it
+// his is (\`key\` is p there, q in the same frame). \`blink\` shows it
 // cream, a little larger.
 vec3 fishInk(vec3 sky, vec2 q, vec2 key, float s, float smoked, float burnt, float blink, float k) {
   float off = fish(key, s);
@@ -41,7 +41,7 @@ vec3 fishInk(vec3 sky, vec2 q, vec2 key, float s, float smoked, float burnt, flo
   if (min(off, d) > 1.0 + blink * 0.04 * s) return sky;
   sky = ink(sky, lift(INK_INDIGO, k), off, 0.45);
   vec3 body = mix(lift(mix(mix(INK_BLUE, CREAM, 0.7), INK_INDIGO, 0.5 * smoked), k), tone(INK_INDIGO, k) * 0.55, burnt);
-  if (blink > 0.0) return ink(sky, CREAM, d - max(1.0, 0.04 * s), 1.0);
+  if (blink > 0.0) return ink(sky, keeperInk(CREAM, k), d - max(1.0, 0.04 * s), 1.0);
   sky = ink(sky, body, d, 1.0);
   if (d > 0.0) return sky;
   sky = ink(sky, mix(CREAM, body, 0.3), segment(q, vec2(-0.08, 0.3) * s, vec2(-0.08, 0.48) * s) - 0.35, 0.9);
@@ -79,7 +79,7 @@ float slotX(int i, Lighthouse l) { return l.x + (SLOT_FIRST + SLOT_GAP * float(i
 
 // His catch on the line: \`fish\` of them, slid down it to the post end, the
 // newest nearest the tower, each swaying with the wind; smoked while the
-// grill burns, and the newest blinking cream as it is landed while he is
+// grill burns, and the newest cream as it is landed while he is
 // not there to land it. A bead of the paper's cream on the line halfway,
 // where the fifth fish hangs up to, says at a glance whether it is half
 // full.
@@ -112,7 +112,9 @@ vec3 fishLine(vec3 sky, vec2 p, Lighthouse l, int fish, int state, float k) {
     if (i < first || i > 9) continue;
     float x = slotX(i, l);
     float angle = 0.15 * sin(iTime * 1.3 + float(i)) * (0.5 + WIND / 10.0);
-    float blink = state == CONTEXT_GAINED && i == first ? step(0.5, fract(iTime * 3.0)) : 0.0;
+    // Cream for the whole catch, not flashing: the catch never makes the
+    // sky lively, so a frame drawn in it must show the fish whatever its time.
+    float blink = state == CONTEXT_GAINED && i == first ? 1.0 : 0.0;
     sky = hungFish(sky, p, vec2(x, lineY(x, l, fish)), 0.05 * s, angle, 0.2 * s, off, state == CONTEXT_CLEARING ? 1.0 : 0.0, blink, k);
   }
   return sky;

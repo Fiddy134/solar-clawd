@@ -22,7 +22,10 @@ while [ $i -lt $count ]; do
   fish=$(awk "BEGIN { print ($t < 2.5 ? \"6,catch\" : $t < 5 ? \"6\" : $t < 9 ? \"6,grill\" : $t < 10.5 ? \"0,embers\" : \"1\") }")
   reaction=$(awk "BEGIN { print ($t < 1.8 ? \"toss,\" $t : $t >= 5 && $t < 9 ? \"burn,\" ($t - 5) : $t >= 9 && $t < 10.5 ? \"embers,\" ($t - 9) : \"reading,0\") }")
   time=$(awk "BEGIN { print 3 + $t }")
-  "$root/tools/preview/run.sh" shader --at 2026-10-24T15:35 --event dolphin --beacon asking --fish "$fish" \
+  # The lighthouse asks only once he has landed it: at the lantern he
+  # could not.
+  beacon=$(awk "BEGIN { print ($t < 2.5 ? \"\" : \"--beacon asking\") }")
+  "$root/tools/preview/run.sh" shader --at 2026-10-24T15:35 --event dolphin $beacon --fish "$fish" \
     --band --paper 60 --sky-context --reaction "$reaction" --time "$time" --out "gif/f$(printf %03d $i)" >/dev/null
   i=$((i + 1))
 done

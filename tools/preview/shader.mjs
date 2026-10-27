@@ -36,6 +36,12 @@ const events = eventsAt(ms, context, forced)
 // --fish 7 or 7,catch or 7,grill or 0,embers: the tab's mark for its context
 // window, the keeper's line of fish (--basket the old name, burn the old grill).
 const [fish, fishState] = (o.fish ?? o.basket) === undefined ? [] : String(o.fish ?? o.basket).split(',')
+function contextState(state) {
+  if (state === undefined) return 'idle'
+  if (state === 'burn') return 'grill'
+  if (['idle', 'catch', 'grill', 'embers'].includes(state)) return state
+  throw new Error(`--fish: no state called "${state}" (idle, catch, grill or embers)`)
+}
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
   {
@@ -50,7 +56,7 @@ const params = shaderParams(
     isYUp: !!o['y-up'],
     stagePx: o.stage ? Number(o.stage) : 0,
     isLight: !!o.light,
-    context: fish === undefined ? null : { fish: Number(fish), state: fishState === 'burn' ? 'grill' : fishState ?? 'idle' },
+    context: fish === undefined ? null : { fish: Number(fish), state: contextState(fishState) },
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))
