@@ -1,9 +1,10 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Place } from './astro'
-import { isPrintable } from './clawd'
 import { elementsOf } from './iss'
 import type { Elements } from './iss'
+import { field, number } from './json'
+import { isPrintable } from './paint'
 import { SKY_WORDS, skyOf } from './sky'
 import type { Weather } from './sky'
 
@@ -21,16 +22,6 @@ const ISS_ELEMENTS = 'iss'
 const ISS_URL = 'https://celestrak.org/NORAD/elements/gp.php?CATNR=25544&FORMAT=json'
 // The ISS's elements are fetched at most this often.
 export const ISS_MS = 86_400_000
-
-type Json = Record<string, unknown>
-
-export function field(value: unknown, key: string): unknown {
-  return typeof value === 'object' && value !== null ? (value as Json)[key] : undefined
-}
-
-export function number(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
 
 function asPlace(value: unknown): Place | null {
   const name = field(value, 'name')

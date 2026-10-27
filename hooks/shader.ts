@@ -5,12 +5,12 @@
 // again, and Ghostty told to reload, when they change.
 
 import { horizontalAt, localMidnight, localTime, moonAt, sunAt } from './astro'
-import { activityOn } from './clawd'
 import { chartAt, tileLines, tileStars } from './chart'
 import type { ChartStar } from './chart'
 import { domePoint } from './dome'
 import type { DomePoint } from './dome'
 import type { ActiveEvent, EngineEventKind, EventKind } from './events'
+import { activityOn } from './hours'
 import { auroraThreshold, bodyAt, greyness, RARE_SHAPES, skyOf } from './sky'
 import type { SkyInput } from './sky'
 import { clamp, INKS, rand } from './paint'
@@ -86,19 +86,6 @@ export type ShaderParams = {
   // away: Ghostty draws a focused window at every frame whatever the
   // animation setting says, so a still sky costs as much as a moving one.
   isLight: boolean
-}
-
-// A tab's mark, palette colour 16 as the session sets it (register.tsx,
-// markTab): blue one step off black says Claude runs there, green counts
-// the tenths of its context window that are full, and red says what is
-// happening to it: 0 idle, 1 clearing (the conversation compacts), 2
-// cleared (it just has), 3 gained (a tenth has just filled). Per tab, where
-// the shader's text is one for all of them.
-export function tabMark(context: ShaderParams['context']): [number, number, number] {
-  const fish = Math.max(0, Math.min(10, Math.round(context?.fish ?? 0)))
-  const state = { idle: 0, grill: 1, embers: 2, catch: 3 }[context?.state ?? 'idle']
-
-  return [state, fish, 1]
 }
 
 // The shader's number for each of the engine's events, from

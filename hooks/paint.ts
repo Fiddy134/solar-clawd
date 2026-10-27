@@ -431,3 +431,9 @@ export function screen(x: number, y: number, tone: number, pitch: number, angle:
 
   return clamp(radius - distance + 0.5)
 }
+
+// Latin a cell can hold, without the C0 and C1 control characters.
+export function isPrintable(code: number): boolean {
+  // A soft hyphen (U+00AD) draws as nothing in some terminals: not one.
+  return (code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code < 0x250 && code !== 0xad)
+}

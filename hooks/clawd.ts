@@ -7,14 +7,14 @@
 
 import { localTime, moonAt, OCCASION_WORDS, occasionAt, sunAt } from './astro'
 import type { LocalTime, Occasion } from './astro'
-import { Canvas, INKS, luminance, mix, rand, smoothstep, toBase64 } from './paint'
+import { activityOn } from './hours'
+import type { Activity } from './hours'
+import { Canvas, INKS, isPrintable, luminance, mix, rand, smoothstep, toBase64 } from './paint'
 import { auroraStrength, paintBandSky, paintPrecipitation, SKY_WORDS, skyOf } from './sky'
 import type { SkyInput } from './sky'
 
 // Terminal rows the band takes; every sprite below is laid out for it.
 export const ROWS = 3
-
-export type Activity = 'earlyBird' | 'coffee' | 'work' | 'vibe' | 'nightOwl' | 'sleep'
 
 export type Mode = 'live' | 'demo' | 'pinned'
 
@@ -73,18 +73,6 @@ const LABELS: Record<Activity, string> = {
 
 // Wind from which his hat goes, in metres per second.
 export const WINDY = 9
-
-// The same day every day: up with the birds at six, coffee till noon, work
-// till four, then vibing, a night owl from ten, and asleep from three.
-export function activityAt({ hour }: Pick<LocalTime, 'hour'>): Activity {
-  if (hour >= 3 && hour < 6) return 'sleep'
-  if (hour >= 6 && hour < 8) return 'earlyBird'
-  if (hour >= 8 && hour < 12) return 'coffee'
-  if (hour >= 12 && hour < 16) return 'work'
-  if (hour >= 16 && hour < 22) return 'vibe'
-
-  return 'nightOwl'
-}
 
 // --- Riso ------------------------------------------------------------------
 
@@ -676,16 +664,6 @@ export type SceneState = {
   hat: HatKind | null
 }
 
-// What Clawd does at a time: the usual hours, but up all New Year's night,
-// and early for the Lucia train.
-export function activityOn(time: LocalTime): Activity {
-  const usual = activityAt(time)
-  if (usual !== 'sleep') return usual
-  const occasion = occasionAt(time)
-
-  return occasion === 'newYear' ? 'nightOwl' : occasion === 'lucia' && time.hour >= 5 ? 'earlyBird' : usual
-}
-
 export function sceneOf(view: View): SceneState {
   const { ms, place, offsetMs, weather } = view
   const sun = sunAt(ms, place.lat, place.lon)
@@ -754,12 +732,6 @@ export function drawFrame(view: View): string {
   })
 
   return encode(c, glyphs, isClear)
-}
-
-// Latin a cell can hold, without the C0 and C1 control characters.
-export function isPrintable(code: number): boolean {
-  // A soft hyphen (U+00AD) draws as nothing in some terminals: not one.
-  return (code >= 0x20 && code < 0x7f) || (code >= 0xa0 && code < 0x250 && code !== 0xad)
 }
 
 // The terminal's own background, where a clear band lets the wallpaper show.

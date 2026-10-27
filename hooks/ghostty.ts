@@ -1,11 +1,11 @@
 import type { EngineInterface } from 'claude-code'
 
-import { animationOf, waitingAt } from './waiting'
-import type { Waiting } from './waiting'
-import { field, number } from './net'
-import { tabMark } from './shader'
+import { field, number } from './json'
+import { markOf, UNMARK_TAB } from './mark'
 import type { ShaderParams } from './shader'
 import { staleFiles } from './tidy'
+import { animationOf, waitingAt } from './waiting'
+import type { Waiting } from './waiting'
 
 // Ghostty draws the sky itself, from a shader the mod writes into its
 // runtime folder: the config, the include, the tab's mark, the reload, and
@@ -99,14 +99,6 @@ export async function tidy($: EngineInterface, folder: string, keep: string[]): 
 // in the colour cube) one step off, which no one sees and the shader looks
 // for, so the sky shows only where Claude runs. Written to the session's
 // own terminal: the tty of the process the mod's commands run under.
-const UNMARK_TAB = '\x1b]104;16\x1b\\'
-// The mark for this tab's context window: how full, and what is happening
-// to it (tabMark).
-function markOf(context: ShaderParams['context']): string {
-  const hex = tabMark(context).map(v => v.toString(16).padStart(2, '0'))
-
-  return `\x1b]4;16;rgb:${hex.join('/')}\x1b\\`
-}
 export async function markTab($: EngineInterface, sequence: string): Promise<void> {
   const script = 'tty=$(ps -o tty= -p $PPID | tr -d " "); case "$tty" in ""|"?"*) exit 1;; esac; printf "%s" "$1" > "/dev/$tty"'
   await $.process.run(['sh', '-c', script, 'sh', sequence], { timeoutMs: 5_000 }).catch(() => undefined)

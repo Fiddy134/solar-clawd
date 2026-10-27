@@ -4,12 +4,13 @@ import { expect, test } from 'claude-code/testing'
 
 import { localTime, STOCKHOLM, swedishOffsetMs } from './astro'
 import { swedish } from './test-kit'
-import { activityAt, activityOn, chaseAt, clawdRows, drawFrame, isPrintable, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
-import { fromBase64 } from './paint'
-import { CATCH } from './themes/fyr/glsl/catch'
+import { chaseAt, clawdRows, drawFrame, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
+import { activityAt, activityOn } from './hours'
+import { tabMark } from './mark'
+import { fromBase64, isPrintable } from './paint'
 import { CONTEXT_MARK } from './glsl/context'
 import { MAIN } from './glsl/main'
-import { shaderParams, skyShader, tabMark } from './shader'
+import { shaderParams, skyShader } from './shader'
 import { wallpaperPng } from './sky'
 import { BASE_THEME, THEMES } from './themes/index'
 
@@ -106,8 +107,8 @@ test("the keeper's catch reads the tab's mark, and the shader's tab test lets ev
   // The engine reads the mark; the keeper's catch only asks it.
   expect(CONTEXT_MARK).toContain('iPalette[16]')
   expect(text).toContain(CONTEXT_MARK)
-  expect(text).toContain(CATCH)
-  expect(CATCH).not.toContain('iPalette')
+  expect(text).toContain(FYR.glsl)
+  expect(FYR.glsl).not.toContain('iPalette')
   expect(text).toContain('int fish = contextFish();')
   // Red up to 3, a tenth just filled; 4 is no mark of ours.
   expect(MAIN).toContain('iPalette[16].r > 3.5 / 255.0')
