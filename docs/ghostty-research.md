@@ -116,3 +116,68 @@ authoritative), [design]/[hypotes] ours.
 - The config load order on macOS (`ghostty +show-config` with the same key set
   differently in both places).
 - Comments on the iglass thread (Reddit rate-limited every fetch).
+
+## Second pass (GitHub, same day)
+
+Two code findings first:
+
+- **SIGUSR2 reloads Ghostty on macOS too**, not only on Linux. [code]
+  `macos/Sources/App/macOS/AppDelegate.swift` at v1.3.1, `setupSignals()`:
+  `DispatchSource.makeSignalSource(signal: SIGUSR2…)` → `reloadConfig()`
+  (checked by hand 2026-10-27). The mod uses AppleScript `reload_config` on the
+  Mac, which needs Automation permission and a front window. [hypotes] A
+  signal needs neither. `pgrep -x ghostty` finds nothing on this Mac (the
+  process is `/Applications/Ghostty.app/Contents/MacOS/ghostty`); match the
+  basename from `ps -axo pid=,comm=`. Untested here: no signal was sent.
+- **A reload re-reads a shader at the same path, by accident.** [code]
+  `changeConfig` rebuilds shaders only when `custom_shaders.equal()` says the
+  list changed; `Path.equal` compares slices by address and each reload clones
+  them, so it always reports a change (the same for `background-image`). That
+  is why rewriting our one shader path works. If Ghostty ever compares the
+  strings, open tabs stop picking up a new shader; two projects below name
+  their files by content hash for that reason.
+
+New projects worth borrowing from (all MIT unless said; few stars, so little
+tested by others):
+
+1. [r3dg0d/ghostfx](https://github.com/r3dg0d/ghostfx): 253 background
+   shaders on a shared core: a text mask against `iBackgroundColor`, a 4-tap
+   halo behind glyphs, a soft brightness cap that turns into a floor on light
+   themes, quality levels as `#define`s, `mod(iTime, 7200)` for float
+   precision; a CLI with a marked block, atomic write, backup and rollback, and
+   `--chain`/`--replace` for users who already have shaders. [design] The halo
+   and cap against our rim; the installer for F6.
+2. [an0sunshy/ghostty-shaders](https://github.com/an0sunshy/ghostty-shaders):
+   a live-weather sky with the real moon phase; CI fails a scene over 5 % of
+   the frame budget at 3456×2234/120 Hz; after a reload it reads `log show`
+   for `spirv error` and restores the previous include. [design] A cost gate
+   for our tests, and a compile check with revert for the mod.
+3. [vinzw/ghostty-term-tag](https://github.com/vinzw/ghostty-term-tag): per-tab
+   labels in palette colours 16–23 (24 bytes, a length byte), 5×7 glyphs packed
+   in a `uvec2`. Confirms the wider tab mark in F5.
+4. [3-rt/ghostty-landscapes](https://github.com/3-rt/ghostty-landscapes): the
+   still scene as `background-image`, the shader drawing only what moves,
+   content-hashed file names, an offscreen Metal check (glslang → SPIR-V →
+   spirv-cross). Our still-sky lab cell, working.
+5. [pglockner/ghostty-bg](https://github.com/pglockner/ghostty-bg): keeps text
+   readable by writing stronger dim palette colours into the include when the
+   background washes them out, and raising `faint-opacity`.
+6. [evanspn/shader-lab](https://github.com/evanspn/shader-lab): headless
+   checks that text pixels change by at most ε and text edge energy stays
+   ≥ 0.85, deterministic animation, ms a frame against a budget. [design] The
+   text metric for `hooks/sky.test.tsx`.
+7. [ashuttl/linecast](https://github.com/ashuttl/linecast) (646★): an
+   almanac; a METAR from an airport within 25 km replaces modelled weather;
+   MeteoAlarm warnings cover Sweden. [design] Observed cloud and storm warnings.
+8. [cstelmach/terminal-agent-visual-signals](https://github.com/cstelmach/terminal-agent-visual-signals):
+   a Claude Code plugin with states for compacting, subagent, tool error and a
+   fading idle. [design] Moods for the keeper.
+9. Smaller: rashedInt32/eddy (tints glyph fringes within 10/255 of the
+   background so no halo shows); evanspn/ghostty-profiles (`off` empties the
+   include but keeps the `config-file = ?…` line); nerrad/ghostty-tab-colors
+   (no licence: ideas only; OSC 21 as another way to write the palette).
+
+Rejected: no licence (hackrdotsh/ghostty-shaders, lexrus and others), GPL or
+NC/SA, overwriting the user's config, `background-opacity = 0` (a restart on
+macOS). Unsettled: which way `fragCoord.y` runs on Metal (projects disagree; the
+mod already has `Y_UP` and probed it on 2026-10-25).
