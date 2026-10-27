@@ -907,3 +907,194 @@ Whether Ghostty agrees, in device points and mW, is a row for phase 4 if
 Vincent wants one: `scenes.sh` writes the scenes without `LIGHT`, so a
 light row needs a scene written with it. The preview's own weak spots (see
 phase 2) apply as before.
+
+## F4 phase 4, 2026-10-27: the merged shader in Ghostty
+
+The harness's plan `f4 --twice` on `gpu` at `d19a474`: the first run's
+45 rows again as the baseline, the merged shader beside them, and the
+three 60 Hz rows the morning after.
+
+### Context
+
+- Same machine and display as the first run: MacBookPro18,3, M1 Pro
+  32 GB, macOS 27.0 (26A428), Ghostty 1.3.1, the built-in Color LCD
+  alone at 3024×1964, AC power, no thermal or performance warning.
+  Settle 10 s, sample 30 s.
+- **The plan:** 00:21–01:59, 128 rows, the 64 of `plan f4` forward and
+  then backward (ABBA). The scenes from `ljus-himmel` and `main` have the
+  same sha256 as in the first run (`89272b7a0789`, `cc466523bfcf`,
+  `af7c1319f745`, `70fa7b81935b`). Load average 6.82 at the start, against
+  1.81 for the first run's level A. A start three minutes earlier
+  (`2026-10-27T001827`) stopped after its first row and is not used.
+- **The 60 Hz rows:** 08:20–08:25, the display set to 60 Hz in System
+  Settings, one row each: the probe, `ljus-himmel:day-clear`,
+  `gpu:day-clear`. The probe row was taken with `--force`, past a
+  preflight that found PerfPowerService at 84 % of a CPU (a try before:
+  48 %, with `deleted` at 47 % and `cloudd` at 32 %); the two scene rows
+  passed it. `--force` leaves no trace in `context.txt`, so it is
+  recorded here. Load average 2.87.
+- The raw data is outside git: `.preview/measure/out/2026-10-27T002134/`
+  (`rows.tsv`, `report.md`) and `.preview/measure/out/2026-10-27-rows/`.
+
+**Busy cycles** below are mean MHz × active residency, the proxy the first
+run used ("20 % against 75 %"), over the same floor: passthrough focused
+idle 389 × 0.749 = 291, with the spinner 304. An inference about work,
+not a measurement of it.
+
+### F4's target
+
+The sky's own cost, over the floor, `ljus-himmel` → `gpu`, mean of the
+two passes:
+
+| scene | setting | device points | left | mW | left | busy cycles | left | MHz |
+|---|---|---|---|---|---|---|---|---|
+| day-clear | true, focused, idle | 42.2 → 38.3 | 91 % | 12341 → 4925 | 40 % | 941 → 557 | 59 % | 1247 → 875 |
+| day-clear | true, focused, spinner | 40.5 → 38.3 | 95 % | 12719 → 4875 | 38 % | 943 → 545 | 58 % | 1271 → 875 |
+| night-lit | true, focused, idle | 48.9 → 38.6 | 79 % | 14923 → 6499 | 44 % | 1001 → 665 | 66 % | 1296 → 987 |
+| night-lit | true, focused, spinner | 48.8 → 38.2 | 78 % | 14844 → 6492 | 44 % | 991 → 657 | 66 % | 1296 → 992 |
+
+In mW the target is met: the sky's own power is 38–44 % of the
+baseline's in both scenes, idle and with the spinner, and each pass alone
+gives the same (day-clear 41 % and 39 %, night-lit 43 % and 44 %). In
+device points it is not met, at 78–95 %. In busy cycles, the measure
+nearest the work, it is not met either: 58–66 %, where the preview bench
+put the merged shader at 57–63 % (phase 2).
+
+So, read plainly: the merged shader asks about a third less work of the
+GPU than the baseline, the GPU does that work a clock step lower (1247 →
+875 MHz by day, 1296 → 987 by night), and since power rises faster than
+clock it draws 56–62 % less power for it. The plan asks for the target to
+be read with MHz and residency beside it "so that a change of clock is
+not read as less work"; read that way, F4 has reached its target in
+power and not in work.
+
+Device points cannot measure this target at all. Every full `gpu` scene
+but the milestone sits at 75.4–77.1 % device whatever its power (5.7 to
+10.3 W), as main's two scenes do (74.5–75.9 % at 4.1 and 5.7 W), and
+`gpu:day-clear` at 60 Hz reads 81.4 %, more than at 120 Hz, while drawing
+a third of the power. Device % is the share of time the GPU is busy at
+the clock it chose, and the GPU picks the lowest clock that keeps it busy
+most of the time; a cheaper shader gives back a clock step, not idle
+time. Only at the lowest step, 389 MHz (the probe, passthrough, the
+unmarked tab), does device % move with the work.
+
+### 60 Hz: is the sky held back at 120 Hz?
+
+| row | 120 Hz (this run) | 60 Hz |
+|---|---|---|
+| probe, true, focused, idle | 36.3 %, 778 mW, 389 MHz, 75.1 %, 120 fps | 19.0 %, 380 mW, 390 MHz, 42.2 %, 61.9 fps |
+| `ljus-himmel:day-clear` | 79.3 %, 13126 mW, 1247 MHz, 98.8 % | 75.6 %, 4248 mW, 724 MHz, 87.4 % |
+| `gpu:day-clear` | 75.4 %, 5710 mW, 875 MHz, 96.9 % | 81.4 %, 1856 mW, 389 MHz, 96.1 % |
+
+By day, no. A sky that could not finish its frames at 120 Hz would lose
+less than half its work when asked for half the frames. The baseline's
+own busy cycles fall from 941 to 468 (633 over the probe's 165 at
+60 Hz), 0.50 of what they were, which is what a sky that drew every
+frame at 120 Hz shows; the merged shader's fall to 0.38. So the
+baseline's mW by day are the cost of drawing it in full, and F4's saving
+shows as fewer mW, not as more frames. The first run's 80.9 → 77.9 %
+was the same thing in device %; with MHz beside it, it reads as the
+clock nearly halving (1247 → 724 MHz) and the power falling to a third.
+
+At 60 Hz the merged shader's own cost is 38 % of the baseline's in mW
+and 45 % in busy cycles.
+
+What it does not settle: only day-clear was taken. The baseline's
+night-lit, overcast, dark and event scenes sit at 1292–1296 MHz with
+99.1–100 % residency, the top step with nothing left, so they may drop
+frames at 120 Hz; if they do, their baseline mW understate what they
+cost, and the night's 44 % left is, if anything, too high. One row each,
+no repeat, and the proxy assumes a frame takes the same cycles at any
+clock, which the merged shader's 0.38, below half, says is not exactly
+so.
+
+### The other targets
+
+- **`true` unfocused at the no-shader level:** met. `gpu` day-clear 2.4 %,
+  night-lit 2.5 % device, the first run's single-sample pattern (sd 13);
+  86 and 31 mW, against 12 for no shader.
+- **An unmarked visible tab within 5 points of passthrough:** on the line.
+  42.2 % against 37.1, +5.1 in both passes. In mW +103, against the
+  baseline's +236 and main's +167.
+- **`always` unfocused within 10 points of focused:** met, 2.1 points by
+  day (73.3 against 75.4) and 1.6 by night. Its power is 83 % of focused
+  by day and 80 % by night (first run 87–88 %); post 8, which was to make
+  it clearly lower, was dropped in phase 2.
+- **The floor:** passthrough 37.1 % device and 785 mW at 120 Hz, no
+  shader 1.0 % and 12 mW, the probe at 60 Hz 19.0 % and 380 mW. The
+  floor halves with the frame rate and is the same for any shader: it is
+  Ghostty's draw loop and the compositing of a 3024×1964 window at
+  120 Hz, which no change in the shader's code reaches.
+
+### The other scenes
+
+| scene | device % | mW over floor | left | MHz | residency % |
+|---|---|---|---|---|---|
+| day-overcast | 87.0 → 75.8 | 14788 → 6592 | 45 % | 1294 → 1000 | 99.5 → 97.1 |
+| night-dark | 99.3 → 75.9 | 17123 → 8659 | 51 % | 1296 → 1143 | 100.0 → 97.4 |
+| day-leaves | 100.0 → 77.1 | 17572 → 9526 | 54 % | 1296 → 1265 | 100.0 → 97.9 |
+| comet | 94.8 → 76.0 | 16418 → 7530 | 46 % | 1296 → 1054 | 99.9 → 97.3 |
+| milestone | 100.0 → 99.9 | 15140 → 14089 | 93 % | 1296 → 1296 | 100.0 → 100.0 |
+
+Every baseline scene here was on the top step, so its mW are a lower
+bound and the share left an upper one. All but the milestone came off
+it. The milestone's confetti still holds the GPU at 1296 MHz and 100 %,
+with WindowServer at 7 % of a CPU against 54–59 % under the other
+scenes, a sign of dropped frames on both sides; its 93 % says nothing
+about what post 7 saved.
+
+### The lighter sky against the whole one
+
+`gpu` with `LIGHT` (no clouds, the rim kept), the sky written on battery
+and away:
+
+| scene | device points | mW over floor | left | busy cycles | left | MHz |
+|---|---|---|---|---|---|---|
+| day-clear | 38.3 → 34.2 | 4925 → 2303 | 47 % | 557 → 278 | 50 % | 875 → 605 |
+| night-lit | 38.6 → 37.5 | 6499 → 3893 | 60 % | 665 → 449 | 68 % | 987 → 770 |
+
+It saves 53 % of the sky's own power by day and 40 % by night, where the
+bench said 58 % and 43 %. The night keeps its stars, chart and lit
+lighthouse.
+
+### What the light decision has to go on
+
+The plan's three options: (a) `LUMINANCE` 0.8 with the rim, which the
+branch has now; (b) 0.8 with the rim only where the text is light and
+the sky bright, free at night and dusk; (c) 0.5–0.6 with no rim. Its
+rule: (a) and (b) if the rim measures under about 5 device points,
+otherwise (c) is on the table.
+
+This run does not separate the rim in Ghostty; no row drops it. What it
+separates is everything the branch added to main (the rim, glass, the
+text-on-glass test, `LUMINANCE` 0.8), net of what F4 saved since. The
+merged shader's own cost against main's:
+
+| scene | device points | mW over floor | busy cycles |
+|---|---|---|---|
+| day-clear | 37.4 → 38.3 (+0.9) | 3287 → 4925 (1.50×) | 472 → 557 (1.18×) |
+| night-lit | 38.8 → 38.6 (−0.2) | 4886 → 6499 (1.33×) | 578 → 665 (1.15×) |
+
+In device points the rule is met many times over, but device points
+are the measure shown above not to separate scenes. In power the
+readable sky costs a third to a half more than main's, which was darker
+and had no rim; in busy cycles 15–18 % more.
+
+### Caveats
+
+- **Load 6.82 at the start**, not the quiet machine asked for. The drift
+  between passes says it did little: every repeated row agrees within
+  0.8 points but three.
+- **Those three:** `ljus-himmel:day-clear` focused, idle under `true`,
+  `false` and `always`, at 81.1–81.3 % in the first pass and 77.5–77.9 in
+  the second, while their power went the other way (12.8–12.9 → 13.5 W)
+  and their clock rose (1221–1224 → 1266–1272 MHz). The first pass is
+  where the first run was (80.9 %, 12863 mW, 1228 MHz). The share left
+  is 41 % in one pass and 39 % in the other, so the target does not hang
+  on it.
+- **Scenes still have no frame count**; the 60 Hz answer is inferred from
+  busy cycles, for day-clear only.
+- **The unfocused means are a single sample**, as in the first run;
+  treat them as 0.
+- **Per-process GPU time is still 0.00** for every process; everything
+  here is the whole GPU.
