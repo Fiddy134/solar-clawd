@@ -494,13 +494,16 @@ f4_list() {
 # focused surface only when something wakes it, and the terminal writing
 # the tab's mark again at a steady rate is such a wake. First what the
 # probe counts, idle, ticking, under a spinner and under fifty lines a
-# second (without vsync nothing caps that), and unfocused; then the floor
-# and the sky as they are now against the sky at 15, 24 and 30 a second.
+# second (without vsync nothing caps that), and ticking out of focus,
+# covered, minimized and behind another tab (a sky that may run unfocused
+# must still cost nothing where it cannot be seen); then the floor and the
+# sky as they are now against the sky at 15, 24 and 30 a second, and the
+# sky ticking out of focus.
 fps_list() {
-  local a s hz
+  local a f s hz
   print 'probe true focused idle marked'
   for a in idle tick15 tick24 tick30 spinner stream; do print "probe false-novsync focused $a marked"; done
-  print 'probe false-novsync unfocused tick24 marked'
+  for f in unfocused covered minimized tab; do print "probe false-novsync $f tick24 marked"; done
   print 'passthrough true focused idle marked'
   print 'passthrough false-novsync focused idle marked'
   for hz in 15 24 30; do print "passthrough false-novsync focused tick$hz marked"; done
@@ -508,6 +511,7 @@ fps_list() {
     print "main:$s true focused idle marked"
     for hz in 15 24 30; do print "main:$s false-novsync focused tick$hz marked"; done
   done
+  print 'main:day-clear false-novsync unfocused tick24 marked'
   print 'main:day-clear false-novsync focused spinner marked'
   print 'passthrough false-novsync focused spinner marked'
 }
