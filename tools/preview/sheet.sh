@@ -4,7 +4,7 @@
 #   tools/preview/sheet.sh q2 baseline     (writes .preview/q2-baseline/)
 # the leaves, blossoms, birds and feathers (F3a), every scene at two times
 # 1.3 s apart (a and b) so the motion shows; and
-#   tools/preview/sheet.sh fisk m1         (writes .preview/m-m1/)
+#   tools/preview/sheet.sh fisk i1         (writes .preview/fisk-i1/)
 # the keeper's catch (F3b), the context window as the fish he has hung up
 # and the grill as the conversation compacts, by day and by night, the
 # zooms side by side in contact.png. BUNDLE=.preview/b/before.bundle.mjs
@@ -18,7 +18,6 @@ if { [ "$sheet" != q2 ] && [ "$sheet" != fisk ]; } || [ -z "$variant" ]; then
   exit 1
 fi
 name=$sheet-$variant
-[ "$sheet" = fisk ] && name=m-$variant
 dir=$root/.preview/$name
 rm -rf "$dir"
 mkdir -p "$dir"
@@ -47,8 +46,14 @@ shot() {
 still() {
   scene=$1
   shift
-  SOLAR_ROOT="$root" node "$bundle" --stage 480 "$@" --zoom 1140,395,270,250 --out "$name/$scene" >/dev/null
+  render --stage 480 "$@" --zoom 1140,395,270,250 --out "$name/$scene"
   echo "$scene"
+}
+
+# render <flags>: one frame, tried a second time when headless Chrome,
+# busy with another render on the machine, gives up on the first.
+render() {
+  SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null 2>&1 || SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null
 }
 
 # retina <scene> <flags>: one frame at a Retina window's size, the strip
@@ -57,7 +62,7 @@ still() {
 retina() {
   scene=$1
   shift
-  SOLAR_ROOT="$root" node "$bundle" --width 3024 --height 1964 --stage 960 "$@" --zoom 2320,1030,400,220 --out "$name/$scene" >/dev/null
+  render --width 3024 --height 1964 --stage 960 "$@" --zoom 2320,1030,400,220 --out "$name/$scene"
   echo "$scene"
 }
 
@@ -106,6 +111,11 @@ still 17-grill-night --at 2026-10-24T22:00 --fish 7,grill --time 22
 still 18-grill-asleep --at 2026-10-24T04:00 --fish 6,grill --time 22
 still 19-grill-gale $day --weather 2,8,14,40 --fish 7,grill --time 22
 still 20-embers-1 --at 2026-10-24T22:00 --fish 1,embers --time 20
+# Half full, up to the bead; the grill while his day would have him in
+# the tower; and the landing by night.
+still 21-day5 $day --fish 5 --time 20
+still 22-grill-inside $day --fish 7,grill --time 48
+still 23-catch-night --at 2026-10-24T22:00 --fish 4,catch --time 20
 # And some of them at a Retina window's size.
 retina r1-day7 $day --fish 7 --time 20
 retina r2-catch $day --fish 7,catch --time 20
@@ -113,6 +123,8 @@ retina r3-blink $day --fish 7,catch --time 60.2
 retina r4-grill $day --fish 7,grill --time 22
 retina r5-embers --at 2026-10-24T22:00 --fish 1,embers --time 20
 retina r6-asleep --at 2026-10-24T04:00 --fish 6
+retina r7-day10 $day --fish 10 --time 20
+retina r8-embers-day $day --fish 0,embers --time 20
 
 # The contact sheet: the zooms four across, each with its scene's name, as
 # a page headless Chrome lays down.
