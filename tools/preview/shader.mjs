@@ -10,6 +10,7 @@
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
+//   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
 //   --bench 200 (ms a frame) --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 
 import { writeFileSync } from 'node:fs'
@@ -280,5 +281,16 @@ if (o.bench) {
   console.log(`${/<title>ok ([\d.]+)<\/title>/.exec(dom)?.[1]} ms a frame`)
   process.exit(0)
 }
-console.log(screenshot(html, width, height, o.out ?? 'shader', webgl))
+const name = o.out ?? 'shader'
+const png = screenshot(html, width, height, name, webgl)
+console.log(png)
+if (o.zoom) {
+  const [zx, zy, zw, zh] = String(o.zoom).split(',').map(Number)
+  const big = join(OUT, `${name}-zoom.html`)
+  writeFileSync(
+    big,
+    `<!doctype html><body style="margin:0;background:#000;overflow:hidden"><div style="width:${zw * 3}px;height:${zh * 3}px;overflow:hidden;position:relative"><img src="file://${png}" style="position:absolute;left:${-zx * 3}px;top:${-zy * 3}px;width:${width * 3}px;height:${height * 3}px;image-rendering:pixelated"></div></body>`,
+  )
+  console.log(screenshot(big, zw * 3, zh * 3, `${name}-zoom`))
+}
 console.log(`${source.length} chars, scene`, JSON.stringify(params.scene))
