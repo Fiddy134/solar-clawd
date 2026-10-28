@@ -703,7 +703,7 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
     float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
     uint hl = hashi(int(mod(j, 512.0)) * 19 + (isOut ? 1 : row < 7 ? 3 : 5));
     bool isOn = isOut ? fy > h.floorY + 1.8 * u : row < 7 ? fy > h.floorY + 1.2 * u && fy < h.floorY + 15.5 * u : fy > h.floorY + 18.0 * u && fy < h.front - 0.3 * u;
-    if (!isOn || float(hl & 1023u) / 1023.0 >= (isOut ? 0.5 : 0.75 * m.fill)) return w;
+    if (isOn && float(hl & 1023u) / 1023.0 < (isOut ? 0.5 : 0.75 * m.fill)) {
     w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.12 * u, fy);
     w.stride = int(floor(iTime * 3.0 + float(hl & 1u))) % 2;
     w.look = down > 0.0 ? 0 : 2;
@@ -714,6 +714,7 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
     w.outside = isOut;
     w.dim = m.staffed || isOut ? 0.0 : 0.25;
     return w;
+    }
   }
   if (isOut || p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return w;
   float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
@@ -729,9 +730,9 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
     w.dim = 0.1;
     return w;
   }
-  float postSeven = h.inner + h.width / 3.0;
-  if (m.late && row == 8 && abs(p.x - postSeven) < 1.4 * u) {
-    w.feet = vec2(postSeven - 0.4 * u, foot);
+  float postSeven = h.inner + h.width / 3.0 - 1.9 * u;
+  if (m.late && row == 8 && abs(p.x - postSeven) < 1.2 * u) {
+    w.feet = vec2(postSeven, foot);
     w.pose = POSE_PHONE;
     w.coat = INK_BLUE;
     w.look = 1;
@@ -1078,11 +1079,13 @@ vec3 resident(vec3 sky, vec2 p, float u, float k) {
   int tool = sky_tool();
   int state = contextState();
   float nt = night();
-  float seed;
-  float t;
-  float runT;
-  bool humming = eventUp(0, seed, t);
-  bool charging = eventUp(1, seed, runT);
+  float seed = 0.0;
+  float t = 0.0;
+  float runT = 0.0;
+  // EVENT_COUNT is a constant: with no event up the compiler drops the
+  // events' drawing altogether.
+  bool humming = EVENT_COUNT > 0 && eventUp(0, seed, t);
+  bool charging = EVENT_COUNT > 0 && eventUp(1, seed, runT);
   // A command, the bell and the events bring their own crowd onto an empty
   // floor: the hall shouts, cheers and hums with people in it.
   if (tool == sky_TOOL_COMMAND || m.bell > 0.5 || humming || charging) m.fill = max(m.fill, 0.75);
