@@ -1202,7 +1202,7 @@ What the whole GPU drew (mW, mean of 30 s), against the same rows on 1.3.1 (the 
 | night-lit | 5461 → 5100 | 953 → 837 | −84 % |
 | day-clear, out of focus | ~0 under `true` (F2) | 1120 → 912 | |
 
-- **The floor under `true` stays.** Passthrough, focused and still, draws 37.7 % device and 793 mW on 1.4, against ~38 % and 885 on 1.3.1. The display link that pauses "when there is nothing to draw" does not pause for a shader that animates, so the handoff's hope that 1.4 would take away most of the ~40 % floor does not hold: what takes it away is the animation off and the ticks.
+- **The floor under `true` stays.** Passthrough, focused and still, draws 37.7 % device and 793 mW on 1.4, against 36.8 % and 797 mW in the first run on 1.3.1 (row 2; 885 in the fps run): the same, to the MHz (389) and nearly the residency (75 %). The display link that pauses "when there is nothing to draw" does not pause for a shader that animates, so the handoff's hope that 1.4 would take away most of the ~40 % floor does not hold: what takes it away is the animation off and the ticks.
 - **Ticking is cheaper on 1.4 than it was on 1.3.1 without vsync**: the floor halves (363 → 182 mW) and the sky falls a further 12–28 %. One pass each, so the size and not the last per cent.
 - **CPU beside it:** Ghostty 16 % → 10 % and WindowServer 60 % → 12 % of a core, `true` against 24 a second, by day.
 - Out of focus, ticking costs what it costs focused (912 against 910 mW), as on 1.3.1; `spar` is what keeps a sky behind other windows from ticking.
