@@ -348,19 +348,18 @@ vec3 hallLamps(vec3 sky, vec2 p, float u, float k, Hall h, float nt, float light
 }
 
 // The big flag hanging from its rod in front of the middle window, its
-// stripes rippling a little, its canton dotted with stars; lit by the room.
+// stripes falling in folds, its canton dotted with stars; lit by the room.
 vec3 bigFlag(vec3 sky, vec2 p, float u, float k, Hall h, float nt, float lights) {
   vec2 q = p - vec2(h.inner + 0.5 * h.width - 2.8 * u, 9.1 * u);
   if (q.x < -0.4 * u || q.x > 6.0 * u || q.y < -0.4 * u || q.y > 5.1 * u) return sky;
   if (q.y < 0.0) return ink(sky, indoor(BRASS, k, nt, lights), min(box(q - vec2(2.8 * u, -0.15 * u), vec2(3.0, 0.08) * u), length(q - vec2(-0.2 * u, -0.15 * u)) - 0.15 * u), 1.0);
-  float x = q.x - 0.12 * u * sin(q.y / (0.9 * u) + 0.8 * iTime) * q.y / (4.8 * u);
+  float x = q.x;
   if (x < 0.0 || x > 5.6 * u || q.y > 4.8 * u) return sky;
   int stripe = int(floor(q.y / (4.8 * u) * 13.0));
   bool isCanton = x < 2.4 * u && stripe < 7;
   vec3 c = isCanton ? mix(NAVY, INK_BLUE, 0.35) : stripe % 2 == 0 ? RED : CREAM;
   if (isCanton && length(fract(vec2(x, q.y) / (0.42 * u)) - 0.5) < 0.2) c = CREAM;
-  c = indoor(c, k, nt, lights);
-  c = mix(c, mix(c, INK_INDIGO, 0.3), screen(p, 0.35 * (0.5 + 0.5 * sin(x / (0.7 * u) + 1.3)), pitch(u), 75.0));
+  c = indoor(c, k, nt, lights) * (fract(x / (1.4 * u)) > 0.72 ? 0.86 : 1.0);
   return x < 0.06 * u || x > 5.54 * u ? mix(c, keyInk(k), 0.6) : c;
 }
 
@@ -841,89 +840,80 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
   // Walkers in lots along a lane, the lots sliding with the clock, each
   // lot's hash saying whether one walks in it: down the sidewalk toward us;
   // on the floor up the back half's lane and down the front half's, a lot
-  // of two rows apart, stepping out from behind the middle posts.
+  // of two rows apart, stepping out from behind the middle posts. Then the
+  // traders in their lots. Whoever it is, one hash dresses him below.
   bool isOut = p.x < h.left;
   int row = int(floor((p.y - h.floorY) / h.row));
   float lane = isOut ? h.left - 3.4 * u : laneOf(h, row);
   float down = isOut || row > 7 ? 1.0 : -1.0;
-  float lh = (isOut ? 3.2 : 4.0) * u;
+  bool isWalker = false;
+  uint hs = 0u;
   if (abs(p.x - lane) < (isOut ? 1.6 : 1.3) * u && (isOut || row != 7) && p.y > h.floorY) {
+    float lh = (isOut ? 3.2 : 4.0) * u;
     float shift = down * mod(iTime * (isOut ? 0.7 : 0.8) * u, 512.0 * lh);
     float j = floor((p.y - h.floorY - shift) / lh);
     float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
-    uint hl = hashi(int(mod(j, 512.0)) * 19 + (isOut ? 1 : row < 7 ? 3 : 5));
+    hs = hashi(int(mod(j, 512.0)) * 19 + (isOut ? 1 : row < 7 ? 3 : 5));
     bool isOn = isOut ? fy > h.floorY + 1.8 * u : row < 7 ? fy > h.floorY + 1.2 * u && fy < h.floorY + 14.1 * u : fy > h.floorY + 18.0 * u && fy < h.front - 0.3 * u;
-    if (isOn && float(hl & 1023u) / 1023.0 < (isOut ? 0.5 : 0.75 * m.fill)) {
-    w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.12 * u, fy);
-    w.stride = int(floor(iTime * 3.0 + float(hl & 1u))) % 2;
-    w.look = down > 0.0 ? 0 : 2;
-    w.pose = isOut || crowd < 0 ? POSE_STAND : crowd;
-    int pick = int((hl >> 12) % 5u);
-    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? NAVY : pick == 2 ? INK_GREEN : pick == 3 ? RED : mix(CREAM, INK_ORANGE, 0.3);
-    w.gear = (hl >> 14) % 3u == 0u ? (isOut ? GEAR_CAP : GEAR_HEADSET) : GEAR_NONE;
-    w.outside = isOut;
-    w.dim = m.staffed || isOut ? 0.0 : 0.25;
-    return w;
-    }
+    isWalker = isOn && float(hs & 1023u) / 1023.0 < (isOut ? 0.5 : 0.75 * m.fill);
+    w.feet = vec2(lane + (float((hs >> 10) & 3u) - 1.5) * 0.12 * u, fy);
   }
-  if (isOut || p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return w;
-  float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
-  w.dim = m.staffed ? 0.0 : 0.25;
-  float desk = h.inner + 5.0 / 6.0 * h.width;
-  if (row == 10 && abs(p.x - desk) < 2.6 * u) {
-    bool isRight = p.x > desk;
-    w.feet = vec2(desk + (isRight ? 1.4 : -1.4) * u, foot - 0.3 * u);
-    w.gear = GEAR_HOOD;
-    w.coat = isRight ? NAVY : INK_VIOLET;
-    w.look = isRight ? -1 : 1;
-    w.pose = crowd >= 0 ? crowd : POSE_STAND;
-    w.dim = 0.1;
-    return w;
-  }
-  float postSeven = h.inner + h.width / 3.0 - 1.9 * u;
-  if (m.late && row == 8 && abs(p.x - postSeven) < 1.2 * u) {
-    w.feet = vec2(postSeven, foot);
-    w.pose = POSE_PHONE;
-    w.coat = INK_BLUE;
-    w.look = 1;
-    w.dim = 0.15;
-    return w;
-  }
-  float lot = h.width / 8.0;
+  float dir = (row / 4) % 2 == 0 ? 1.0 : -1.0;
   bool isAisle = row % 4 == 1;
   bool isMopping = isAisle && m.cleaning && (row == 5 || row == 9);
-  float dir = (row / 4) % 2 == 0 ? 1.0 : -1.0;
-  float shift = isAisle ? dir * mod(iTime * (isMopping ? 0.3 : 1.1) * u, 512.0 * lot) : 0.0;
-  float off = row % 2 == 1 ? 0.5 * lot : 0.0;
-  int col = int(floor((p.x - h.inner - off - shift) / lot));
-  float cx = h.inner + off + shift + (float(col) + 0.5) * lot;
-  int colH = int(mod(float(col), 512.0));
-  uint hs = hashi(colH * 31 + row * 977 + 11);
-  bool isAgent = row == 12 && col >= 0 && col < agents;
-  float chance = isMopping ? 0.16 : traderChance(h, m, row, cx);
-  if ((!isAgent && float(hs & 1023u) / 1023.0 >= chance) || cx < h.inner + 0.9 * u) return w;
-  w.feet = vec2(cx, foot);
-  if (!isAisle && crowd != POSE_UP) {
+  bool isAgent = false;
+  w.dim = m.staffed || isOut ? 0.0 : 0.25;
+  if (!isWalker) {
+    if (isOut || p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return Who(vec2(-1e4), h.c, POSE_STAND, GEAR_NONE, CORAL, 0, 0.0, -1, false);
+    float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
+    float desk = h.inner + 5.0 / 6.0 * h.width;
+    if (row == 10 && abs(p.x - desk) < 2.6 * u) {
+      bool isRight = p.x > desk;
+      w.feet = vec2(desk + (isRight ? 1.4 : -1.4) * u, foot - 0.3 * u);
+      w.gear = GEAR_HOOD;
+      w.coat = isRight ? NAVY : INK_VIOLET;
+      w.look = isRight ? -1 : 1;
+      w.pose = crowd >= 0 ? crowd : POSE_STAND;
+      w.dim = 0.1;
+      return w;
+    }
+    float postSeven = h.inner + h.width / 3.0 - 1.9 * u;
+    if (m.late && row == 8 && abs(p.x - postSeven) < 1.2 * u) {
+      w.feet = vec2(postSeven, foot);
+      w.pose = POSE_PHONE;
+      w.coat = INK_BLUE;
+      w.look = 1;
+      return w;
+    }
+    float lot = h.width / 8.0;
+    float shift = isAisle ? dir * mod(iTime * (isMopping ? 0.3 : 1.1) * u, 512.0 * lot) : 0.0;
+    float off = row % 2 == 1 ? 0.5 * lot : 0.0;
+    int col = int(floor((p.x - h.inner - off - shift) / lot));
+    float cx = h.inner + off + shift + (float(col) + 0.5) * lot;
+    hs = hashi(int(mod(float(col), 512.0)) * 31 + row * 977 + 11);
+    isAgent = row == 12 && col >= 0 && col < agents;
+    float chance = isMopping ? 0.16 : traderChance(h, m, row, cx);
+    if ((!isAgent && float(hs & 1023u) / 1023.0 >= chance) || cx < h.inner + 0.9 * u) return Who(vec2(-1e4), h.c, POSE_STAND, GEAR_NONE, CORAL, 0, 0.0, -1, false);
     float phase = float((hs >> 8) & 255u);
-    w.feet += vec2(0.35 * u * sin(0.4 * iTime + phase), -0.3 * u * (0.5 + 0.5 * sin(0.27 * iTime + 2.0 * phase)));
+    w.feet = vec2(cx, foot) + (isAisle || crowd == POSE_UP ? vec2(0.0) : vec2(0.35 * u * sin(0.4 * iTime + phase), -0.3 * u * (0.5 + 0.5 * sin(0.27 * iTime + 2.0 * phase))));
   }
-  if (isAisle) w.stride = int(floor(iTime * 3.0 + float(hs & 3u))) % 2;
-  if (isMopping) {
+  w.stride = isWalker || isAisle ? int(floor(iTime * 3.0 + float(hs & 3u))) % 2 : -1;
+  w.outside = isOut;
+  if (isMopping && !isWalker) {
     w.pose = POSE_MOP;
     w.gear = GEAR_CAP;
     w.coat = mix(INK_GREEN, INK_BLUE, 0.5);
     w.look = dir > 0.0 ? 1 : -1;
-    w.dim = 0.2;
     return w;
   }
-  uint mv = hashi(colH * 13 + row * 101 + int(mod(floor(iTime / 4.0 + float(hs & 7u) * 0.37), 1000.0)) * 7);
+  uint mv = hashi(int(hs & 4095u) + int(mod(floor(iTime / 4.0 + float(hs & 7u) * 0.37), 1000.0)) * 7);
   float r = float(mv & 255u) / 255.0;
-  w.pose = crowd >= 0 ? crowd : r < (m.fill > 0.8 ? 0.3 : 0.12) ? POSE_POINT : r < 0.42 ? POSE_PHONE : POSE_STAND;
+  w.pose = crowd >= 0 && !isOut ? crowd : isWalker ? POSE_STAND : r < (m.fill > 0.8 ? 0.3 : 0.12) ? POSE_POINT : r < 0.42 ? POSE_PHONE : POSE_STAND;
   int pick = int((hs >> 20) % 7u);
   w.coat = isAgent ? INK_YELLOW : pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? INK_VIOLET : pick == 3 ? RED : pick == 4 ? INK_PINK : pick == 5 ? mix(CREAM, INK_BLUE, 0.12) : NAVY;
   int kit = int((hs >> 24) & 7u);
-  w.gear = isAgent || kit == 4 ? GEAR_CAP : kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : GEAR_NONE;
-  w.look = isAisle ? (dir > 0.0 ? 1 : -1) : int((mv >> 9) % 3u) - 1;
+  w.gear = isAgent || kit == 4 || (isOut && kit < 3) ? GEAR_CAP : isOut ? GEAR_NONE : kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : GEAR_NONE;
+  w.look = isWalker ? (down > 0.0 ? 0 : 2) : isAisle ? (dir > 0.0 ? 1 : -1) : int((mv >> 9) % 3u) - 1;
   return w;
 }
 
