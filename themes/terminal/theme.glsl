@@ -264,15 +264,6 @@ vec3 boardOf(Gate g, float u) {
 // The gate's sign, hung over the desk: its middle and half its size.
 vec4 signOf(Gate g, float u) { return vec4(g.left + 5.2 * u, g.top - 8.6 * u, 3.7 * u, 1.3 * u); }
 
-// Whether p is on one of the cables the board and the sign hang from.
-bool isCable(vec2 p, float u, Gate g) {
-  float gy = (p.y - g.ceil) / u;
-  vec3 b = boardOf(g, u);
-  vec4 s = signOf(g, u);
-  return (p.y < b.y && abs(abs(p.x - b.x - 53.0 * b.z) - 46.0 * b.z) < 0.07 * u)
-      || (p.y < s.y && abs(abs(p.x - s.x) - 3.0 * u) < 0.07 * u);
-}
-
 // Whether p is in a pane of the glass wall or of a skylight, and which: 0
 // not (a frame, the wall, or something hung in front of it), 1 the sky
 // through the glass wall, 2 the apron through it, 3 a skylight.
@@ -386,22 +377,19 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
   float kx = q.x - S + 6.0;
   int pane = paneAt(p, u, g);
   if (q.x < 1.2) {
-    // The west wall, cut: concrete hatched in the key plate, with the jet
+    // The west wall, cut: concrete edged in the key plate, with the jet
     // bridge's door at the horizon and the service door further down.
     bool isDoor = q.y > 7.7 && q.y < 10.2;
     bool isService = q.y > 18.2 && q.y < 20.6 && (cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED);
     c = CONCRETE;
-    if (fract((q.x + q.y) * 2.2) < 0.22) c = mix(c, key, 0.45);
     if (q.x > 1.05 || q.x < 0.12) c = key;
     if (isDoor) c = q.y > 9.9 ? STEEL : corridor(n, agents);
     if (isService) c = mix(CARPET, dk, 0.4);
     if (abs(q.y - 7.7) < 0.12 || abs(q.y - 10.2) < 0.1) c = key;
   } else if (kx > 0.0 && kx < 5.8 && q.y > -1.7 && q.y < 6.6) {
-    // The coffee kiosk: its fascia with its name, its green awning with a
-    // scalloped edge, the back wall with its shelves of cups and its
+    // The coffee kiosk: its fascia with its name, its striped green awning, the back wall with its shelves of cups and its
     // espresso machine, lit up warm while Claude is busy with anything
     // else, or its shutter down while it is closed; its counter in front.
-    float sc = abs(fract(kx / 0.6) - 0.5) * 0.5;
     int f = face(q, vec2(S - 3.1, 6.6), vec3(5.8, 1.0, 1.3));
     bool isBusy = tool == sky_TOOL_OTHER && isOpen;
     if (f == 1) c = mix(INK_ORANGE, CREAM, 0.6);
@@ -409,7 +397,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       c = mix(INK_GREEN, INK_INDIGO, 0.3);
       if (abs(q.y - 5.85) < 0.12) c = mix(INK_ORANGE, INK_INDIGO, 0.3);
     } else if (q.y < -0.6) c = mix(INK_GREEN, INK_INDIGO, 0.45);
-    else if (q.y < 0.45 - sc) c = fract(kx / 0.6) < 0.5 ? mix(INK_GREEN, CREAM, 0.1) : CREAM;
+    else if (q.y < 0.45) c = fract(kx / 0.6) < 0.5 ? mix(INK_GREEN, CREAM, 0.1) : CREAM;
     else if (kx < 0.25 || kx > 5.55) c = STEEL;
     else if (q.y > 3.6) c = dk;
     else if (!isOpen) c = mix(STEEL, dk, step(0.75, fract(q.y / 0.3)));
@@ -456,9 +444,9 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     }
   } else if (q.y < 0.0) {
     // The glass wall, and what hangs in front of it.
-    if (pane > 0 && !isCable(p, u, g)) {
+    if (pane > 0) {
       vec3 v = q.y > -16.0 ? apronView(sky, p, u, k, g, n) : sky;
-      return mix(v, lift(mix(INK_BLUE, CREAM, 0.7), k), 0.08 + 0.1 * step(0.86, fract((p.x + 0.6 * p.y) / (3.0 * u))));
+      return mix(v, lift(mix(INK_BLUE, CREAM, 0.7), k), 0.1);
     }
     float gy = (p.y - g.ceil) / u;
     vec3 b = boardOf(g, u);
@@ -480,7 +468,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       // The gate's sign, its letters and its lamps put on it later.
       c = sq.x > s.z - 0.2 * u || sq.y > s.w - 0.2 * u ? STEEL : mix(INK_INDIGO, INK_BLUE, 0.2) * 0.7;
       dim = 0.0;
-    } else if (pane > 0) c = key;
     else if (q.y > -0.45) c = q.y > -0.15 ? key : mix(STEEL, CREAM, 0.2);
     else c = mix(STEEL, CREAM, 0.15);
   } else {
@@ -500,7 +487,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       c = mix(motif == 0 ? INK_YELLOW : INK_ORANGE, CARPET, 0.5);
       shade = 0.0;
     }
-    if (abs(ft.y) > 0.47) c = mix(c, INK_GREEN, 0.2);
     bool isRunning = tool == sky_TOOL_COMMAND;
     bool isEdit = tool == sky_TOOL_EDIT;
     bool isAway = cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED;
