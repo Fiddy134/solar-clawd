@@ -242,10 +242,12 @@ vec3 sidewalk(vec3 sky, vec2 p, float u, float k, Hall h, float nt) {
   sky = ink(sky, stone, pedTop, 1.0);
   sky = ink(sky, keyInk(k), abs(min(pedTop, pedFront)) - 0.04 * u, 0.6);
   vec2 b = sq + vec2(0.0, 1.3 * u);
-  float body = limb(b, vec2(0.0, -0.55 * u), vec2(0.0, -1.55 * u), 0.42 * u, 0.28 * u);
-  body = min(body, min(limb(b, vec2(-0.15 * u, -0.6 * u), vec2(-0.18 * u, 0.0), 0.1 * u, 0.08 * u), limb(b, vec2(0.15 * u, -0.6 * u), vec2(0.18 * u, 0.0), 0.1 * u, 0.08 * u)));
+  // His coat widening to its skirts, his legs, his head, his arm out over
+  // the street and the fasces his other hand rests on.
+  float body = box(b + vec2(0.0, 1.1 * u), vec2(0.3 * u + 0.12 * (b.y + 1.6 * u), 0.5 * u));
+  body = min(body, box(vec2(abs(b.x) - 0.15 * u, b.y + 0.3 * u), vec2(0.08, 0.3) * u));
   body = min(body, length(b + vec2(0.0, 1.95 * u)) - 0.26 * u);
-  body = min(body, limb(b, vec2(-0.25 * u, -1.5 * u), vec2(-0.8 * u, -1.15 * u), 0.1 * u, 0.08 * u));
+  body = min(body, segment(b, vec2(-0.25 * u, -1.5 * u), vec2(-0.8 * u, -1.15 * u)) - 0.09 * u);
   body = min(body, box(b + vec2(-0.55 * u, 0.4 * u), vec2(0.1, 0.42) * u));
   vec3 bronze = sky_under(tone(BRONZE, k) * dark, sky);
   bronze = mix(bronze, mix(bronze, INK_INDIGO, 0.4), screen(p, 0.3 + 0.4 * step(0.0, b.x), pitch(u), 45.0));
@@ -533,7 +535,7 @@ vec3 planks(vec2 p, float u, float k, Hall h, Market m, float nt, float lights) 
   vec3 wood = indoor(mix(mix(CREAM, mix(INK_ORANGE, INK_YELLOW, 0.3), 0.32), INK_INDIGO, 0.04 + 0.03 * float(hs & 3u)), k, nt, lights);
   wood = mix(wood, mix(wood, mix(INK_ORANGE, INK_INDIGO, 0.3), 0.3), screen(p, 0.08 + 0.07 * float((hs >> 2) & 1u) + 0.4 * exp(-(p.y - h.floorY) / (0.6 * u)), pitch(u), 45.0));
   if (min(0.5 * tile.y - abs(at.y), 0.5 * tile.x - abs(at.x)) < 0.05 * u) wood = mix(wood, keyInk(k), 0.25);
-  if (float((hs >> 4) & 1023u) / 1023.0 < 0.01 + 0.04 * m.fill) wood = ink(wood, lift(CREAM, k), box(tumble(at, float(hs & 7u), 1.0), vec2(0.28, 0.17) * u), 1.0);
+  if (float((hs >> 4) & 1023u) / 1023.0 < 0.01 + 0.04 * m.fill) wood = ink(wood, lift(CREAM, k), box(at - vec2(float(hs & 7u) - 3.5, 0.0) * 0.12 * u, ((hs & 1u) == 0u ? vec2(0.28, 0.17) : vec2(0.17, 0.25)) * u), 1.0);
   return wood;
 }
 
@@ -641,9 +643,10 @@ vec3 figure(vec3 sky, vec2 p, Who w, float k, int beat) {
     vec3 body = kind == 1 ? CORAL : kind == 3 ? mix(CORAL, INK_INDIGO, 0.22) : kind == 4 ? w.coat : kind == 5 ? mix(INK_INDIGO, CREAM, 0.12) : kind == 6 ? CREAM : kind == 7 ? mix(INK_INDIGO, CREAM, 0.4) : kind == 8 ? WOOD : mix(CREAM, INK_BLUE, 0.25);
     return mix(sky, w.outside ? nightInk(body, k) : mix(lift(body, k), keyInk(k), w.dim), 0.97);
   }
-  float off = max(1.0, floor(0.4 * c));
-  if (figureCell(ivec2(floor((p - vec2(off) - origin) / c)), w.pose, w.gear, w.look, beat, w.stride) != 0) sky = mix(sky, keyInk(k), 0.55);
-  return sky;
+  // The key plate: his head, body and arms again, a pixel or so off.
+  ivec2 s = ivec2(floor((p - vec2(max(1.0, floor(0.4 * c))) - origin) / c));
+  bool isShadow = s.y >= 0 && s.y <= 2 && s.x >= (s.y == 2 ? 0 : 1) && s.x <= (s.y == 2 ? 5 : 4);
+  return isShadow || (s.y == 3 && (s.x == 1 || s.x == 4)) ? mix(sky, keyInk(k), 0.55) : sky;
 }
 
 // How far from the nearest post of post row `row` (3, 7 or 11) x is, the
@@ -719,51 +722,36 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
     w.pose = isMessenger ? POSE_POINT : POSE_STAND;
     return w;
   }
-  if (p.x < h.left) {
-    // The sidewalk: walkers in lots down it, the lots sliding down with
-    // the clock, each lot's hash saying whether one walks in it.
-    float lane = h.left - 3.4 * u;
-    if (abs(p.x - lane) > 1.6 * u || p.y < h.floorY) return w;
-    float lh = 3.2 * u;
-    float shift = mod(iTime * 0.7 * u, 512.0 * lh);
-    float j = floor((p.y - h.floorY - shift) / lh);
-    uint hs = hashi(int(mod(j, 512.0)) * 17 + 5);
-    float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
-    if (float(hs & 1023u) / 1023.0 > 0.5 || fy < h.floorY + 1.8 * u) return w;
-    w.feet = vec2(lane + (float((hs >> 10) & 3u) - 1.5) * 0.15 * u, fy);
-    w.stride = int(floor(iTime * 3.0 + float(hs & 1u))) % 2;
-    int pick = int((hs >> 12) % 5u);
-    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? NAVY : pick == 2 ? INK_GREEN : pick == 3 ? RED : mix(CREAM, INK_ORANGE, 0.3);
-    w.gear = (hs >> 16) % 3u == 0u ? GEAR_CAP : GEAR_NONE;
-    w.outside = true;
-    return w;
-  }
-  if (p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return w;
+  // Walkers in lots along a lane, the lots sliding with the clock, each
+  // lot's hash saying whether one walks in it: down the sidewalk toward us;
+  // on the floor up the back half's lane and down the front half's, a lot
+  // of two rows apart, stepping out from behind the middle posts.
+  bool isOut = p.x < h.left;
   int row = int(floor((p.y - h.floorY) / h.row));
-  float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
-  w.dim = m.staffed ? 0.0 : 0.25;
-  float lane = laneOf(h, row);
-  if (abs(p.x - lane) < 1.3 * u && row != 7) {
-    // A lane: walkers a lot of two rows apart, sliding up it in the back
-    // half and down it in the front, each lot's hash saying whether one
-    // walks there; they step out from behind the middle posts.
-    float down = row < 7 ? -1.0 : 1.0;
-    float lh = 2.0 * h.row;
-    float shift = down * mod(iTime * 0.8 * u, 512.0 * lh);
+  float lane = isOut ? h.left - 3.4 * u : laneOf(h, row);
+  float down = isOut || row > 7 ? 1.0 : -1.0;
+  float lh = (isOut ? 3.2 : 4.0) * u;
+  if (abs(p.x - lane) < (isOut ? 1.6 : 1.3) * u && (isOut || row != 7) && p.y > h.floorY) {
+    float shift = down * mod(iTime * (isOut ? 0.7 : 0.8) * u, 512.0 * lh);
     float j = floor((p.y - h.floorY - shift) / lh);
     float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
-    uint hl = hashi(int(mod(j, 512.0)) * 19 + (row < 7 ? 3 : 5));
-    bool isOn = row < 7 ? fy > h.floorY + 1.2 * u && fy < h.floorY + 15.5 * u : fy > h.floorY + 18.0 * u && fy < h.front - 0.3 * u;
-    if (!isOn || float(hl & 1023u) / 1023.0 >= 0.75 * m.fill) return w;
-    w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.1 * u, fy);
+    uint hl = hashi(int(mod(j, 512.0)) * 19 + (isOut ? 1 : row < 7 ? 3 : 5));
+    bool isOn = isOut ? fy > h.floorY + 1.8 * u : row < 7 ? fy > h.floorY + 1.2 * u && fy < h.floorY + 15.5 * u : fy > h.floorY + 18.0 * u && fy < h.front - 0.3 * u;
+    if (!isOn || float(hl & 1023u) / 1023.0 >= (isOut ? 0.5 : 0.75 * m.fill)) return w;
+    w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.12 * u, fy);
     w.stride = int(floor(iTime * 3.0 + float(hl & 1u))) % 2;
     w.look = down > 0.0 ? 0 : 2;
-    w.pose = crowd >= 0 ? crowd : POSE_STAND;
-    int pick = int((hl >> 12) % 4u);
-    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? RED : NAVY;
-    w.gear = (hl >> 14) % 3u == 0u ? GEAR_HEADSET : GEAR_NONE;
+    w.pose = isOut || crowd < 0 ? POSE_STAND : crowd;
+    int pick = int((hl >> 12) % 5u);
+    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? NAVY : pick == 2 ? INK_GREEN : pick == 3 ? RED : mix(CREAM, INK_ORANGE, 0.3);
+    w.gear = (hl >> 14) % 3u == 0u ? (isOut ? GEAR_CAP : GEAR_HEADSET) : GEAR_NONE;
+    w.outside = isOut;
+    w.dim = m.staffed || isOut ? 0.0 : 0.25;
     return w;
   }
+  if (isOut || p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return w;
+  float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
+  w.dim = m.staffed ? 0.0 : 0.25;
   float desk = h.inner + 5.0 / 6.0 * h.width;
   if (row == 10 && abs(p.x - desk) < 2.6 * u) {
     bool isRight = p.x > desk;
@@ -832,7 +820,7 @@ int postQuote(int which) { return which == 7 ? int(mod(floor(iTime / 10.0), 2.0)
 // post reaches up less than two. Drawn after the people, so that it covers
 // whoever stands behind it, and nobody stands in front of it within its own
 // height. On its top, seen from above, a counter round a dark well, its
-// number on a brass plate, a coffee steaming on it; monitors stand on its
+// number on a brass plate, a coffee on it; monitors stand on its
 // back edge. Its front is a band of screens with its stock's name and price,
 // tinted green or red by its day, dim once the floor has closed (but for the
 // late trader's post and the coin desk); marching bars while Claude is busy
@@ -925,10 +913,7 @@ vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, float 
     if (abs(q.x) > hw - 0.06 * u || q.y < -fh + 0.06 * u) col = keyInk(k);
   }
   col = mix(col, l.color, sky_glyphWide(l.q, l.at, l.cell, l.code));
-  sky = abs(q.x) < hw ? col : sky;
-  // Steam off the coffee, while the floor is in.
-  if (isOn && !isDesk) sky = mix(sky, lift(CREAM, k), 0.7 * steam(p, vec2(x, foot) + cup - vec2(0.0, 0.15 * u), 0.9 * u, 0.22 * u, 0.8, which));
-  return sky;
+  return abs(q.x) < hw ? col : sky;
 }
 
 // --- What stands in front of them -------------------------------------------------
@@ -964,8 +949,8 @@ vec3 jenga(vec3 sky, vec2 p, float u, float k, vec2 at, float floorY, float fall
 }
 
 // The front strip: the context window as piles of paper along the floor from
-// the west wall, one for each full tenth, the newest lit and a slip landing
-// on it while a tenth has just filled; while the conversation compacts the
+// the west wall, one for each full tenth, the newest lit yellow while a
+// tenth has just filled; while the conversation compacts the
 // cleaner has mopped them into one heap, and just after the floor is bare.
 // Then the resident's pulpit, a box with a top and a front, hiding his legs:
 // his banker's lamp lit on it, the Jenga tower at his side (The Big Short's:
@@ -994,22 +979,16 @@ vec3 frontStrip(vec3 sky, vec2 p, float u, float k, Hall h, float fall, bool hum
       sky = ink(sky, mix(sheet, keyInk(k), step(0.7, fract(q.y / (0.12 * u))) * 0.45), pileFront, 1.0);
       sky = ink(sky, sheet, pileTop, 1.0);
       sky = ink(sky, keyInk(k), abs(min(pileFront, pileTop)) - 0.04 * u, 0.6);
-      if (isFresh) {
-        float slip = paperSlip(q - vec2(0.2 * u * sin(iTime * 3.0), -tall - (0.7 + 0.6 * fract(iTime * 0.7)) * u), iTime * 2.0, u);
-        sky = ink(sky, sheet, slip, 1.0);
-        sky = ink(sky, keyInk(k), abs(slip) - 0.03 * u, 0.45);
-      }
     }
   }
   vec2 res = vec2(h.inner + 0.68 * h.width, bottom - 0.8 * u);
   if (abs(p.x - res.x) > 4.0 * u) return sky;
   // The pulpit: its top seen from above, its front in dark wood with a brass
-  // rail and a brass seal; its key plate off register.
+  // rail and a brass seal.
   vec2 q = p - res;
   float pfront = box(q + vec2(0.0, 0.65 * u), vec2(2.8, 0.65) * u);
   float ptop = box(q + vec2(0.0, 1.65 * u), vec2(2.8, 0.35) * u);
   vec3 wood = indoor(mix(WOOD, INK_INDIGO, 0.2), k, nt, 1.0);
-  if (min(pfront, ptop) > 0.0) sky = keyPlate(sky, min(box(q - keyShift(u) + vec2(0.0, 0.65 * u), vec2(2.8, 0.65) * u), box(q - keyShift(u) + vec2(0.0, 1.65 * u), vec2(2.8, 0.35) * u)), 0.05 * u, 0.6, k);
   sky = ink(sky, mix(wood, mix(wood, INK_INDIGO, 0.4), screen(p, 0.35, pitch(u), 75.0)), pfront, 1.0);
   sky = ink(sky, tone(BRASS, k), max(pfront, abs(q.y + 1.15 * u) - 0.1 * u), 1.0);
   sky = ink(sky, tone(BRASS, k), length(q + vec2(0.0, 0.55 * u)) - 0.32 * u, 1.0);
