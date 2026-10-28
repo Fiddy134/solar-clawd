@@ -6,8 +6,8 @@
 // onto the apron with a plane parked nose in, the split-flap board and the
 // gate's sign hung in front of the glass, and the carpet with the gate desk
 // and its queue, rows of seats, Viktor's corner, the coffee kiosk, a garden,
-// the baggage carousel carrying the context window as suitcases, and a
-// moving walkway at the front. Viktor, a Clawd, lives at gate B4 as the man
+// and the baggage carousel at the front carrying the context window as
+// suitcases. Viktor, a Clawd, lives at gate B4 as the man
 // in The Terminal (2004) did. The west wall is cut through where the jet
 // bridge comes in.
 
@@ -122,8 +122,7 @@ bool isTower(vec2 p, float u, vec2 foot) {
 // concrete shaft, its cab's green glass lit by night and while Claude is on
 // the web, the mast with its red light, the radar turning on the roof, and
 // radio rings from the mast while Claude is on the web. Behind the text, so
-// hazed and never lighter than the sky; on Sweden's national day it flies
-// the flag from its mast.
+// hazed and never lighter than the sky.
 vec3 tower(vec3 sky, vec2 p, float u, float k, vec2 foot, float n, bool isWeb) {
   float y = foot.y - p.y;
   if (y < 0.0 || y > 12.5 * u || abs(p.x - foot.x) > (isWeb ? 9.0 : 3.6) * u) return sky;
@@ -135,11 +134,6 @@ vec3 tower(vec3 sky, vec2 p, float u, float k, vec2 foot, float n, bool isWeb) {
   }
   float x = abs(p.x - foot.x);
   vec3 steel = sky_under(mix(tone(STEEL, k) * (1.0 - 0.5 * n), sky, 0.2), sky);
-  if (FLAG_DAY > 0.5) {
-    vec2 f = vec2(p.x - mast.x, p.y - mast.y + 0.1 * u * sin((p.x - mast.x) / u * 2.5 + mod(iTime, 3600.0) * 4.0));
-    if (f.x > 0.1 * u && f.x < 2.4 * u && f.y > -2.4 * u && f.y < -0.9 * u) return lift(abs(f.x - 0.9 * u) < 0.18 * u || abs(f.y + 1.65 * u) < 0.18 * u ? INK_YELLOW : INK_BLUE, k);
-    if (x < 0.07 * u && y > 10.0 * u) return mix(sky, keyInk(k), 0.9);
-  }
   if (y > 8.6 * u) {
     if (x < 0.07 * u && y < 10.0 * u) return mix(sky, keyInk(k), 0.9);
     sky = ink(sky, RED_INK, length(p - mast) - 0.14 * u, 1.0);
@@ -288,7 +282,7 @@ bool isCable(vec2 p, float u, Gate g) {
 
 // Whether p is in a pane of the glass wall or of a skylight, and which: 0
 // not (a frame, the wall, or something hung in front of it), 1 the sky
-// through the glass wall, 2 the apron through it, 3 a skylight, 4 a cable.
+// through the glass wall, 2 the apron through it, 3 a skylight.
 int paneAt(vec2 p, float u, Gate g) {
   vec2 q = (p - vec2(g.left, g.top)) / u;
   float S = g.width / u;
@@ -309,82 +303,62 @@ int paneAt(vec2 p, float u, Gate g) {
   if (abs(p.x - s.x) < s.z + 0.1 * u && abs(p.y - s.y) < s.w + 0.1 * u) return 0;
   if (length(p - vec2(g.left + 3.4 * u, g.ceil + 3.2 * u)) < 1.5 * u) return 0;
   if (q.x > S - 6.1 && q.x < S - 0.9 && gy > 9.7 && gy < 11.5) return 0;
-  return isCable(p, u, g) ? 4 : p.y > g.apron ? 2 : 1;
+  return p.y > g.apron ? 2 : 1;
 }
 
 // What shows through the glass wall: the sky, and from the apron's far edge
-// down the apron, with a low far terminal in haze on the edge, the plane
-// parked nose in at gate B4 (Clawd's coral on its fin, his two eyes on it),
-// its yellow lead-in line, the fuel truck at its wing, a tug with three
-// carts of bags going by, and the marshal in front of it with his two
-// wands, lit by night. Far, so hazed into the sky and darker by night, the
-// plane's cockpit and lights lit.
+// down the apron, with the plane parked nose in at gate B4 (Clawd's coral
+// on its fin), its yellow lead-in line, a tug with three carts of bags
+// going by, and the marshal in front of the plane with his two wands, lit
+// by night. Far, so hazed into the sky and darker by night, the plane's
+// cockpit and lights lit.
 vec3 apronView(vec3 sky, vec2 p, float u, float k, Gate g, float n) {
   float S = g.width / u;
   vec2 a = vec2((p.x - g.left) / u, (p.y - g.apron) / u);
-  float dark = 1.0 - 0.55 * n;
   float time = mod(iTime, 3600.0);
-  vec3 c = sky;
   float cx = 0.53 * S;
-  if (a.y > 0.0) {
-    c = mix(tone(mix(CONCRETE, INK_INDIGO, 0.3), k) * dark, sky, 0.3 * (1.0 - a.y / 7.0));
-    if (a.y < 0.3) c = mix(tone(mix(INK_GREEN, INK_INDIGO, 0.5), k) * dark, sky, 0.35);
-    if ((abs(a.x - cx) < 0.09 && a.y > 2.2) || (abs(a.y - 3.3) < 0.08 && abs(a.x - cx) < 2.4)) c = mix(c, tone(INK_YELLOW, k) * dark, 0.75);
-    if (PRECIPITATION > 0 && PRECIPITATION < 4) c = mix(c, sky, 0.3 * step(0.62, fract(a.y * 1.4 + 0.4 * sin(a.x * 1.3))));
-    if (PRECIPITATION == 4) c = mix(c, tone(CREAM, k) * dark, 0.5);
-  } else if (a.y > -1.2) {
-    // The far terminal: a low roof in haze, its windows lit by night.
-    float roof = -0.5 - 0.6 * step(0.6, rand(int(floor(a.x / 3.0)) + 40));
-    if (a.y > roof) {
-      c = mix(tone(STEEL, k) * dark, sky, 0.5);
-      if (n > 0.4 && fract(a.x / 0.6) < 0.4 && abs(a.y + 0.25) < 0.1) c = mix(c, lift(INK_YELLOW, k), 0.7);
-    }
-  }
+  // Each part gives its raw ink and how far p is inside it; the nearest
+  // part wins, and one print at the end.
+  vec3 c = a.y < 0.3 ? mix(INK_GREEN, INK_INDIGO, 0.5) : PRECIPITATION == 4 ? mix(CONCRETE, CREAM, 0.5) : mix(CONCRETE, INK_INDIGO, 0.3);
+  if ((abs(a.x - cx) < 0.09 && a.y > 2.2) || (abs(a.y - 3.3) < 0.08 && abs(a.x - cx) < 2.4)) c = INK_YELLOW;
+  float d = a.y > 0.0 ? -1.0 : 1.0;
+  float haze = 0.3 - 0.04 * a.y;
+  if (PRECIPITATION > 0 && PRECIPITATION < 4) haze += 0.3 * step(0.62, fract(a.y * 1.4 + 0.4 * a.x));
   // The plane, nose on: its fuselage a circle, its wings, its engines, its
-  // fin, its tailplane and its gear.
-  vec2 d = vec2(a.x - cx, a.y + 1.5);
-  vec2 m = vec2(abs(d.x), d.y);
-  float body = length(d) - 2.0;
-  float wing = limb(m, vec2(1.6, 0.4), vec2(9.4, -0.5), 0.3, 0.1);
+  // fin and tailplane, and its gear.
+  vec2 q = vec2(a.x - cx, a.y + 1.5);
+  vec2 m = vec2(abs(q.x), q.y);
+  float body = length(q) - 2.0;
   float engine = length(m - vec2(4.4, 1.15)) - 0.8;
-  float fin = min(box(d - vec2(0.0, -4.5), vec2(0.17, 2.6)), limb(m, vec2(0.2, -3.0), vec2(2.9, -3.3), 0.16, 0.08));
-  float gear = min(box(d - vec2(0.0, 2.7), vec2(0.09, 0.8)), box(m - vec2(1.5, 2.6), vec2(0.28, 0.55)));
-  float plane = min(min(body, wing), min(min(engine, fin), gear));
-  if (plane < 0.1 && a.y < 4.5) {
-    vec3 pc = mix(CREAM, INK_BLUE, 0.1);
-    if (fin < 0.0 && d.y < -2.1) pc = abs(d.y + 5.2) < 0.15 && abs(d.x) < 0.1 ? INK_INDIGO : CORAL;
-    else if (gear < min(body, min(wing, engine))) pc = INK_INDIGO;
-    else if (engine < 0.0) pc = length(m - vec2(4.4, 1.15)) < 0.55 ? mix(INK_INDIGO, STEEL, 0.3) : mix(CREAM, STEEL, 0.3);
-    else if (body < 0.0 && d.y > 0.7) pc = mix(CREAM, STEEL, 0.4);
-    pc = mix(tone(pc, k) * dark, sky, 0.18);
-    if (body < 0.0 && abs(d.y + 0.55) < 0.17 && abs(d.x) < 1.3 && fract(d.x / 0.62 + 0.5) < 0.72) pc = n > 0.3 ? lift(INK_YELLOW, k) : tone(INK_INDIGO, k) * 0.6;
-    c = ink(c, pc, plane * u, 1.0);
-    if (n > 0.3) {
-      c = ink(c, RED_INK, (length(d - vec2(0.0, -7.1)) - 0.18) * u, step(0.5, fract(iTime * 0.8)));
-      c = ink(c, d.x < 0.0 ? RED_INK : INK_GREEN, (length(m - vec2(9.4, -0.5)) - 0.16) * u, 1.0);
-    }
+  float plane = min(min(body, limb(m, vec2(1.6, 0.4), vec2(9.4, -0.5), 0.3, 0.1)), min(engine, box(q - vec2(0.0, -4.5), vec2(0.17, 2.6))));
+  float gear = min(box(q - vec2(0.0, 2.7), vec2(0.09, 0.8)), box(m - vec2(1.5, 2.6), vec2(0.28, 0.55)));
+  plane = min(plane, min(gear, box(q - vec2(0.0, -3.1), vec2(2.6, 0.12))));
+  if (plane < 0.1) {
+    c = q.y < -2.1 ? CORAL : gear < 0.0 ? INK_INDIGO : engine < 0.0 ? (engine < -0.25 ? mix(INK_INDIGO, STEEL, 0.3) : mix(CREAM, STEEL, 0.3)) : q.y > 0.7 ? mix(CREAM, STEEL, 0.4) : mix(CREAM, INK_BLUE, 0.1);
+    if (body < 0.0 && abs(q.y + 0.55) < 0.17 && abs(q.x) < 1.3 && fract(q.x / 0.62 + 0.5) < 0.72) c = INK_INDIGO;
+    d = plane;
+    haze = 0.18;
   }
-  if (a.y < 1.0) return c;
-  // The fuel truck at the right wing, and a tug with three carts going by.
-  vec2 f = a - vec2(cx + 7.2, 2.9);
-  float truck = min(box(f - vec2(1.6, -0.45), vec2(0.5, 0.45)), box(f - vec2(-0.3, -0.4), vec2(1.4, 0.4)) - 0.1);
-  float tx = mod(time * 0.9, S + 14.0) - 7.0;
-  float tq = a.x - tx;
-  float tug = min(box(vec2(tq - 0.7, a.y - 4.9), vec2(0.7, 0.4)), tq < 0.0 && tq > -5.4 ? box(vec2(mod(tq, 1.8) - 0.9, a.y - 4.95), vec2(0.7, 0.35)) : 1.0e4);
-  float bags = tq < 0.0 && tq > -5.4 ? box(vec2(mod(tq, 1.8) - 0.9, a.y - 4.55), vec2(0.55, 0.15)) : 1.0e4;
-  vec3 vc = truck < tug ? mix(CREAM, INK_BLUE, 0.25) : tq > 0.0 ? INK_YELLOW : STEEL;
-  c = ink(c, mix(tone(vc, k) * dark, sky, 0.12), min(truck, tug) * u, 1.0);
-  c = ink(c, mix(tone(rand(int(floor(tq / 1.8)) + 60) < 0.5 ? INK_PINK : INK_BLUE, k) * dark, sky, 0.12), bags * u, 1.0);
-  // The marshal: a small figure in a yellow vest, his wands waving.
+  // A tug with three carts of bags going by, and the marshal in front of
+  // the plane in his yellow vest.
+  float tq = a.x - mod(time * 0.9, S + 14.0) + 7.0;
+  float carts = tq < 0.0 && tq > -5.4 ? box(vec2(mod(tq, 1.8) - 0.9, a.y - 4.8), vec2(0.7, 0.5)) : 1.0e4;
+  float tug = min(box(vec2(tq - 0.7, a.y - 4.9), vec2(0.7, 0.4)), carts);
   vec2 mq = a - vec2(cx, 6.1);
-  float wave = 0.7 + 0.6 * sin(time * 2.5);
-  vec2 hand = vec2(abs(mq.x) - 0.35, mq.y + 0.35);
-  float wand = segment(hand, vec2(0.0), vec2(0.6 * cos(wave), -0.6 * sin(wave))) - 0.07;
   float man = box(mq, vec2(0.32, 0.45));
-  vec3 wc = n > 0.3 ? lift(RED_INK, k) : tone(INK_ORANGE, k);
-  if (n > 0.3) c = mix(c, RED_INK, screen(p, 0.45 * exp(-wand / 0.35), pitch(u), 75.0));
-  c = ink(c, wc, wand * u, 1.0);
-  return ink(c, mq.y < -0.1 ? tone(CORAL, k) * dark : tone(INK_YELLOW, k) * dark, man * u, 1.0);
+  if (min(tug, man) < d) {
+    c = man < tug ? (mq.y < -0.1 ? CORAL : INK_YELLOW) : tq > 0.0 ? INK_YELLOW : a.y < 4.5 ? (mod(tq, 3.6) < 1.8 ? INK_PINK : INK_BLUE) : STEEL;
+    d = min(tug, man);
+    haze = 0.1;
+  }
+  vec3 o = ink(sky, mix(tone(c, k) * (1.0 - 0.55 * n), sky, max(haze, 0.0)), d * u, 1.0);
+  // What is lit: the cockpit's windows and the plane's lights by night, and
+  // the marshal's wands, glowing by night.
+  if (n > 0.3 && body < 0.0 && abs(q.y + 0.55) < 0.17 && abs(q.x) < 1.3 && fract(q.x / 0.62 + 0.5) < 0.72) o = lift(INK_YELLOW, k);
+  if (n > 0.3) o = ink(o, q.x < 0.0 ? RED_INK : INK_GREEN, (length(m - vec2(9.4, -0.5)) - 0.16) * u, 1.0);
+  float wave = 0.7 + 0.6 * sin(time * 2.5);
+  float wand = segment(vec2(abs(mq.x) - 0.35, mq.y + 0.35), vec2(0.0), vec2(0.6 * cos(wave), -0.6 * sin(wave))) - 0.07;
+  return ink(o, n > 0.3 ? lift(RED_INK, k) : tone(INK_ORANGE, k), wand * u, 1.0);
 }
 
 // One seat of a row, seen from above and the front: `x0` the row's left end
@@ -414,7 +388,7 @@ int seatPart(vec2 q, float x0, float sw, float n, float foot, bool isBack) {
 // it; and the carpet with all that stands on it: the gate desk and its
 // queue's lanes, Viktor's rug, bench and lamp, rows of seats with charging
 // posts, the garden, the baggage carousel with the context window's bags on
-// it, the tug and its carts, the scrubber, and the moving walkway. Each part
+// it, the tug and its carts, and the scrubber. Each part
 // gives its raw ink, the deeper ink screened over it, how much and at what
 // angle, and whether the night dims it; the one lamp whose light p is in
 // gives its ink and its strength there. One print at the end.
@@ -431,6 +405,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
   float angle = 45.0;
   vec3 light = mix(INK_YELLOW, CREAM, 0.35);
   float glow = 0.0;
+  vec2 lamp3 = vec2(1.0e3, 1.0);
   float dim = 1.0;
   float kx = q.x - S + 6.0;
   int pane = paneAt(p, u, g);
@@ -470,7 +445,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       vec2 mq = q - vec2(S - 1.9, 2.6);
       if (box(mq, vec2(0.7, 0.9)) < 0.0) c = length(mq + vec2(0.2, 0.3)) < 0.14 ? RED_INK : STEEL;
     }
-    if (f == 1 && isOpen && fract((q.x - S) / 1.1) < 0.2 && abs(q.y - 4.8) < 0.2) c = CREAM;
     if (f == 0 && abs(q.y + 0.6) < 0.08) c = key;
   } else if (p.y < g.ceil) {
     // The ceiling: a steel truss under a row of skylights, a lamp hung in
@@ -499,14 +473,15 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       c = n > 0.3 ? WARM_WHITE : mix(STEEL, CREAM, 0.4);
       shade = 0.0;
     }
-    glow = 0.6 * n * exp(-length(lq) / (0.45 * u));
+    glow = 0.6 * n;
+    lamp3 = vec2(length(lq) / u, 0.45);
     if (FLAG_DAY > 0.5 && q.x > S - 5.0 && q.x < S - 1.4 && p.y > g.ceil - 3.6 * u && p.y < g.ceil - 0.9 * u) {
       c = abs(q.x - S + 3.9) < 0.3 || abs(p.y - g.ceil + 2.25 * u) < 0.3 * u ? INK_YELLOW : INK_BLUE;
       shade = 0.0;
     }
   } else if (q.y < 0.0) {
     // The glass wall, and what hangs in front of it.
-    if (pane > 0 && pane < 4) {
+    if (pane > 0 && !isCable(p, u, g)) {
       vec3 v = q.y > -16.0 ? apronView(sky, p, u, k, g, n) : sky;
       return mix(v, lift(mix(INK_BLUE, CREAM, 0.7), k), 0.08 + 0.1 * step(0.86, fract((p.x + 0.6 * p.y) / (3.0 * u))));
     }
@@ -519,15 +494,13 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     float pw = q.x - S + 3.5;
     c = STEEL;
     if (bq.x > -0.5 * u && bq.x < 106.0 * b.z + 0.4 * u && bq.y > -0.5 * u && bq.y < 30.0 * b.z + 0.2 * u) {
-      // The board: its frame, its dark face, a flap behind each character
-      // with its seam across the middle, the gate's own row warm while
+      // The board: its frame, its dark face, each row a strip of flaps
+      // with their seam across the middle, the gate's own row warm while
       // Claude asks.
       dim = 0.0;
       if (bq.x > -0.3 * u && bq.x < 106.0 * b.z + 0.2 * u && bq.y > -0.3 * u && bq.y < 30.0 * b.z) {
-        c = dk;
-        dim = 0.0;
-        vec2 fl = vec2(bq.x < 52.0 * b.z ? mod(bq.x, 4.0 * b.z) : mod(bq.x - 52.0 * b.z, 6.0 * b.z), mod(bq.y + 0.5 * b.z, 6.0 * b.z));
-        if (bq.y > 5.5 * b.z && fl.x < (bq.x < 52.0 * b.z ? 3.4 : 5.4) * b.z && fl.y > 0.3 * b.z && fl.y < 5.7 * b.z) c = mix(dk, STEEL, abs(fl.y - 3.0 * b.z) < 0.5 ? 0.05 : 0.2);
+        float fy = mod(bq.y + 0.5 * b.z, 6.0 * b.z);
+        c = bq.y > 5.5 * b.z && fy > 0.3 * b.z && fy < 5.7 * b.z ? mix(dk, STEEL, abs(fy - 3.0 * b.z) < 0.5 ? 0.05 : 0.2) : dk;
         if (WAITING == 1 && bq.y > 5.5 * b.z && bq.y < 11.5 * b.z) c = mix(c, INK_ORANGE, 0.15);
       }
     } else if (sq.x < s.z && sq.y < s.w) {
@@ -549,12 +522,12 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       vec2 w = vec2(pw, gy - 10.6);
       c = mix(INK_BLUE, INK_INDIGO, 0.35);
       dim = 0.0;
-      vec2 mq = w - vec2(w.x < -1.25 ? -1.7 : -0.8, 0.0);
-      float figs = min(length(mq - vec2(0.0, -0.42)) - 0.16, w.x < -1.25 ? box(mq - vec2(0.0, 0.12), vec2(0.14, 0.32)) : max(abs(mq.x) - 0.05 - 0.3 * max(mq.y + 0.2, 0.0), abs(mq.y - 0.08) - 0.3));
-      float arrow = min(segment(w, vec2(0.4, 0.0), vec2(2.0, 0.0)), min(segment(w, vec2(2.0, 0.0), vec2(1.55, -0.45)), segment(w, vec2(2.0, 0.0), vec2(1.55, 0.45)))) - 0.1;
-      if (min(figs, arrow) < 0.0 || (abs(w.x + 1.25) < 0.04 && abs(w.y) < 0.55)) c = CREAM;
+      vec2 mq = vec2(abs(w.x + 1.25) - 0.45, w.y);
+      bool isFig = box(mq - vec2(0.0, -0.42), vec2(0.15)) < 0.0 || abs(mq.y - 0.1) < 0.3 && abs(mq.x) < (w.x < -1.25 ? 0.14 : 0.06 + 0.3 * max(mq.y + 0.2, 0.0));
+      bool isArrow = (w.x > 0.4 && w.x < 1.7 && abs(w.y) < 0.09) || (w.x > 1.3 && abs(w.y) < 2.1 - w.x);
+      if (isFig || isArrow || (abs(w.x + 1.25) < 0.04 && abs(w.y) < 0.55)) c = CREAM;
       if (abs(w.x) > 2.45 || abs(w.y) > 0.75) c = STEEL;
-    } else if (pane == 4) c = key;
+    } else if (pane > 0) c = key;
     else if (q.y > -0.45) c = q.y > -0.15 ? key : mix(STEEL, CREAM, 0.2);
     else c = mix(STEEL, CREAM, 0.15);
   } else {
@@ -569,8 +542,8 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     deep = mix(CARPET, INK_INDIGO, 0.5);
     shade = 0.2 + 0.1 * float((h >> 4) & 1u);
     angle = 60.0;
-    float md = motif == 0 ? abs(max(abs(ft.x), abs(ft.y)) - 0.13) - 0.035 : motif == 1 ? length(ft - vec2(0.2, -0.18)) - 0.08 : motif == 2 ? box(ft, vec2(0.25, 0.04)) : 1.0;
-    if (md < 0.0) {
+    vec2 fa = abs(ft - (motif == 1 ? vec2(0.2, -0.18) : vec2(0.0)));
+    if (motif == 0 ? abs(max(fa.x, fa.y) - 0.13) < 0.035 : motif == 1 ? max(fa.x, fa.y) < 0.07 : motif == 2 && fa.x < 0.25 && fa.y < 0.04) {
       c = mix(motif == 0 ? INK_YELLOW : motif == 1 ? INK_ORANGE : mix(INK_BLUE, CREAM, 0.4), CARPET, 0.5);
       shade = 0.0;
     }
@@ -586,20 +559,9 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       if (fract((q.x + 1.5 * q.y) / 1.1) < 0.12) c = CREAM;
     }
     // A shadow on the carpet just in front of what stands on it.
-    float sy = q.y > 26.0 ? 31.6 : q.y > 20.0 ? 26.2 : q.y > 17.0 ? 18.0 : q.y > 9.0 ? 14.6 : q.y > 4.0 ? (q.x > S - 6.2 ? 6.6 : 7.6) : 2.6;
+    float sy = q.y > 20.0 ? 26.2 : q.y > 17.0 ? 18.0 : q.y > 9.0 ? 14.6 : q.y > 4.0 ? (q.x > S - 6.2 ? 6.6 : 7.6) : 2.6;
     if (q.y > sy && q.y < sy + 0.32) c = mix(c, dk, 0.4);
-    if (q.y > 27.9 && q.y < 31.6) {
-      // The moving walkway: its glass balustrade and handrail behind, its
-      // tread grooved and running, its comb plates yellow at the ends, its
-      // side and handrail in front.
-      shade = 0.0;
-      if (q.y < 28.25) c = dk;
-      else if (q.y < 28.8) c = mix(mix(INK_BLUE, CREAM, 0.6), CARPET, 0.3);
-      else if (q.y < 30.6) {
-        c = fract((q.x - time * 0.8) / 0.35) < 0.18 ? mix(STEEL, INK_INDIGO, 0.6) : mix(STEEL, INK_INDIGO, 0.35);
-        if (q.x < 2.0 || q.x > S - 0.8) c = fract(q.y / 0.25) < 0.5 ? INK_YELLOW : dk;
-      } else c = q.y < 30.85 ? dk : mix(STEEL, CREAM, 0.2);
-    } else if ((q.y > 20.2 || (q.y > 19.35 && q.x > S - 4.5)) && q.y < 26.2 && q.x > 1.9) {
+    if ((q.y > 20.2 || (q.y > 19.35 && q.x > S - 4.5)) && q.y < 26.2 && q.x > 1.9) {
       // The carousel and the hopper at its end.
       vec2 bd = q - vec2(0.5 * (S - 2.6), 23.2);
       float L = 0.5 * (S - 6.6) - 2.4;
@@ -626,7 +588,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         // a bag for each tenth of the context window that is full, the
         // newest tagged yellow while a tenth has just filled.
         float rm = 1.78;
-        float sp = abs(bd.x) <= L ? (bd.y < 0.0 ? bd.x + L : 2.0 * L + PI * rm + L - bd.x) : 2.0 * L + (atan(bd.y, abs(bd.x) - L) + 0.5 * PI) * rm;
+        float sp = abs(bd.x) <= L ? (bd.y < 0.0 ? bd.x + L : 2.0 * L + PI * rm + L - bd.x) : 2.0 * L + (0.5 + 0.5 * clamp(bd.y / 2.4, -1.0, 1.0)) * PI * rm;
         if (bd.x < -L) sp = 6.0 * L + 2.0 * PI * rm - sp;
         float slot = (4.0 * L + 2.0 * PI * rm) / 12.0;
         float ss = sp - (isRunning ? time * 1.4 : 0.0);
@@ -652,7 +614,8 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       } else shade = 0.2;
       if (isRunning) {
         light = INK_YELLOW;
-        glow = (fract(iTime * 1.2) < 0.6 ? 0.75 : 0.35) * exp(-length(beacon) / 1.1);
+        glow = fract(iTime * 1.2) < 0.6 ? 0.75 : 0.35;
+        lamp3 = vec2(length(beacon), 1.1);
       }
     } else if (q.y > 16.5 && q.y < 20.2 && q.x < S - 6.4 && (isEdit || isAway)) {
       // The scrubber, yellow and green, its brush dark in front; or the
@@ -682,9 +645,9 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       vec2 pq = q - vec2(S - 3.2, 8.6);
       float frond = segment(q, vec2(S - 3.6, 13.4), vec2(S - 3.2, 8.6)) - 0.13;
       bool isTrunk = frond < 0.0;
-      for (int i = 0; i < 6; i++) {
+      for (int i = 0; i < 4; i++) {
         if (abs(pq.x) > 3.0 || abs(pq.y) > 2.2) break;
-        float a = 0.35 + 0.48 * float(i) + 0.05 * sin(time * 0.8 + float(i));
+        float a = 0.45 + 0.75 * float(i);
         frond = min(frond, limb(pq, vec2(0.0), vec2(-cos(a) * 2.7, -sin(a) * 1.7 + 1.3), 0.38, 0.06));
       }
       if (frond < 0.0 && !isTrunk) {
@@ -769,12 +732,13 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
           dim = 0.0;
         }
       }
-      glow = (0.12 + 0.35 * n) * exp(-length(rug - vec2(-0.7, 0.35)) / 1.5);
+      glow = 0.12 + 0.35 * n;
+      lamp3 = vec2(length(rug - vec2(-0.7, 0.35)), 1.5);
     }
   }
   c = mix(c, mix(mix(c, INK_ORANGE, 0.1), INK_INDIGO, 0.3), n * dim);
   c = mix(c, deep, screen(p, shade, pitch(u), angle));
-  return lift(mix(c, light, screen(p, glow, pitch(u), 0.0)), k);
+  return lift(mix(c, light, screen(p, glow * exp(-lamp3.x / lamp3.y), pitch(u), 0.0)), k);
 }
 
 // --- Letters -------------------------------------------------------------------------
@@ -783,15 +747,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
 int codeIn(uvec4 line, int i) {
   uint word = i < 5 ? line.x : i < 10 ? line.y : i < 15 ? line.z : line.w;
   return int((word >> uint(6 * (i % 5))) & 63u);
-}
-
-// The code in column `col`, 0 to 4, of a time written HH:MM, `minutes`
-// after midnight.
-int timeCode(int minutes, int col) {
-  int m = minutes % 1440;
-  int v = col < 2 ? m / 60 : m % 60;
-  if (col == 2) return sky_GLYPH_COLON;
-  return col == 0 || col == 3 ? v / 10 : v % 10;
 }
 
 // Where character i of a line starts, in cells, when the characters whose
@@ -880,9 +835,9 @@ vec3 letters(vec3 sky, vec2 p, float u, float k, Gate g, float n, int agents, bo
       bool isUrgent = WAITING_URGENT > 0.5;
       name = 1;
       remark = WAITING == 1 ? (isUrgent ? 12 : 11) : WAITING == 2 ? 13 : 10;
-      ink2 = WAITING == 1 ? INK_ORANGE * (0.85 + 0.15 * sin(mod(iTime, 3600.0) * (isUrgent ? 7.0 : 2.5))) : WAITING == 2 ? WARM_WHITE : INK_GREEN;
+      ink2 = WAITING == 1 ? INK_ORANGE : WAITING == 2 ? WARM_WHITE : INK_GREEN;
     } else if (row == 2) {
-      bool isCancelled = rand(int(mod(floor((iTime + 23.0) / 600.0), 100000.0)) * 5 + 3) < 0.3;
+      bool isCancelled = fract(floor((iTime + 23.0) / 600.0) * 0.618) < 0.3;
       name = 2;
       remark = isCancelled ? 15 : 14;
       ink2 = isCancelled ? RED_INK : INK_YELLOW;
@@ -922,12 +877,20 @@ vec3 letters(vec3 sky, vec2 p, float u, float k, Gate g, float n, int agents, bo
   uint wide = line == 10 ? 34u : line == 11 ? 64u : line == 13 || line == 15 ? 4u : line == 16 ? 256u : line == 23 ? 4096u : 0u;
   float x = (p.x - at.x) / cell;
   int i = int(floor(x / 4.0));
-  if (slotX(wide, i) > x) i -= 1;
+  float sx = slotX(wide, i);
+  if (sx > x) {
+    i -= 1;
+    sx -= (((wide >> uint(i)) & 1u) == 1u ? 6.0 : 4.0);
+  }
   bool isNarrow = ((wide >> uint(i)) & 1u) == 0u;
   int code = codeIn(LINES[line], i);
-  if (line == 0 && i >= 21) code = i > 25 ? sky_GLYPH_SPACE : timeCode(int(LOCAL_HOUR * 60.0), i - 21);
-  if (isTurning && rand(i * 13 + row * 7 + int(mod(floor(iTime / 60.0), 1000.0))) < 0.4) code = int(hashi(i * 31 + int(mod(iTime * 8.0, 997.0))) % 36u);
-  return mix(sky, lift(color, k), sky_glyphWide(p, at + vec2((slotX(wide, i) - (isNarrow ? 1.0 : 0.0)) * cell, 0.0), cell, code));
+  if (line == 0 && i >= 21) {
+    // The clock, HH:MM, from the place's own time.
+    float hm = i < 23 ? floor(LOCAL_HOUR) : floor(fract(LOCAL_HOUR) * 60.0 + 0.01);
+    code = i > 25 ? sky_GLYPH_SPACE : i == 23 ? sky_GLYPH_COLON : int(i == 21 || i == 24 ? floor(hm / 10.0) : mod(hm, 10.0));
+  }
+  if (isTurning && fract(float(i * 7 + row) * 0.618 + floor(iTime / 60.0) * 0.31) < 0.4) code = int(mod(float(i * 11) + floor(iTime * 8.0), 36.0));
+  return mix(sky, lift(color, k), sky_glyphWide(p, at + vec2((sx - (isNarrow ? 1.0 : 0.0)) * cell, 0.0), cell, code));
 }
 
 // --- The waiting light -------------------------------------------------------------
@@ -1036,31 +999,33 @@ vec3 figure(vec3 sky, vec2 p, Fig f, float k) {
   if (f.flip) cc.x = 5 - cc.x;
   int kind = figCell(cc, f.pose, stride, f.eyes, f.hat);
   vec2 v = (p - origin) / c;
-  if (f.thing > 1 && v.y > 1.7 && v.y < 3.7 && abs(v.x - 3.0) < (f.thing == 2 ? 3.8 : 2.4)) {
-    vec3 sheet = f.thing == 3 ? mix(INK_BLUE, CREAM, v.y < 2.1 ? 0.2 : 0.55) : abs(v.x - 3.0) < 0.15 || (fract(v.y * 2.0) < 0.3 && abs(v.x - 3.0) > 0.6 && abs(v.x - 3.0) < 3.2) ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
-    return mix(sky, lift(sheet, k), 0.97);
+  vec2 tv = abs(v - vec2(3.0, 2.7));
+  if (f.thing > 1 && tv.y < 1.0 && tv.x < (f.thing == 2 ? 3.8 : 2.4)) {
+    vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 || fract(v.y * 2.0) < 0.3 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
+    return mix(sky, f.thing == 3 && v.y < 2.6 ? sheet : lift(sheet, k), 0.97);
   }
+  if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.4 * screen(p, 0.5, pitch(c), 15.0) + 0.15);
   if (kind == 2) return mix(sky, keyInk(k), 0.97);
   if (kind != 0) return mix(sky, lift(kind == 1 ? CORAL : kind == 4 ? f.jumper : kind == 5 ? f.hatInk : CORAL_DEEP, k), 0.97);
   if (f.thing == 1) {
     vec2 bq = vec2(float(cc.x) + 1.5, float(cc.y) - 2.5);
     if (abs(bq.x) < 1.0 && abs(bq.y) < 1.5) return mix(sky, lift(bq.y < -1.0 ? KEY : mix(f.hatInk, INK_INDIGO, 0.25), k), bq.y < -1.0 && abs(bq.x) > 0.5 ? 0.0 : 0.97);
   }
-  if (f.pose != 3 && length((p - f.feet - vec2(0.5 * c, 0.1 * c)) / vec2(3.4 * c, 0.8 * c)) < 1.0) return mix(sky, keyInk(k), 0.35);
-  float off = max(1.0, floor(0.4 * c));
-  ivec2 ck = ivec2(floor((p - vec2(off) - origin) / c));
-  if (f.flip) ck.x = 5 - ck.x;
-  if (figCell(ck, f.pose, stride, f.eyes, f.hat) != 0) sky = mix(sky, keyInk(k), 0.55);
+  vec2 sh = abs(p - f.feet - vec2(0.5 * c, 0.1 * c)) / c;
+  if (f.pose != 3 && sh.x / 3.4 + sh.y / 0.8 < 1.0) return mix(sky, keyInk(k), 0.35);
+  // His key plate: his head and arms again, off register.
+  vec2 kv = v - max(1.0, floor(0.4 * c)) / c;
+  if (kv.y >= 0.0 && kv.y < 3.0 && kv.x >= (kv.y < 2.0 ? 1.0 : 0.0) && kv.x < (kv.y < 2.0 ? 5.0 : 6.0)) sky = mix(sky, keyInk(k), 0.55);
   return sky;
 }
 
-// A traveller, his looks from his hash: one of five jumpers, a cap, a
+// A traveller, his looks from his hash: one of four jumpers, a cap, a
 // beanie, headphones or nothing on his head, and which way he looks.
 Fig traveller(vec2 feet, float cell, uint h) {
-  int j = int(h % 5u);
-  vec3 jumper = j == 0 ? INK_BLUE : j == 1 ? INK_GREEN : j == 2 ? INK_VIOLET : j == 3 ? INK_PINK : mix(INK_BLUE, INK_GREEN, 0.5);
-  int hc = int((h >> 4u) % 3u);
-  vec3 hatInk = hc == 0 ? INK_INDIGO : hc == 1 ? RED_INK : INK_YELLOW;
+  uint j = h & 3u;
+  vec3 jumper = j == 0u ? INK_BLUE : j == 1u ? INK_GREEN : j == 2u ? INK_VIOLET : INK_PINK;
+  uint hc = (h >> 4u) & 3u;
+  vec3 hatInk = hc == 0u ? INK_INDIGO : hc == 1u ? RED_INK : INK_YELLOW;
   return Fig(feet, cell, 0, int((h >> 8u) % 2u), ((h >> 9u) & 1u) == 1u, jumper, hatInk, int((h >> 12u) % 4u), 0);
 }
 
@@ -1158,9 +1123,10 @@ vec4 walkerAt(vec2 q, float n, float S) {
   if (float(h & 255u) / 255.0 > (n > 0.6 ? 0.2 : 0.65)) return vec4(-1.0);
   float ph = float((h >> 8) & 255u) * 0.1;
   float t = mod(iTime, 3600.0);
-  vec2 at = vec2((float(i) + 0.5) * 3.2 + 0.55 * sin(0.35 * t + ph), lo + 0.5 + 0.5 * sin(0.23 * t + 2.0 * ph));
-  float vx = cos(0.35 * t + ph) * 0.19;
-  float vy = cos(0.23 * t + 2.0 * ph) * 0.115;
+  vec2 w = fract(vec2(0.055, 0.036) * t + vec2(ph, 2.0 * ph) * 0.16);
+  vec2 at = vec2((float(i) + 0.5) * 3.2, lo + 0.5) + vec2(0.55, 0.5) * (2.0 * abs(2.0 * w - 1.0) - 1.0);
+  float vx = w.x < 0.5 ? -0.12 : 0.12;
+  float vy = w.y < 0.5 ? -0.07 : 0.07;
   return vec4(at, float(id) + (vx < 0.0 ? 0.5 : 0.0), vy < 0.0 && abs(vy) > abs(vx) ? 1.0 : 0.0);
 }
 
@@ -1174,7 +1140,7 @@ vec4 walkerAt(vec2 q, float n, float S) {
 // seats and walking the aisles every way with their bags; the cleaner on
 // his scrubber while Claude edits, everyone else kept off his aisle; the
 // tug's driver as the conversation compacts; travellers waiting at the
-// carousel while a command runs it; and people riding the walkway.
+// carousel while a command runs it.
 Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool isOpen, int cs) {
   Fig none = Fig(vec2(-1.0e4), 1.0, 0, 0, false, CORAL, CORAL, 0, 0);
   vec2 o = vec2(g.left, g.top);
@@ -1272,18 +1238,6 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       h = hashu(uint(i) * 9u + 13u);
       eyes = 3;
     }
-  } else if (q.y > 27.4 && q.y < 30.6) {
-    float sx = q.x - time * 0.8;
-    float i = floor(sx / 4.0);
-    int id = int(mod(i, 997.0));
-    if (rand(id * 5 + 7) < (isDay ? 0.6 : 0.2)) {
-      f = vec2((i + 0.5) * 4.0 + time * 0.8, 30.3);
-      found = true;
-      h = hashu(uint(id) + 300u);
-      eyes = 1;
-      flip = 0;
-      thing = int((h >> 6) & 1u);
-    }
   } else {
     vec3 s = sitterAt(q, n);
     vec4 w = walkerAt(q, n, S);
@@ -1353,7 +1307,7 @@ vec4 props(vec4 ly, vec2 p, float u, float k, Gate g, Viktor v, int tool, bool i
     float rise = (foot.y - q.y) / (isBusy ? 4.4 : 1.6);
     float wide = isBusy ? 0.3 + 1.1 * rise : 0.12 + 0.2 * rise;
     float off = abs(q.x - foot.x - (isBusy ? 0.5 : 0.15) * rise * sin(rise * 7.0 - time * (isBusy ? 5.0 : 2.5)));
-    float puff = (1.0 - rise) * smoothstep(wide, 0.35 * wide, off) * (0.75 + 0.25 * sin(rise * 19.0 - time * 6.0));
+    float puff = (1.0 - rise) * smoothstep(wide, 0.35 * wide, off);
     ly = lay(ly, mix(CREAM, INK_BLUE, isBusy ? 0.35 : 0.2), 0.5 - screen(p, clamp(puff, 0.0, 1.0), pitch(u), 0.0), 1.0);
   }
   vec2 vq = p - v.feet;
@@ -1382,12 +1336,9 @@ vec4 props(vec4 ly, vec2 p, float u, float k, Gate g, Viktor v, int tool, bool i
     vec2 fq = p - floor(vec2(g.left, g.top) + vec2(17.6, 5.1) * u);
     if (abs(fq.x) < 2.0 * u && fq.y > -3.3 * u && fq.y < 0.3 * u) {
       vec3 water = mix(INK_BLUE, CREAM, 0.15);
-      float ax = abs(fq.x);
-      float s = clamp((ax - 0.55 * u) / (0.8 * u), 0.0, 1.0);
-      float arc = abs(fq.y + 1.95 * u - 1.4 * u * s * s + 0.25 * u * sin(PI * s)) - 0.14 * u;
-      float jet = max(abs(fq.x) - 0.1 * u, abs(fq.y + 2.1 * u) - 0.2 * u);
-      float drops = 0.5 + 0.5 * sin(ax / u * 9.0 + fq.y / u * 4.0 - time * 8.0);
-      ly = lay(ly, water, (arc < 0.0 && ax > 0.55 * u && ax < 1.35 * u) || jet < 0.0 ? -1.0 : 1.0, 0.6 + 0.4 * drops);
+      float s = clamp((abs(fq.x) - 0.55 * u) / (0.8 * u), 0.0, 1.0);
+      float arc = abs(fq.y + 1.95 * u - 1.4 * u * s * s) - 0.14 * u;
+      ly = lay(ly, water, s > 0.0 && s < 1.0 ? arc : max(abs(fq.x) - 0.1 * u, abs(fq.y + 2.1 * u) - 0.2 * u), fract(fq.y / (0.3 * u) + time * 2.0) < 0.7 ? 1.0 : 0.6);
       float bowl = min(box(fq + vec2(0.0, 1.2 * u), vec2(0.16 * u, 0.6 * u)), box(fq + vec2(0.0, 1.9 * u), vec2(0.6 * u, 0.1 * u)));
       float basin = box(fq + vec2(0.0, 0.35 * u), vec2(1.5 * u, 0.35 * u));
       ly = lay(ly, KEY, min(bowl, basin) - 0.06 * u, 1.0);
