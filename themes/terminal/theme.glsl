@@ -468,7 +468,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       // The gate's sign, its letters and its lamps put on it later.
       c = sq.x > s.z - 0.2 * u || sq.y > s.w - 0.2 * u ? STEEL : mix(INK_INDIGO, INK_BLUE, 0.2) * 0.7;
       dim = 0.0;
-    else if (q.y > -0.45) c = q.y > -0.15 ? key : mix(STEEL, CREAM, 0.2);
+    } else if (q.y > -0.45) c = q.y > -0.15 ? key : mix(STEEL, CREAM, 0.2);
     else c = mix(STEEL, CREAM, 0.15);
   } else {
     // The carpet, a tile a cell: each tile's hash picks its motif, a
