@@ -540,7 +540,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     bool isEdit = tool == sky_TOOL_EDIT;
     bool isAway = cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED;
     float xs = 2.0 + (S - 9.0) * abs(2.0 * fract(time / 40.0) - 1.0);
-    if (isEdit && q.y > 16.9 && q.y < 18.3 && (fract(time / 40.0) < 0.5 ? q.x < xs : q.x > xs && q.x < S - 6.6)) {
+    if (isEdit) if (q.y > 16.9 && q.y < 18.3 && (fract(time / 40.0) < 0.5 ? q.x < xs : q.x > xs && q.x < S - 6.6)) {
       // Wet behind the scrubber: the carpet shining in streaks.
       c = mix(c, mix(INK_BLUE, CREAM, 0.55), 0.55);
       shade = 0.0;
@@ -604,25 +604,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         light = INK_YELLOW;
         glow = fract(iTime * 1.2) < 0.6 ? 0.75 : 0.35;
         lamp3 = vec2(length(beacon), 1.1);
-      }
-    } else if (q.y > 16.5 && q.y < 20.2 && q.x < S - 6.4 && (isEdit || isAway)) {
-      // The scrubber, yellow and green, its brush dark in front; or the
-      // tug and its two carts with the carousel's bags stacked on them.
-      float tx = cs == CONTEXT_CLEARED ? 0.6 : 2.6;
-      int tug = isAway ? face(q, vec2(tx + 0.9, 20.1), vec3(1.8, 1.0, 0.8)) : face(q, vec2(xs, 18.3), vec3(1.8, 0.9, 0.8));
-      int cart = isAway && q.x - tx < 6.2 ? face(q, vec2(tx + 2.9 + 2.2 * step(4.0, q.x - tx), 20.1), vec3(1.9, 1.1, 0.4)) : 0;
-      if (tug > 0) {
-        c = isAway ? (tug == 1 ? mix(INK_YELLOW, CREAM, 0.2) : mix(INK_YELLOW, INK_ORANGE, 0.3)) : tug == 1 ? mix(INK_YELLOW, CREAM, 0.3) : q.y > 17.95 ? dk : mix(INK_YELLOW, INK_GREEN, 0.35);
-        shade = 0.0;
-      } else if (cart > 0) {
-        c = cart == 1 ? STEEL : mix(STEEL, INK_INDIGO, 0.4);
-        shade = 0.0;
-        float cx = q.x - tx - 2.0;
-        int i = int(floor(cx / 2.2)) * 6 + int(floor(mod(cx, 2.2) / 0.62)) + 3 * int(q.y > 19.15);
-        if (cart == 1 && mod(cx, 2.2) < 1.86 && fract(mod(cx, 2.2) / 0.62) > 0.12 && i < (cs == CONTEXT_CLEARED ? 10 : contextFish())) {
-          int bi = int(hashu(uint(i) * 19u + 3u) % 6u);
-          c = bi == 0 ? INK_BLUE : bi == 1 ? INK_GREEN : bi == 2 ? INK_VIOLET : bi == 3 ? INK_PINK : bi == 4 ? INK_YELLOW : mix(INK_INDIGO, INK_BLUE, 0.4);
-        }
       }
     } else if (q.x > S - 6.1 && q.y > 6.6 && q.y < 18.4) {
       // The garden: a palm and leaves in a planter soft-cornered as the
@@ -722,6 +703,26 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       }
       glow = 0.12 + 0.35 * n;
       lamp3 = vec2(length(rug - vec2(-0.7, 0.35)), 1.5);
+    }
+    if (isEdit || isAway) if (q.y > 16.5 && q.y < 20.2 && q.x < S - 6.4) {
+      // The scrubber, yellow and green, its brush dark in front; or the
+      // tug and its two carts with the carousel's bags stacked on them.
+      float tx = cs == CONTEXT_CLEARED ? 0.6 : 2.6;
+      int tug = isAway ? face(q, vec2(tx + 0.9, 20.1), vec3(1.8, 1.0, 0.8)) : face(q, vec2(xs, 18.3), vec3(1.8, 0.9, 0.8));
+      int cart = isAway && q.x - tx < 6.2 ? face(q, vec2(tx + 2.9 + 2.2 * step(4.0, q.x - tx), 20.1), vec3(1.9, 1.1, 0.4)) : 0;
+      if (tug > 0) {
+        c = isAway ? (tug == 1 ? mix(INK_YELLOW, CREAM, 0.2) : mix(INK_YELLOW, INK_ORANGE, 0.3)) : tug == 1 ? mix(INK_YELLOW, CREAM, 0.3) : q.y > 17.95 ? dk : mix(INK_YELLOW, INK_GREEN, 0.35);
+        shade = 0.0;
+      } else if (cart > 0) {
+        c = cart == 1 ? STEEL : mix(STEEL, INK_INDIGO, 0.4);
+        shade = 0.0;
+        float cx = q.x - tx - 2.0;
+        int i = int(floor(cx / 2.2)) * 6 + int(floor(mod(cx, 2.2) / 0.62)) + 3 * int(q.y > 19.15);
+        if (cart == 1 && mod(cx, 2.2) < 1.86 && fract(mod(cx, 2.2) / 0.62) > 0.12 && i < (cs == CONTEXT_CLEARED ? 10 : contextFish())) {
+          int bi = int(hashu(uint(i) * 19u + 3u) % 6u);
+          c = bi == 0 ? INK_BLUE : bi == 1 ? INK_GREEN : bi == 2 ? INK_VIOLET : bi == 3 ? INK_PINK : bi == 4 ? INK_YELLOW : mix(INK_INDIGO, INK_BLUE, 0.4);
+        }
+      }
     }
   }
   c = mix(c, mix(mix(c, INK_ORANGE, 0.1), INK_INDIGO, 0.3), n * dim);
@@ -992,12 +993,15 @@ vec3 figure(vec3 sky, vec2 p, Fig f, float k) {
   if (f.flip) cc.x = 5 - cc.x;
   int kind = figCell(cc, f.pose, stride, f.eyes, f.hat);
   vec2 v = (p - origin) / c;
-  vec2 tv = abs(v - vec2(3.0, 2.7));
-  if (f.thing > 1 && tv.y < 1.0 && tv.x < (f.thing == 2 ? 3.8 : 2.4)) {
+  int tool = sky_tool();
+  if (tool == sky_TOOL_READ || tool == sky_TOOL_WEB) {
+    vec2 tv = abs(v - vec2(3.0, 2.7));
+    if (f.thing > 1 && tv.y < 1.0 && tv.x < (f.thing == 2 ? 3.8 : 2.4)) {
     vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 || fract(v.y * 2.0) < 0.3 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
     return mix(sky, f.thing == 3 && v.y < 2.6 ? sheet : lift(sheet, k), 0.97);
+    }
+    if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.35);
   }
-  if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.35);
   if (kind == 2) return mix(sky, keyInk(k), 0.97);
   if (kind != 0) return mix(sky, lift(kind == 1 ? CORAL : kind == 4 ? f.jumper : kind == 5 ? f.hatInk : CORAL_DEEP, k), 0.97);
   if (f.thing == 1) {
@@ -1151,33 +1155,16 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
   int thing = 0;
   float cell = c;
   vec3 jumper = vec3(-1.0);
-  if (q.x < 1.6 && q.y > 7.6 && q.y < 10.4) {
-    if (agents > 0) {
-      float len = 9.8;
-      float N = float(min(agents, 4));
-      float T = fract(time * 0.085);
-      float j = mod(floor(fract((3.0 - q.x) / len - T) * N + 0.5), N);
-      f = vec2(3.0 - fract(T + j / N) * len, 10.2);
-      found = true;
-      h = uint(j) * 7u + 3u;
-      pose = 1;
-      eyes = 1;
-      flip = 1;
-      thing = 1;
-    }
-  } else if (q.x > S - 6.2 && q.y < 8.6) {
-    if (isOpen && q.y < 5.0) {
+  // Who is there whatever Claude does: the barista, the desk's agents and
+  // the children at the glass, and the travellers in the seats and the
+  // aisles.
+  if (q.x > S - 6.2 && q.y < 5.0) {
+    if (isOpen) {
       f = vec2(S - 2.6, 4.3 + c / u);
       found = true;
       pose = 3;
       jumper = INK_GREEN;
       h = 6u | 1u << 31;
-    } else if (isOpen && tool == sky_TOOL_OTHER && q.y > 5.0) {
-      int i = int(clamp(floor((q.x - S + 5.8) / 1.6), 0.0, 2.0));
-      f = vec2(S - 5.0 + 1.6 * float(i), 8.4);
-      found = true;
-      h = uint(i) * 5u + 41u;
-      eyes = 3;
     }
   } else if (q.y < 2.9 && q.x < 12.0) {
     if (q.x < 9.0 && (isDay || agents > 0)) {
@@ -1195,42 +1182,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       h = uint(i) * 3u + 77u;
       eyes = 3;
     }
-  } else if (q.x < 9.0 && q.y > 3.4 && q.y < 10.0) {
-    int lane = q.x < 5.4 ? 0 : 1;
-    int d = int(clamp(ceil((q.y - 6.1) / 1.7), 0.0, 2.0));
-    if (d * 2 + lane < agents) {
-      f = vec2(3.5 + 3.8 * float(lane), 6.1 + 1.7 * float(d));
-      found = true;
-      h = uint(d * 2 + lane) * 7u + 3u;
-      eyes = 3;
-      thing = int((h >> 5) & 1u);
-    }
-  } else if (q.y > 14.7 && q.y < 21.1 && tool == sky_TOOL_EDIT) {
-    float xs = 2.0 + (S - 9.0) * abs(2.0 * fract(time / 40.0) - 1.0);
-    f = vec2(xs, 17.3 + c / u);
-    found = true;
-    pose = 3;
-    eyes = 1;
-    flip = fract(time / 40.0) < 0.5 ? 0 : 1;
-    jumper = INK_GREEN;
-    h = 2u << 12 | 2u << 4 | 1u << 31;
-  } else if (q.y > 17.5 && q.y < 21.1 && q.x < 10.0 && (cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED)) {
-    f = vec2((cs == CONTEXT_CLEARED ? 0.6 : 2.6) + 0.6, 19.0 + c / u);
-    found = true;
-    pose = 3;
-    eyes = 1;
-    flip = 1;
-    jumper = INK_BLUE;
-    h = 1u << 12 | 2u << 4 | 1u << 31;
-  } else if (q.y > 18.9 && q.y < 21.1 && tool == sky_TOOL_COMMAND) {
-    int i = int(floor(q.x / 2.6));
-    if (q.x > 2.0 && q.x < S - 5.0 && rand(i * 3 + 91) < 0.75) {
-      f = vec2(2.6 * float(i) + 1.3, 20.95);
-      found = true;
-      h = uint(i) * 9u + 13u;
-      eyes = 3;
-    }
-  } else {
+  } else if (!(q.x < 9.0 && q.y < 10.0)) {
     vec3 s = sitterAt(q, n);
     vec4 w = walkerAt(q, n, S);
     bool isSitter = s.x > 0.0 && ((q.y > 5.4 && q.y < 7.7) || (q.y > 9.9 && q.y < 11.5) || (q.y > 12.5 && q.y < 14.7));
@@ -1255,6 +1207,70 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       eyes = w.w > 0.5 ? 3 : 1;
       thing = int(h & 1u);
     }
+  }
+  // Then what Claude does, each under its own constant, so that a scene
+  // without it has nothing of it to work out: travellers boarding, the
+  // kiosk's queue, the cleaner on his scrubber with everyone else kept off
+  // his aisle, the tug's driver, and travellers waiting at the carousel.
+  if (agents > 0) {
+    if (q.x < 1.6 && q.y > 7.6 && q.y < 10.4) {
+      float len = 9.8;
+      float N = float(min(agents, 4));
+      float T = fract(time * 0.085);
+      float j = mod(floor(fract((3.0 - q.x) / len - T) * N + 0.5), N);
+      f = vec2(3.0 - fract(T + j / N) * len, 10.2);
+      found = true;
+      h = uint(j) * 7u + 3u;
+      pose = 1;
+      eyes = 1;
+      flip = 1;
+      thing = 1;
+    } else if (q.x < 9.0 && q.y > 3.4 && q.y < 10.0) {
+      int lane = q.x < 5.4 ? 0 : 1;
+      int d = int(clamp(ceil((q.y - 6.1) / 1.7), 0.0, 2.0));
+      found = d * 2 + lane < agents;
+      f = vec2(3.5 + 3.8 * float(lane), 6.1 + 1.7 * float(d));
+      h = uint(d * 2 + lane) * 7u + 3u;
+      eyes = 3;
+      thing = int((h >> 5) & 1u);
+    }
+  }
+  if (tool == sky_TOOL_OTHER && isOpen) if (q.x > S - 6.2 && q.y > 5.0 && q.y < 8.6) {
+    int i = int(clamp(floor((q.x - S + 5.8) / 1.6), 0.0, 2.0));
+    f = vec2(S - 5.0 + 1.6 * float(i), 8.4);
+    found = true;
+    h = uint(i) * 5u + 41u;
+    eyes = 3;
+  }
+  if (tool == sky_TOOL_EDIT) if (q.y > 14.7 && q.y < 21.1) {
+    f = vec2(2.0 + (S - 9.0) * abs(2.0 * fract(time / 40.0) - 1.0), 17.3 + c / u);
+    found = true;
+    pose = 3;
+    eyes = 1;
+    flip = fract(time / 40.0) < 0.5 ? 0 : 1;
+    jumper = INK_GREEN;
+    h = 2u << 12 | 2u << 4 | 1u << 31;
+    thing = 0;
+  }
+  if (cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED) if (q.y > 17.5 && q.y < 21.1 && q.x < 10.0) {
+    f = vec2((cs == CONTEXT_CLEARED ? 0.6 : 2.6) + 0.6, 19.0 + c / u);
+    found = true;
+    pose = 3;
+    eyes = 1;
+    flip = 1;
+    jumper = INK_BLUE;
+    h = 1u << 12 | 2u << 4 | 1u << 31;
+    thing = 0;
+  }
+  if (tool == sky_TOOL_COMMAND) if (q.y > 18.9 && q.y < 21.1) {
+    int i = int(floor(q.x / 2.6));
+    found = q.x > 2.0 && q.x < S - 5.0 && fract(float(i) * 0.618) < 0.75;
+    f = vec2(2.6 * float(i) + 1.3, 20.95);
+    h = uint(i) * 9u + 13u;
+    pose = 0;
+    eyes = 3;
+    flip = -1;
+    thing = 0;
   }
   if (!found) return none;
   // A fixed look (the top bit set) as it is, anyone else by his hash.
