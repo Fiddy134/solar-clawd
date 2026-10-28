@@ -74,7 +74,6 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 ## Väntar på Vincents ord
 
 - **Cboes villkor:** får kurserna från Cboe användas innan ett tema med `"market": true` levereras? Researchen kallar det en gråzon.
-- **Marginalen följer temat:** `/solar ghostty` skriver om moddens egen padding-rad till temats bredd (avvikelse 8 i motorns rapport). Det är ett undantag från regeln att marginalen sätts en gång och sedan är personens. Personens egen padding lämnas orörd.
 - **Kolla i Ghostty:**
   - att palettvärden över 10/255 kommer tillbaka exakt, eftersom markeringen nu går upp till rgb(31,10,6)
   - att inget han använder ritar med färg 16
@@ -122,8 +121,13 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - Arken skickas till Vincent.
 
    Fråga honom om det ska vara en workflow eller inline.
-3. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
-4. **Senare:**
+3. **Efter workflowen `v3-teman` (Vincent sa ja 2026-10-28):**
+   - Bygg `/solar theme <namn>` på en gren från `v3-motor`: läser `themes/<namn>/` med `themeOfFiles`, sparar valet i `sky.json` (sammanslaget med `pace`), alla sessioner byter, marginalen följer temat (`includeInGhostty` med `stagePtOf`; Vincent sa ja till att moddens egen padding-rad följer temat, hans egen rörs inte).
+   - Slå ihop `v3-motor` + `floor-v3` + `terminal-v3` + kommandot, testa i worktree (tester, tsc, fyrs paritet), merga till `main`, Vincent armerar och provar live.
+   - Se till att `tools/measure/gpu.sh` kan mäta ett tema, så Vincent kan mäta fyr/floor/terminal i 24 fps på 1.4 (benchen är SwiftShader, inte Ghostty).
+   - **Sedan en steg-för-steg-guide för att skapa ett tema** (processen, inte den tekniska THEME-GUIDE), som ett levande dokument som förbättras för varje nytt tema. Claudes utgångspunkt efter v1–v3: visionen inline med Vincent (foton, skisser i rätt storlek, design med "ska läsas som"-lista); motorns luckor först; bygg i lager (grova former → former → detaljer → rörelse → natt) med render och bench per lager; Vincent tittar efter de grova formerna; det mekaniska (lint, storlek, bench, memesiffror) i skript; domaren mot en checklista "läses varje sak som det den är"; två korta rättningsrundor. Workflow/subagenter för detaljarbetet efter Vincents kontrollpunkt, inline för smakbesluten.
+4. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
+5. **Senare:**
    - runda 3 av F7 om guiden ska bevisas
    - markeringsrundan
    - nivåer efter dator
