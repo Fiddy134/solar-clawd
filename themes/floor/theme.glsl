@@ -453,8 +453,8 @@ vec3 haltLamp(vec3 sky, vec2 p, float u, float k, Hall h) {
   float pulse = urgent ? 0.82 + 0.18 * sin(iTime * 9.0) : 0.88 + 0.12 * sin(iTime * 2.5);
   float reach = (urgent ? 1.75 : asks ? 1.3 : 0.8) * u;
   float d = length(p - dome) - 1.05 * u;
-  float sides = min(length(p - plate + vec2(3.95 * u, 0.0)), length(p - plate - vec2(3.95 * u, 0.0))) - 0.5 * u;
-  float pd = box(p - plate, vec2(3.4 * u, 0.95 * u));
+  float sides = min(length(p - plate + vec2(4.35 * u, 0.0)), length(p - plate - vec2(4.35 * u, 0.0))) - 0.5 * u;
+  float pd = box(p - plate, vec2(3.75 * u, 0.95 * u));
   sky = ink(sky, tone(NAVY, k), max(abs(p.x - mid) - 0.3 * u, max(dome.y - p.y, p.y - plate.y)), 1.0);
   if (WAITING != 0) {
     sky = mix(sky, light, screen(p, pulse * exp(-max(0.0, d) / reach), pitch(u), 15.0));
@@ -470,12 +470,14 @@ vec3 haltLamp(vec3 sky, vec2 p, float u, float k, Hall h) {
   return ink(sky, keyInk(k), abs(sides) - 0.05 * u, 0.7);
 }
 
-// The wall's wide letters, one sky_glyphWide for them all: NEW YORK STOCK
-// EXCHANGE on the frieze; NYSE and a name on each cube, the left one the
-// Nasdaq-100 and the right one each quote in turn; and the ticker in the
-// skirting, every quote sliding left.
-vec3 wideWords(vec3 sky, vec2 p, float u, float k, Hall h) {
+// Every letter on the wall, one sky_glyphWide for them all: NEW YORK STOCK
+// EXCHANGE on the frieze; on each cube NYSE, a name and its price, the left
+// one the Nasdaq-100 and the right one each quote in turn, the price green
+// or red by its day; the ticker in the skirting, every quote sliding left;
+// and the halt lamp's word in the light's own colour.
+vec3 wallWords(vec3 sky, vec2 p, float u, float k, Hall h) {
   float g = h.g;
+  float gs = g + 1.0;
   Letter l = Letter(p, p, g, sky_GLYPH_SPACE, lift(mix(BRASS, CREAM, 0.35), k));
   float mid = h.inner + 0.5 * h.width;
   float tapeTop = h.base + 0.6 * u - 2.5 * g;
@@ -495,46 +497,26 @@ vec3 wideWords(vec3 sky, vec2 p, float u, float k, Hall h) {
     l.at = vec2(6.0 * g * float(i), tapeTop);
     l.code = col > 19 ? sky_GLYPH_SPACE : quoteCode((i / 22) % 10, col);
     l.color = lift(col == 13 ? (l.code == sky_GLYPH_DOWN ? mix(RED, CREAM, 0.2) : mix(INK_GREEN, CREAM, 0.25)) : INK_YELLOW, k);
-  } else if (abs(p.x - xc) < 2.4 * u && p.y >= cubeTop && p.y < cubeTop + 12.0 * g) {
-    int line = p.y < cubeTop + 6.0 * g ? 0 : 1;
+  } else if (abs(p.x - xc) < 2.4 * u && p.y >= cubeTop && p.y < cubeTop + 17.0 * g) {
+    int line = int(floor((p.y - cubeTop) / (6.0 * g)));
     int r = p.x < mid ? 2 : int(mod(floor(iTime / 12.0), 10.0));
-    int len = line == 0 ? 4 : r <= 2 ? 3 : r == 6 ? 5 : 4;
+    int len = line == 0 ? 4 : line == 2 ? 6 : r <= 2 ? 3 : r == 6 ? 5 : 4;
     float x0 = xc - 3.0 * g * float(len);
     int i = int(floor((p.x - x0) / (6.0 * g)));
     l.at = vec2(x0 + 6.0 * g * float(i), cubeTop + 6.0 * g * float(line));
-    l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : line == 0 ? codeIn(WORD_NYSE, i) : int((nameOf(r) >> uint(6 * i)) & 63u);
-    l.color = line == 0 ? lift(CREAM, k) : lift(INK_YELLOW, k);
-  }
-  return mix(sky, l.color, sky_glyphWide(l.q, l.at, l.cell, l.code));
-}
-
-// The wall's narrow letters, one sky_glyph for them all: each cube's price
-// under its name, its arrow green or red, and the halt lamp's word in the
-// light's own colour.
-vec3 narrowWords(vec3 sky, vec2 p, float u, float k, Hall h) {
-  float g = h.g;
-  float gs = g + 1.0;
-  float mid = h.inner + 0.5 * h.width;
-  float xc = h.inner + (p.x < mid ? 1.0 : 5.0) / 6.0 * h.width;
-  float priceTop = 13.3 * u + 12.0 * g;
-  Letter l = Letter(p, p, g, sky_GLYPH_SPACE, lift(CREAM, k));
-  if (abs(p.x - xc) < 2.4 * u && p.y >= priceTop && p.y < priceTop + 5.0 * g) {
-    int r = p.x < mid ? 2 : int(mod(floor(iTime / 12.0), 10.0));
-    float x0 = xc - 14.0 * g;
-    int i = int(floor((p.x - x0) / (4.0 * g)));
-    l.at = vec2(x0 + 4.0 * g * float(i), priceTop);
-    l.code = priceCode(r, i);
-    if (i == 6) l.color = lift(l.code == sky_GLYPH_DOWN ? mix(RED, CREAM, 0.2) : mix(INK_GREEN, CREAM, 0.25), k);
-  } else if (WAITING != 0 && abs(p.x - mid) < 13.0 * gs && abs(p.y - 22.2 * u) < 2.5 * gs) {
+    l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : line == 0 ? codeIn(WORD_NYSE, i) : line == 1 ? int((nameOf(r) >> uint(6 * i)) & 63u) : priceCode(r, i);
+    float chg = sky_QUOTE_CHANGE[symOf(r)];
+    l.color = lift(line == 0 ? CREAM : line == 1 ? INK_YELLOW : mix(chg < 0.0 ? RED : INK_GREEN, CREAM, 0.3), k);
+  } else if (WAITING != 0 && abs(p.y - 22.2 * u) < 2.5 * gs) {
     int len = WAITING == 2 ? 6 : 4;
-    float x0 = mid - 2.0 * gs * float(len);
-    int i = int(floor((p.x - x0) / (4.0 * gs)));
+    float x0 = mid - 3.0 * gs * float(len);
+    int i = int(floor((p.x - x0) / (6.0 * gs)));
     l.cell = gs;
-    l.at = vec2(x0 + 4.0 * gs * float(i), 22.2 * u - 2.5 * gs);
+    l.at = vec2(x0 + 6.0 * gs * float(i), 22.2 * u - 2.5 * gs);
     l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : codeIn(WAITING == 2 ? WORD_FILLED : WORD_HALT, i);
     l.color = WAITING == 2 ? BULB : INK_ORANGE;
   }
-  return mix(sky, l.color, sky_glyph(l.q, l.at, l.cell, l.code));
+  return mix(sky, l.color, sky_glyphWide(l.q, l.at, l.cell, l.code));
 }
 
 // The floor's planks seen from above, a board a cell: each board's hash picks
@@ -576,8 +558,7 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   sky = bigFlag(sky, p, u, k, h, nt, lights);
   sky = cubes(sky, p, u, k, h, sky_tool() == sky_TOOL_WEB);
   sky = haltLamp(sky, p, u, k, h);
-  sky = wideWords(sky, p, u, k, h);
-  return narrowWords(sky, p, u, k, h);
+  return wallWords(sky, p, u, k, h);
 }
 
 // --- The people -------------------------------------------------------------------
@@ -673,11 +654,17 @@ float postGap(Hall h, int row, float x) {
   return abs(f - c) * h.width / 6.0;
 }
 
+// The lane up and down the floor through row `row`: through the gaps
+// between the posts, the back half's at two thirds of the hall's width and
+// the front half's at a third; none through the middle posts' row.
+float laneOf(Hall h, int row) { return h.inner + (row < 7 ? 4.0 : 2.0) / 6.0 * h.width; }
+
 // How likely a lot of row `row` with its middle at x holds a trader: none
-// where a post stands or in the front rows, most at the posts' fronts,
-// fewer walking the aisles, as many as the hour fills.
+// where a post or a lane runs or in the front rows, most at the posts'
+// fronts, fewer walking the aisles, as many as the hour fills.
 float traderChance(Hall h, Market m, int row, float x) {
   if (row > 13 || row < 0) return 0.0;
+  if (row != 7 && abs(x - laneOf(h, row)) < 1.9 * h.u) return 0.0;
   bool isPostRow = row == 3 || row == 7 || row == 11;
   if (isPostRow && postGap(h, row, x) < 3.6 * h.u) return 0.0;
   if (row % 4 == 1) return 0.3 * m.fill;
@@ -685,252 +672,22 @@ float traderChance(Hall h, Market m, int row, float x) {
   return 0.35 * m.fill;
 }
 
-// The trader standing in row `row` in the lot p is over, or nobody. Rows run
-// across the floor, front to back, each in lots an eighth of the hall wide.
-// Most mill about their own lot, across and up and down; every fourth row is
-// an aisle where they walk the floor's length, to the right in one and to
-// the left in the next (the cleaners mopping along it when the floor is
-// empty). The agents in their yellow coats stand along the front row from
-// the west wall; the coin desk's two traders never leave it; and after the
-// close a late trader stays on his phone at post 7. `crowd` is the pose the
-// whole floor takes, or -1 for each his own.
-Who traderAt(vec2 p, Hall h, Market m, int agents, int crowd, int row) {
-  float u = h.u;
-  Who w = Who(vec2(-1e4), h.c, POSE_STAND, GEAR_NONE, CORAL, 0, 0.0, -1, false);
-  float lot = h.width / 8.0;
-  float foot = h.floorY + float(row + 1) * h.row;
-  float desk = h.inner + 5.0 / 6.0 * h.width;
-  if (row == 10 && abs(p.x - desk) < 2.6 * u) {
-    bool isRight = p.x > desk;
-    w.feet = vec2(desk + (isRight ? 1.4 : -1.4) * u, foot - 0.5 * u);
-    w.gear = GEAR_HOOD;
-    w.coat = isRight ? NAVY : INK_VIOLET;
-    w.look = isRight ? -1 : 1;
-    w.pose = crowd >= 0 ? crowd : POSE_STAND;
-    w.dim = 0.1;
-    return w;
-  }
-  float postSeven = h.inner + h.width / 3.0;
-  if (m.late && row == 8 && abs(p.x - postSeven) < 1.4 * u) {
-    w.feet = vec2(postSeven - 0.4 * u, foot - 0.6 * u);
-    w.pose = POSE_PHONE;
-    w.coat = INK_BLUE;
-    w.look = 1;
-    w.dim = 0.15;
-    return w;
-  }
-  // Two lanes up and down the floor, through the gaps between the posts:
-  // away from us up the back half, toward us down the front half, a walker
-  // every two rows where the lane's hash has one.
-  float lane = h.inner + (row < 7 ? 4.0 : 2.0) / 6.0 * h.width;
-  if (row != 7 && abs(p.x - lane) < 1.3 * u && m.fill > 0.0) {
-    float down = row < 7 ? -1.0 : 1.0;
-    float lh = 2.0 * h.row;
-    float shift = down * mod(iTime * 0.8 * u, 512.0 * lh);
-    float j = floor((foot - h.floorY - shift) / lh);
-    float fy = h.floorY + shift + j * lh;
-    uint hl = hashi(int(mod(j, 512.0)) * 19 + (row < 7 ? 3 : 5));
-    if (fy > foot - h.row && float(hl & 1023u) / 1023.0 < 0.75 * m.fill) {
-      w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.1 * u, fy - 0.1 * u);
-      w.stride = int(floor(iTime * 3.0 + float(hl & 1u))) % 2;
-      w.look = down > 0.0 ? 0 : 2;
-      w.pose = crowd >= 0 ? crowd : POSE_STAND;
-      int pick = int((hl >> 12) % 4u);
-      w.coat = pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? RED : NAVY;
-      w.gear = (hl >> 14) % 3u == 0u ? GEAR_HEADSET : GEAR_NONE;
-      w.dim = m.staffed ? 0.0 : 0.25;
-      return w;
-    }
-  }
-  bool isAisle = row % 4 == 1;
-  bool isMopping = isAisle && m.cleaning && (row == 5 || row == 9);
-  float dir = (row / 4) % 2 == 0 ? 1.0 : -1.0;
-  float shift = isAisle ? dir * mod(iTime * (isMopping ? 0.3 : 1.1) * u, 512.0 * lot) : 0.0;
-  float off = row % 2 == 1 ? 0.5 * lot : 0.0;
-  int col = int(floor((p.x - h.inner - off - shift) / lot));
-  float cx = h.inner + off + shift + (float(col) + 0.5) * lot;
-  int colH = int(mod(float(col), 512.0));
-  uint hs = hashi(colH * 31 + row * 977 + 11);
-  bool isAgent = row == 12 && col >= 0 && col < agents;
-  float chance = isMopping ? 0.16 : traderChance(h, m, row, cx);
-  if (!isAgent && float(hs & 1023u) / 1023.0 >= chance) return w;
-  if (cx < h.inner + 0.9 * u) return w;
-  w.feet = vec2(cx, foot - 0.35 * u);
-  if (!isAisle && crowd != POSE_UP) {
-    float phase = float((hs >> 8) & 255u);
-    bool isAtPost = row % 4 == 0 && postGap(h, row - 1, cx) < 3.2 * u;
-    w.feet += vec2(0.35 * u * sin(0.4 * iTime + phase), -(isAtPost ? 0.2 : 0.9) * u * (0.5 + 0.5 * sin(0.27 * iTime + 2.0 * phase)));
-  }
-  if (isAisle) w.stride = int(floor(iTime * 3.0 + float(hs & 3u))) % 2;
-  if (isMopping) {
-    w.pose = POSE_MOP;
-    w.gear = GEAR_CAP;
-    w.coat = mix(INK_GREEN, INK_BLUE, 0.5);
-    w.look = dir > 0.0 ? 1 : -1;
-    w.dim = 0.2;
-    return w;
-  }
-  uint mv = hashi(colH * 13 + row * 101 + int(mod(floor(iTime / 4.0 + float(hs & 7u) * 0.37), 1000.0)) * 7);
-  float r = float(mv & 255u) / 255.0;
-  w.pose = crowd >= 0 ? crowd : r < (m.fill > 0.8 ? 0.3 : 0.12) ? POSE_POINT : r < 0.42 ? POSE_PHONE : POSE_STAND;
-  int pick = int((hs >> 20) % 7u);
-  w.coat = isAgent ? INK_YELLOW : pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? INK_VIOLET : pick == 3 ? RED : pick == 4 ? INK_PINK : pick == 5 ? mix(CREAM, INK_BLUE, 0.12) : NAVY;
-  int kit = int((hs >> 24) & 7u);
-  w.gear = isAgent || kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : kit == 4 ? GEAR_CAP : GEAR_NONE;
-  w.look = isAisle ? (dir > 0.0 ? 1 : -1) : int((mv >> 9) % 3u) - 1;
-  w.dim = m.staffed ? 0.0 : 0.25;
-  return w;
-}
-
-// Post `which`'s stock: the seven by number, the coin desk bitcoin.
-int postQuote(int which) { return which == 7 ? 0 : 3 + which; }
-
-// A trading post, or at the front right the coin desk, as a box seen from
-// above and in front, its foot the middle of its front edge on the row's
-// front line. On its top, seen from above, a counter round a dark well, its
-// number on a brass plate, a coffee steaming on it; monitors stand on its
-// back edge. Its front is a band of screens with its stock's name and price,
-// tinted green or red by its day, dim once the floor has closed (but for the
-// late trader's post and the coin desk); marching bars while Claude is busy
-// with something else. The desk is lower, with two laptops, and shows both
-// coins. The name is printed in the wide letters, the rest in the narrow.
-vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, int row, float nt) {
-  if (row != 3 && row != 7 && row != 11) return sky;
-  float f = (p.x - h.inner) / h.width * 6.0;
-  float cc = row == 7 ? clamp(2.0 * floor((f + 1.0) / 2.0), 2.0, 4.0) : clamp(2.0 * floor(f / 2.0) + 1.0, 1.0, 5.0);
-  float x = h.inner + cc / 6.0 * h.width;
-  int which = row == 3 ? int(cc - 1.0) / 2 : row == 7 ? 2 + int(cc) / 2 : 5 + int(cc - 1.0) / 2;
-  bool isDesk = which == 7;
-  float fh = (isDesk ? 1.7 : 1.8) * u;
-  float td = (isDesk ? 0.9 : 1.3) * u;
-  float hw = 2.75 * u;
-  vec2 q = vec2(p.x - x, p.y - h.floorY - float(row + 1) * h.row);
-  if (abs(q.x) > hw + 0.3 * u || q.y > 0.3 * u || q.y < -fh - td - 1.1 * u) return sky;
-  int r = postQuote(which);
-  float chg = sky_QUOTE_CHANGE[symOf(r)];
-  bool isOn = isDesk || m.staffed || (which == 3 && m.late);
-  bool isBusy = tool == sky_TOOL_OTHER && !isDesk;
-  uint hs = hashi(which * 41 + 7);
-  float top = -fh - td;
-  vec2 cup = vec2((float(hs & 255u) / 255.0 - 0.5) * 2.4 * u, -fh - 0.25 * u);
-  if (q.y > 0.0) return abs(q.x) < hw ? mix(sky, keyInk(k), 0.35) : sky;
-  float g = h.g;
-  Letter l = Letter(p, p, g, sky_GLYPH_SPACE, lift(CREAM, k));
-  bool isName = false;
-  vec3 body = indoor(isDesk ? mix(INK_VIOLET, INK_INDIGO, 0.45) : mix(NAVY, INK_INDIGO, 0.25), k, nt, 1.0);
-  if (q.y < top) {
-    // The monitors standing on the back edge, or the desk's two laptops.
-    float n = isDesk ? 1.4 : 1.7;
-    float mx = q.x - clamp(floor(q.x / (n * u) + 0.5), -1.0, 1.0) * n * u;
-    if (isDesk && abs(q.x) < 0.5 * u) return sky;
-    vec2 mq = vec2(mx, q.y - top + (isDesk ? 0.25 : 0.32) * u);
-    float frame = box(mq, (isDesk ? vec2(0.45, 0.2) : vec2(0.55, 0.3)) * u);
-    if (frame > 0.0) return sky;
-    if (frame > -0.07 * u) return keyInk(k);
-    vec3 glow = isDesk ? INK_GREEN : mix(INK_BLUE, INK_GREEN, step(0.5, float((hs >> 8) & 1u)));
-    vec3 screenC = isOn ? lift(mix(glow, CREAM, 0.25), k) : tone(INK_INDIGO, k) * 0.6;
-    float wiggle = mq.y + 0.12 * u * sin(mq.x / (0.18 * u) + float(hs & 15u));
-    if (isOn && abs(wiggle) < 0.05 * u) screenC = lift(chg < 0.0 ? RED : INK_GREEN, k);
-    return mix(sky, screenC, 0.97);
-  }
-  vec3 col;
-  if (q.y < -fh) {
-    // The top seen from above: a counter round a well, the number plate.
-    vec2 tq = vec2(q.x, q.y + fh + 0.5 * td);
-    float well = box(tq, vec2(hw - 0.5 * u, 0.5 * td - 0.38 * u)) - 0.08 * u;
-    vec3 counter = indoor(isDesk ? mix(INK_VIOLET, CREAM, 0.35) : mix(WOOD, CREAM, 0.3), k, nt, 1.0);
-    col = well < 0.0 ? mix(body, keyInk(k), 0.4) : counter;
-    if (abs(well) < 0.05 * u) col = mix(col, keyInk(k), 0.6);
-    float c2 = length(q - cup);
-    if (c2 < 0.2 * u) col = c2 < 0.12 * u ? tone(mix(WOOD, INK_INDIGO, 0.4), k) : lift(CREAM, k);
-    vec2 plate = vec2(-hw + 0.85 * u, -fh - 0.45 * u);
-    if (!isDesk && box(q - plate, vec2(0.65, 0.44) * u) < 0.0) {
-      col = box(q - plate, vec2(0.65, 0.44) * u) > -0.06 * u ? keyInk(k) : tone(BRASS, k);
-      int number = which < 3 ? (which == 2 ? 5 : 2 + which) : which < 5 ? 4 + which : 5 + which;
-      float x0 = x + plate.x - (number < 10 ? 2.0 : 4.0) * g;
-      int i = int(floor((p.x - x0) / (4.0 * g)));
-      l.at = vec2(x0 + 4.0 * g * float(i), h.floorY + float(row + 1) * h.row + plate.y - 2.5 * g);
-      l.code = number < 10 ? (i == 0 ? number : sky_GLYPH_SPACE) : (i == 0 ? 1 : i == 1 ? number - 10 : sky_GLYPH_SPACE);
-      l.color = keyInk(k);
-    }
-    if (abs(q.x) > hw - 0.06 * u || q.y < top + 0.06 * u) col = keyInk(k);
-  } else {
-    // The front: a band of screens, a brass kick at its foot.
-    col = body;
-    float sx = hw - 0.2 * u;
-    float sy0 = -fh + 0.1 * u;
-    if (abs(q.x) < sx && q.y > sy0 && q.y < -0.18 * u) {
-      vec3 panel = tone(INK_INDIGO, k) * 0.5;
-      bool isKnown = sky_QUOTE_PRICE[symOf(r)] > 0.0;
-      float heat = isOn && isKnown ? clamp(abs(chg) / 3.0, 0.25, 0.7) : 0.0;
-      col = mix(panel, tone(chg < 0.0 ? RED : INK_GREEN, k) * 0.7, heat * (isDesk ? 0.5 : 1.0));
-      if (isBusy && isOn) {
-        bool isBar = fract((q.x - iTime * 1.5 * u) / (0.9 * u)) < 0.45 && abs(q.y + 0.5 * fh) < 0.25 * fh;
-        col = isBar ? lift(mix(INK_BLUE, CREAM, 0.5), k) : tone(mix(INK_BLUE, INK_INDIGO, 0.5), k);
-      } else {
-        float lineTop = h.floorY + float(row + 1) * h.row + sy0 + 0.5 * (-0.18 * u - sy0 - 11.0 * g);
-        int line = p.y < lineTop + 5.5 * g ? 0 : 1;
-        l.at.y = lineTop + 6.0 * g * float(line);
-        l.color = isOn ? lift(mix(INK_YELLOW, CREAM, 0.4), k) : mix(panel, CREAM, 0.25);
-        if (isDesk) {
-          float x0 = x - 20.0 * g;
-          int i = int(floor((p.x - x0) / (4.0 * g)));
-          l.at.x = x0 + 4.0 * g * float(i);
-          l.code = i < 0 ? sky_GLYPH_SPACE : i < 3 ? int((nameOf(line) >> uint(6 * i)) & 63u) : priceCode(line, i - 3);
-          if (i == 9) l.color = lift(sky_QUOTE_CHANGE[symOf(line)] < 0.0 ? mix(RED, CREAM, 0.2) : mix(INK_GREEN, CREAM, 0.25), k);
-        } else if (line == 0) {
-          int len = which == 3 ? 5 : 4;
-          float x0 = x - 3.0 * g * float(len);
-          int i = int(floor((p.x - x0) / (6.0 * g)));
-          l.at.x = x0 + 6.0 * g * float(i);
-          l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : int((nameOf(r) >> uint(6 * i)) & 63u);
-          isName = true;
-        } else {
-          float x0 = x - 14.0 * g;
-          int i = int(floor((p.x - x0) / (4.0 * g)));
-          l.at.x = x0 + 4.0 * g * float(i);
-          l.code = priceCode(r, i);
-          if (i == 6) l.color = lift(chg < 0.0 ? mix(RED, CREAM, 0.2) : mix(INK_GREEN, CREAM, 0.25), k);
-        }
-        if (!isOn && isKnown) l.color = mix(panel, CREAM, 0.25);
-      }
-    } else if (q.y > -0.18 * u) {
-      col = tone(BRASS, k) * 0.8;
-    }
-    if (abs(q.x) > hw - 0.06 * u || q.y < -fh + 0.06 * u) col = keyInk(k);
-  }
-  float wide = isName ? sky_glyphWide(l.q, l.at, l.cell, l.code) : 0.0;
-  col = mix(col, l.color, max(wide, isName ? 0.0 : sky_glyph(l.q, l.at, l.cell, l.code)));
-  sky = abs(q.x) < hw ? col : sky;
-  // Steam off the coffee, while the floor is in.
-  if (isOn && !isDesk) sky = mix(sky, lift(CREAM, k), 0.7 * steam(p, vec2(x, h.floorY + float(row + 1) * h.row) + cup - vec2(0.0, 0.15 * u), 0.9 * u, 0.22 * u, 0.8, which));
-  return sky;
-}
-
-// The traders and the posts, back to front. A post reaches up from its foot
-// less than two rows and a trader less than one, so only p's own row and the
-// one in front of it can cover p: one turn a row, one trader and one post a
-// turn for the lot p is over in each, and the nearer row, lower on the
-// screen, is drawn over the farther.
-vec3 floorPeople(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, int agents, int crowd, float nt) {
-  if (p.x < h.inner || p.y < h.floorY - 2.0 * u || p.y > h.front) return sky;
-  int row0 = int(floor((p.y - h.floorY) / h.row));
-  int beat = int(floor(iTime * 2.0)) % 2;
-  for (int i = 0; i < 2; i++) {
-    int row = row0 + i;
-    if (row < 0 || row > 13) continue;
-    sky = figure(sky, p, traderAt(p, h, m, agents, crowd, row), k, beat);
-    sky = post(sky, p, u, k, h, m, tool, row, nt);
-  }
-  return sky;
-}
-
-// The others, chosen by where p is so that they cost one figure: the
-// resident behind his pulpit; the cleaner at the front left while the
-// conversation compacts; whoever is in the door, going in or coming out, or
-// now and then a messenger in his cap; and the Clawds walking down the
-// sidewalk toward us.
-Who someoneElse(vec2 p, Hall h, int state, int resPose) {
+// Who stands where p is, or nobody, chosen by where p is so that the whole
+// hall costs one figure. The resident behind his pulpit; the cleaner at the
+// front left while the conversation compacts; whoever is in the door, going
+// in or coming out, or now and then a messenger in his cap; the Clawds
+// walking down the sidewalk toward us. On the floor, the rows run across it
+// front to back, each in lots an eighth of the hall wide, and everyone stands
+// inside his row, so p asks only its own: most mill about their lot; every
+// fourth row is an aisle where they walk the floor's length, to the right in
+// one and to the left in the next (the cleaners mopping along it when the
+// floor is empty); and two lanes run up and down through the gaps between
+// the posts, away from us in the back half and toward us in the front. The
+// agents in their yellow coats stand along the front row from the west wall,
+// the coin desk's two traders never leave it, and after the close a late
+// trader stays on his phone at post 7. `crowd` is the pose the whole floor
+// takes, or -1 for each his own.
+Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPose) {
   float u = h.u;
   Who w = Who(vec2(-1e4), h.c, POSE_STAND, GEAR_NONE, CORAL, 0, 0.0, -1, false);
   vec2 res = vec2(h.inner + 0.68 * h.width, iResolution.y - 2.3 * u);
@@ -952,8 +709,7 @@ Who someoneElse(vec2 p, Hall h, int state, int resPose) {
   }
   float doorY = h.doorBot - 0.6 * u;
   if (abs(p.x - h.left) < 2.2 * u && p.y > doorY - 3.0 * u && p.y < doorY + u) {
-    float slot = floor(iTime / 30.0);
-    float pick = rand(int(mod(slot, 1000.0)) * 7 + 3);
+    float pick = rand(int(mod(floor(iTime / 30.0), 1000.0)) * 7 + 3);
     bool isMessenger = pick < 0.35;
     w.feet = vec2(h.left + 0.3 * u, doorY);
     w.stride = int(floor(iTime * 3.0)) % 2;
@@ -963,21 +719,216 @@ Who someoneElse(vec2 p, Hall h, int state, int resPose) {
     w.pose = isMessenger ? POSE_POINT : POSE_STAND;
     return w;
   }
-  float lane = h.left - 3.4 * u;
-  if (abs(p.x - lane) > 1.6 * u || p.y < h.floorY) return w;
-  float lh = 3.2 * u;
-  float shift = mod(iTime * 0.7 * u, 512.0 * lh);
-  float j = floor((p.y - h.floorY - shift) / lh);
-  uint hs = hashi(int(mod(j, 512.0)) * 17 + 5);
-  float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
-  if (float(hs & 1023u) / 1023.0 > 0.5 || fy < h.floorY + 1.8 * u) return w;
-  w.feet = vec2(lane + (float((hs >> 10) & 3u) - 1.5) * 0.15 * u, fy);
-  w.stride = int(floor(iTime * 3.0 + float(hs & 1u))) % 2;
-  int pick = int((hs >> 12) % 5u);
-  w.coat = pick == 0 ? INK_BLUE : pick == 1 ? NAVY : pick == 2 ? INK_GREEN : pick == 3 ? RED : mix(CREAM, INK_ORANGE, 0.3);
-  w.gear = (hs >> 16) % 3u == 0u ? GEAR_CAP : GEAR_NONE;
-  w.outside = true;
+  if (p.x < h.left) {
+    // The sidewalk: walkers in lots down it, the lots sliding down with
+    // the clock, each lot's hash saying whether one walks in it.
+    float lane = h.left - 3.4 * u;
+    if (abs(p.x - lane) > 1.6 * u || p.y < h.floorY) return w;
+    float lh = 3.2 * u;
+    float shift = mod(iTime * 0.7 * u, 512.0 * lh);
+    float j = floor((p.y - h.floorY - shift) / lh);
+    uint hs = hashi(int(mod(j, 512.0)) * 17 + 5);
+    float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
+    if (float(hs & 1023u) / 1023.0 > 0.5 || fy < h.floorY + 1.8 * u) return w;
+    w.feet = vec2(lane + (float((hs >> 10) & 3u) - 1.5) * 0.15 * u, fy);
+    w.stride = int(floor(iTime * 3.0 + float(hs & 1u))) % 2;
+    int pick = int((hs >> 12) % 5u);
+    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? NAVY : pick == 2 ? INK_GREEN : pick == 3 ? RED : mix(CREAM, INK_ORANGE, 0.3);
+    w.gear = (hs >> 16) % 3u == 0u ? GEAR_CAP : GEAR_NONE;
+    w.outside = true;
+    return w;
+  }
+  if (p.x < h.inner || p.y < h.floorY - 0.2 * u || p.y > h.front) return w;
+  int row = int(floor((p.y - h.floorY) / h.row));
+  float foot = h.floorY + float(row + 1) * h.row - 0.1 * u;
+  w.dim = m.staffed ? 0.0 : 0.25;
+  float lane = laneOf(h, row);
+  if (abs(p.x - lane) < 1.3 * u && row != 7) {
+    // A lane: walkers a lot of two rows apart, sliding up it in the back
+    // half and down it in the front, each lot's hash saying whether one
+    // walks there; they step out from behind the middle posts.
+    float down = row < 7 ? -1.0 : 1.0;
+    float lh = 2.0 * h.row;
+    float shift = down * mod(iTime * 0.8 * u, 512.0 * lh);
+    float j = floor((p.y - h.floorY - shift) / lh);
+    float fy = h.floorY + shift + (j + 1.0) * lh - 0.2 * u;
+    uint hl = hashi(int(mod(j, 512.0)) * 19 + (row < 7 ? 3 : 5));
+    bool isOn = row < 7 ? fy > h.floorY + 1.2 * u && fy < h.floorY + 15.5 * u : fy > h.floorY + 18.0 * u && fy < h.front - 0.3 * u;
+    if (!isOn || float(hl & 1023u) / 1023.0 >= 0.75 * m.fill) return w;
+    w.feet = vec2(lane + (float((hl >> 10) & 3u) - 1.5) * 0.1 * u, fy);
+    w.stride = int(floor(iTime * 3.0 + float(hl & 1u))) % 2;
+    w.look = down > 0.0 ? 0 : 2;
+    w.pose = crowd >= 0 ? crowd : POSE_STAND;
+    int pick = int((hl >> 12) % 4u);
+    w.coat = pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? RED : NAVY;
+    w.gear = (hl >> 14) % 3u == 0u ? GEAR_HEADSET : GEAR_NONE;
+    return w;
+  }
+  float desk = h.inner + 5.0 / 6.0 * h.width;
+  if (row == 10 && abs(p.x - desk) < 2.6 * u) {
+    bool isRight = p.x > desk;
+    w.feet = vec2(desk + (isRight ? 1.4 : -1.4) * u, foot - 0.3 * u);
+    w.gear = GEAR_HOOD;
+    w.coat = isRight ? NAVY : INK_VIOLET;
+    w.look = isRight ? -1 : 1;
+    w.pose = crowd >= 0 ? crowd : POSE_STAND;
+    w.dim = 0.1;
+    return w;
+  }
+  float postSeven = h.inner + h.width / 3.0;
+  if (m.late && row == 8 && abs(p.x - postSeven) < 1.4 * u) {
+    w.feet = vec2(postSeven - 0.4 * u, foot);
+    w.pose = POSE_PHONE;
+    w.coat = INK_BLUE;
+    w.look = 1;
+    w.dim = 0.15;
+    return w;
+  }
+  float lot = h.width / 8.0;
+  bool isAisle = row % 4 == 1;
+  bool isMopping = isAisle && m.cleaning && (row == 5 || row == 9);
+  float dir = (row / 4) % 2 == 0 ? 1.0 : -1.0;
+  float shift = isAisle ? dir * mod(iTime * (isMopping ? 0.3 : 1.1) * u, 512.0 * lot) : 0.0;
+  float off = row % 2 == 1 ? 0.5 * lot : 0.0;
+  int col = int(floor((p.x - h.inner - off - shift) / lot));
+  float cx = h.inner + off + shift + (float(col) + 0.5) * lot;
+  int colH = int(mod(float(col), 512.0));
+  uint hs = hashi(colH * 31 + row * 977 + 11);
+  bool isAgent = row == 12 && col >= 0 && col < agents;
+  float chance = isMopping ? 0.16 : traderChance(h, m, row, cx);
+  if ((!isAgent && float(hs & 1023u) / 1023.0 >= chance) || cx < h.inner + 0.9 * u) return w;
+  w.feet = vec2(cx, foot);
+  if (!isAisle && crowd != POSE_UP) {
+    float phase = float((hs >> 8) & 255u);
+    w.feet += vec2(0.35 * u * sin(0.4 * iTime + phase), -0.3 * u * (0.5 + 0.5 * sin(0.27 * iTime + 2.0 * phase)));
+  }
+  if (isAisle) w.stride = int(floor(iTime * 3.0 + float(hs & 3u))) % 2;
+  if (isMopping) {
+    w.pose = POSE_MOP;
+    w.gear = GEAR_CAP;
+    w.coat = mix(INK_GREEN, INK_BLUE, 0.5);
+    w.look = dir > 0.0 ? 1 : -1;
+    w.dim = 0.2;
+    return w;
+  }
+  uint mv = hashi(colH * 13 + row * 101 + int(mod(floor(iTime / 4.0 + float(hs & 7u) * 0.37), 1000.0)) * 7);
+  float r = float(mv & 255u) / 255.0;
+  w.pose = crowd >= 0 ? crowd : r < (m.fill > 0.8 ? 0.3 : 0.12) ? POSE_POINT : r < 0.42 ? POSE_PHONE : POSE_STAND;
+  int pick = int((hs >> 20) % 7u);
+  w.coat = isAgent ? INK_YELLOW : pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? INK_VIOLET : pick == 3 ? RED : pick == 4 ? INK_PINK : pick == 5 ? mix(CREAM, INK_BLUE, 0.12) : NAVY;
+  int kit = int((hs >> 24) & 7u);
+  w.gear = isAgent || kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : kit == 4 ? GEAR_CAP : GEAR_NONE;
+  w.look = isAisle ? (dir > 0.0 ? 1 : -1) : int((mv >> 9) % 3u) - 1;
   return w;
+}
+
+// Post `which`'s stock: the seven by number, the coin desk bitcoin and ether
+// by turns.
+int postQuote(int which) { return which == 7 ? int(mod(floor(iTime / 10.0), 2.0)) : 3 + which; }
+
+// The trading post p may be over, or at the front right the coin desk, as a
+// box seen from above and in front, its foot the middle of its front edge on
+// its row's front line. Only one can be: the post rows are four apart and a
+// post reaches up less than two. Drawn after the people, so that it covers
+// whoever stands behind it, and nobody stands in front of it within its own
+// height. On its top, seen from above, a counter round a dark well, its
+// number on a brass plate, a coffee steaming on it; monitors stand on its
+// back edge. Its front is a band of screens with its stock's name and price,
+// tinted green or red by its day, dim once the floor has closed (but for the
+// late trader's post and the coin desk); marching bars while Claude is busy
+// with something else. The desk is lower, with two laptops. One
+// sky_glyphWide for its letters.
+vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, float nt) {
+  if (p.x < h.inner || p.y < h.floorY + 4.2 * u || p.y > h.floorY + 24.4 * u) return sky;
+  int row = 3 + 4 * int(clamp(floor((p.y - h.floorY - 4.3 * u) / (4.0 * h.row)), 0.0, 2.0));
+  float f = (p.x - h.inner) / h.width * 6.0;
+  float cc = row == 7 ? clamp(2.0 * floor((f + 1.0) / 2.0), 2.0, 4.0) : clamp(2.0 * floor(f / 2.0) + 1.0, 1.0, 5.0);
+  float x = h.inner + cc / 6.0 * h.width;
+  int which = row == 3 ? int(cc - 1.0) / 2 : row == 7 ? 2 + int(cc) / 2 : 5 + int(cc - 1.0) / 2;
+  bool isDesk = which == 7;
+  float fh = 1.8 * u;
+  float td = (isDesk ? 0.8 : 1.3) * u;
+  float hw = 2.75 * u;
+  float foot = h.floorY + float(row + 1) * h.row;
+  vec2 q = vec2(p.x - x, p.y - foot);
+  if (abs(q.x) > hw + 0.3 * u || q.y > 0.3 * u || q.y < -fh - td - 0.7 * u) return sky;
+  int r = postQuote(which);
+  float chg = sky_QUOTE_CHANGE[symOf(r)];
+  bool isOn = isDesk || m.staffed || (which == 3 && m.late);
+  uint hs = hashi(which * 41 + 7);
+  float top = -fh - td;
+  vec2 cup = vec2((float(hs & 255u) / 255.0 - 0.5) * 2.4 * u, -fh - 0.25 * u);
+  if (q.y > 0.0) return abs(q.x) < hw ? mix(sky, keyInk(k), 0.35) : sky;
+  float g = h.g;
+  Letter l = Letter(p, p, g, sky_GLYPH_SPACE, lift(CREAM, k));
+  vec3 body = indoor(isDesk ? mix(INK_VIOLET, INK_INDIGO, 0.45) : mix(NAVY, INK_INDIGO, 0.25), k, nt, 1.0);
+  if (q.y < top) {
+    // The monitors standing on the back edge, or the desk's two laptops.
+    float n = isDesk ? 1.4 : 1.7;
+    float mx = q.x - clamp(floor(q.x / (n * u) + 0.5), -1.0, 1.0) * n * u;
+    vec2 mq = vec2(mx, q.y - top + (isDesk ? 0.25 : 0.32) * u);
+    float frame = box(mq, (isDesk ? vec2(0.45, 0.2) : vec2(0.55, 0.3)) * u);
+    if (frame > 0.0 || (isDesk && abs(q.x) < 0.5 * u)) return sky;
+    if (frame > -0.07 * u) return keyInk(k);
+    vec3 glow = isDesk ? INK_GREEN : mix(INK_BLUE, INK_GREEN, step(0.5, float((hs >> 8) & 1u)));
+    vec3 screenC = isOn ? lift(mix(glow, CREAM, 0.25), k) : tone(INK_INDIGO, k) * 0.6;
+    if (isOn && abs(mq.y + 0.12 * u * sin(mq.x / (0.18 * u) + float(hs & 15u))) < 0.05 * u) screenC = lift(chg < 0.0 ? RED : INK_GREEN, k);
+    return mix(sky, screenC, 0.97);
+  }
+  vec3 col;
+  if (q.y < -fh) {
+    // The top seen from above: a counter round a well, the number plate.
+    vec2 tq = vec2(q.x, q.y + fh + 0.5 * td);
+    float well = box(tq, vec2(hw - 0.5 * u, max(0.05 * u, 0.5 * td - 0.38 * u))) - 0.08 * u;
+    vec3 counter = indoor(isDesk ? mix(INK_VIOLET, CREAM, 0.35) : mix(WOOD, CREAM, 0.3), k, nt, 1.0);
+    col = well < 0.0 ? mix(body, keyInk(k), 0.4) : counter;
+    if (abs(well) < 0.05 * u) col = mix(col, keyInk(k), 0.6);
+    float c2 = length(q - cup);
+    if (c2 < 0.2 * u && !isDesk) col = c2 < 0.12 * u ? tone(mix(WOOD, INK_INDIGO, 0.4), k) : lift(CREAM, k);
+    vec2 plate = vec2(-hw + 1.0 * u, -fh - 0.45 * u);
+    float pd = box(q - plate, vec2(0.85, 0.44) * u);
+    if (!isDesk && pd < 0.0) {
+      col = pd > -0.06 * u ? keyInk(k) : tone(BRASS, k);
+      int number = which < 3 ? (which == 2 ? 5 : 2 + which) : which < 5 ? 4 + which : 5 + which;
+      float x0 = x + plate.x - (number < 10 ? 3.0 : 6.0) * g;
+      int i = int(floor((p.x - x0) / (6.0 * g)));
+      l.at = vec2(x0 + 6.0 * g * float(i), foot + plate.y - 2.5 * g);
+      l.code = number < 10 ? (i == 0 ? number : sky_GLYPH_SPACE) : (i == 0 ? 1 : i == 1 ? number - 10 : sky_GLYPH_SPACE);
+      l.color = keyInk(k);
+    }
+    if (abs(q.x) > hw - 0.06 * u || q.y < top + 0.06 * u) col = keyInk(k);
+  } else {
+    // The front: a band of screens, a brass kick at its foot.
+    col = body;
+    float sy0 = -fh + 0.1 * u;
+    if (abs(q.x) < hw - 0.2 * u && q.y > sy0 && q.y < -0.18 * u) {
+      vec3 panel = tone(INK_INDIGO, k) * 0.5;
+      bool isKnown = sky_QUOTE_PRICE[symOf(r)] > 0.0;
+      float heat = isOn && isKnown ? clamp(abs(chg) / 3.0, 0.25, 0.7) : 0.0;
+      col = mix(panel, tone(chg < 0.0 ? RED : INK_GREEN, k) * 0.7, heat);
+      if (tool == sky_TOOL_OTHER && isOn && !isDesk) {
+        bool isBar = fract((q.x - iTime * 1.5 * u) / (0.9 * u)) < 0.45 && abs(q.y + 0.5 * fh) < 0.25 * fh;
+        col = isBar ? lift(mix(INK_BLUE, CREAM, 0.5), k) : tone(mix(INK_BLUE, INK_INDIGO, 0.5), k);
+      } else {
+        float lineTop = foot + sy0 + 0.5 * (-0.18 * u - sy0 - 11.0 * g);
+        int line = p.y < lineTop + 5.5 * g ? 0 : 1;
+        int len = line == 1 ? 6 : r <= 2 ? 3 : r == 6 ? 5 : 4;
+        float x0 = x - 3.0 * g * float(len);
+        int i = int(floor((p.x - x0) / (6.0 * g)));
+        l.at = vec2(x0 + 6.0 * g * float(i), lineTop + 6.0 * g * float(line));
+        l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : line == 0 ? int((nameOf(r) >> uint(6 * i)) & 63u) : priceCode(r, i);
+        l.color = !isOn && isKnown ? mix(panel, CREAM, 0.25) : lift(line == 0 ? INK_YELLOW : CREAM, k);
+      }
+    } else if (q.y > -0.18 * u) {
+      col = tone(BRASS, k) * 0.8;
+    }
+    if (abs(q.x) > hw - 0.06 * u || q.y < -fh + 0.06 * u) col = keyInk(k);
+  }
+  col = mix(col, l.color, sky_glyphWide(l.q, l.at, l.cell, l.code));
+  sky = abs(q.x) < hw ? col : sky;
+  // Steam off the coffee, while the floor is in.
+  if (isOn && !isDesk) sky = mix(sky, lift(CREAM, k), 0.7 * steam(p, vec2(x, foot) + cup - vec2(0.0, 0.15 * u), 0.9 * u, 0.22 * u, 0.8, which));
+  return sky;
 }
 
 // --- What stands in front of them -------------------------------------------------
@@ -1087,12 +1038,12 @@ vec3 frontStrip(vec3 sky, vec2 p, float u, float k, Hall h, float fall, bool hum
 }
 
 // While a command runs, BUY and SELL in bubbles over the traders at the
-// posts' fronts, the same lots traderAt fills, three in four of them
+// posts' fronts, the same lots whoAt fills, three in four of them
 // shouting. One sky_glyph for every bubble.
 vec3 shouts(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int agents) {
   if (p.x < h.inner) return sky;
   float lot = h.width / 8.0;
-  float base = h.floorY + 5.0 * h.row - 2.8 * u;
+  float base = h.floorY + 5.0 * h.row - 2.45 * u;
   float j = clamp(floor((p.y - base) / (4.0 * h.row) + 0.5), 0.0, 2.0);
   float by = base + j * 4.0 * h.row;
   if (abs(p.y - by) > 1.0 * u) return sky;
@@ -1204,9 +1155,9 @@ vec3 resident(vec3 sky, vec2 p, float u, float k) {
   float runT;
   bool humming = eventUp(0, seed, t);
   bool charging = eventUp(1, seed, runT);
-  sky = floorPeople(sky, p, u, k, h, m, tool, sky_agents(), crowdPose(m, tool, humming, charging), nt);
   int beat = int(floor(iTime * 2.0)) % 2;
-  sky = figure(sky, p, someoneElse(p, h, state, residentPose(m, tool, humming)), k, beat);
+  sky = figure(sky, p, whoAt(p, h, m, sky_agents(), crowdPose(m, tool, humming, charging), state, residentPose(m, tool, humming)), k, beat);
+  sky = post(sky, p, u, k, h, m, tool, nt);
   float age = mod(iTime, 60.0);
   float fall = THEME_FORCE == 2 ? (age < 50.0 ? smoothstep(0.0, 1.4, age) : 0.0) : sky_QUOTE_PRICE[sky_NDX] > 0.0 && sky_QUOTE_CHANGE[sky_NDX] < -2.0 ? 1.0 : 0.0;
   sky = frontStrip(sky, p, u, k, h, fall, humming, contextFish(), state, nt);
