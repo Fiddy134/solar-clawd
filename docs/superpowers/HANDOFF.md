@@ -1,10 +1,12 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-28 eftermiddag, session `76e581b6` (Opus 5.5, auto mode) → nästa. Vincent uppdaterar Ghostty till 1.4.0 nu, och omstarten avslutar sessionen. Han öppnar den igen med `claude --continue`.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-28 kväll, session `a7764813` (Opus 5.5, auto mode). Workflowen `v3-teman` (floor v3 och terminal v3) kör fortfarande; den här filen skrivs om igen när den är klar.
 
 ## Läge
 
-- **`main`** har bara dokument sedan förra sessionen, alltså inga ändringar i modden. Det är:
+- **`/solar tune` är designat och planerat, inte byggt.** Design: `docs/superpowers/specs/2026-10-28-solar-tune-design.md` (`060d212`). Plan: `docs/superpowers/plans/2026-10-28-solar-tune.md` (`75f5d4b`). Vincent godkände båda och vill bygga i en ny session, med subagenter (rekommenderat). En ruta i Claude Code med brightness, text shade, colour och warmth per läge (dawn, day, dusk, night); brightness dämpar bara himlen, inte molnen (Vincent valde efter en renderad jämförelse). Steg 1 i planen är Vincents mätning av hur snabbt Ghostty tar en ändrad shader.
+- **`main` är pushad** till och med `bf2e85d` (0.8.1, hjälparen). Efter det bara dokument.
+- Tidigare dokument på `main`:
   - designen för de två temana: `3159217`
   - avsnittet "Ghostty 1.4.0" i `docs/ghostty-research.md`: `8237b16`
   - designerna för `floor` v3 och `terminal` v3 med skisser: `849091d` till och med commiten med den här handoffen
@@ -113,14 +115,15 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - (c) GPU-raderna står i `docs/gpu-measurements.md` ("Ghostty 1.4.0"): 24 i sekunden drar 84 % mindre än `true` på dagen och natten, golvet 77 % mindre; golvet under `true` ligger kvar på ~37 %.
    - (d) Kedjan inne i Claude Code kostade ~9 % av en kärna live. **Hjälparen** (en `zsh` bredvid Claude Code, `startTicks` i `hooks/ghostty.ts`) ersätter den: 0.8.1 på `main` (`80d5f46`), Claude Code 15,2 → 9,9 %, hjälparen själv 1,1 %. Vincent godtog det.
    - **Kvar till en senare runda:** Claude Code med himlen synlig men stilla (`spar`, Ghostty bakom) som rättvis baslinje, (b) ⌘Q och gamla flikar.
-   - **Push** av 0.8.0 och 0.8.1 väntar på Vincents ja.
+   - 0.8.0 och 0.8.1 är pushade.
 2. **Bygga `floor` v3 och `terminal` v3** efter designerna, på grenar från `teman`:
    - **Motorn först:** bredare M, N och W i en egen funktion, och det författarna behöver ur luckorna.
    - **Sedan per tema:** en författare som utgår från `tema-*-r2` och får guiden, designen och skissen, en domare som jämför mot skissen och Vincents ord, och en rättningsrunda.
    - Arken skickas till Vincent.
 
    Fråga honom om det ska vara en workflow eller inline.
-3. **Senare:**
+3. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
+4. **Senare:**
    - runda 3 av F7 om guiden ska bevisas
    - markeringsrundan
    - nivåer efter dator
@@ -128,7 +131,7 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - F6
    - idéerna ur 1.4: fokus per terminal och OSC 7501
 
-Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Jag har uppdaterat till Ghostty 1.4.0, nu provar vi takten."*
+Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Nu bygger vi /solar tune efter planen, med subagenter."*
 
 ## Hur handoffen används
 
