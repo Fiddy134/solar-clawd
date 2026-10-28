@@ -1,5 +1,8 @@
+import { GLYPHS_GLSL } from './glyphs'
+
 // The sky shader's GLSL, part of hooks/shader.ts's BODY: the constants every
-// part shares, numbers, where things are on the window, and drawing in inks.
+// part shares, numbers, where things are on the window, drawing in inks,
+// and letters.
 export const COMMON = `
 const float PI = 3.14159265;
 // The arc the sun and the moon cross, as fractions of the window.
@@ -294,4 +297,4 @@ vec3 sprite(vec3 sky, vec2 p, vec2 origin, float cell, uint rows[8], ivec2 size,
   if (spriteAt(rows, size, ivec2(floor(v - 1.0)), flip) > 0) return mix(sky, keyInk(k), 0.55);
   return sky;
 }
-`
+${GLYPHS_GLSL}`

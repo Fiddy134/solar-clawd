@@ -780,14 +780,14 @@ export const register: Register = on => {
     if (kind && e.tool_use_id) claude.open.set(e.tool_use_id, kind)
     // What Claude is doing, in any loop: a subagent not heard starting
     // counts from its first call.
-    const activity = activityKindOf(e.tool)
+    const doing = activityKindOf(e.tool)
     if (e.agentId !== undefined) {
       const isNew = !work.agents.has(e.agentId)
       work.agents.set(e.agentId, startedAt)
       if (isNew) remarkSky?.()
     }
-    if (activity && e.tool_use_id) {
-      work.open.set(e.tool_use_id, { tool: activity, at: startedAt })
+    if (doing && e.tool_use_id) {
+      work.open.set(e.tool_use_id, { tool: doing, at: startedAt })
       remarkSky?.()
     }
     const result = await next(e).finally(() => {

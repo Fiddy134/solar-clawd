@@ -219,6 +219,11 @@ test('the contract is what contract 1 says it is', () => {
     'vec3 lamp(vec3 sky, vec2 p, vec2 at, float radius, vec3 color, float strength)',
     'int spriteAt(uint rows[8], ivec2 size, ivec2 c, bool flip)',
     'vec3 sprite(vec3 sky, vec2 p, vec2 origin, float cell, uint rows[8], ivec2 size, bool flip, vec3 palette[8], float k)',
+    'bool sky_glyphCell(int code, ivec2 c)',
+    'float sky_glyph(vec2 p, vec2 origin, float cell, int code)',
+    'float sky_line16(vec2 p, vec2 origin, float cell, int text[16])',
+    'int sky_numberCode(float value, int width, int decimals, int column)',
+    'float sky_number(vec2 p, vec2 origin, float cell, float value, int width, int decimals)',
   ])
   // The context window, which a theme reads through these alone (never
   // iPalette), and the shooting stars' schedule, which fyr's night keeps to.
