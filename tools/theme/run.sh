@@ -2,6 +2,7 @@
 # Bundle a theme tool (the hooks are TypeScript) and run it with node.
 #   tools/theme/run.sh lint fyr
 #   tools/theme/run.sh pack fyr .preview/fyr-packed
+#   tools/theme/run.sh stage fyr
 set -e
 root=$(cd "$(dirname "$0")/../.." && pwd)
 name=$1

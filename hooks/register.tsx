@@ -22,10 +22,11 @@ import {
   readPace,
   reloadGhostty,
   remark,
+  restageGhostty,
   runtimeFolder,
   setVsync,
   shareWaiting,
-  STAGE_PT,
+  stagedPadding,
   tidy,
   ttyOf,
   updateGhosttySky,
@@ -47,6 +48,7 @@ import type { ShaderParams } from './shader'
 import { skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 import { BASE_THEME, THEMES } from './themes/index'
+import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
@@ -114,15 +116,18 @@ const MILESTONE_MS = 3 * 60_000
 // While the ISS passes, the sky follows it this often.
 const ISS_TICK_MS = 2_000
 
-// The stage strip's width in pixels: its points times the screen's scale
+// The stage strip's width in pixels: the theme's points, or the right
+// padding of the config that includes the sky where that is less (so a
+// theme never draws its stage under text), times the screen's scale
 // (asked once, on macOS; Linux has the points as they are). An answer that
 // is no positive number counts as 1.
-async function stagePxOf($: EngineInterface, isOnLinux: boolean): Promise<number> {
-  if (isOnLinux) return STAGE_PT
+async function stagePxOf($: EngineInterface, ghostty: Ghostty, pt: number): Promise<number> {
+  const points = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt)
+  if (ghostty.isLinux) return points
   const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
   const scale = Number(answer?.stdout.trim())
 
-  return STAGE_PT * (Number.isFinite(scale) && scale > 0 ? scale : 1)
+  return points * (Number.isFinite(scale) && scale > 0 ? scale : 1)
 }
 
 // How full the context window is, 0 to 100, for the keeper's fish and
@@ -467,7 +472,7 @@ export const register: Register = on => {
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
         // Asked below, once the config is known to include the sky.
-        stagePx: STAGE_PT,
+        stagePx: stagePtOf(theme),
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
         ticks: { origin: 0, isRunning: false, writing: null },
@@ -496,7 +501,7 @@ export const register: Register = on => {
       // the old file emptied so Ghostty draws no second sky from it.
       let isMarginNew = false
       if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
-        const added = await includeInGhostty($, ghostty)
+        const added = await includeInGhostty($, ghostty, stagePtOf(theme))
         ghostty.isIncluded = added !== null
         isMarginNew = added?.isMarginNew ?? false
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
@@ -505,11 +510,11 @@ export const register: Register = on => {
       const isOurs = await hasOurInclude($, ghostty)
       // An include from before there was a stage gets it, once: after that
       // the margin is the person's, changed or taken away as they like.
-      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty))?.isMarginNew ?? false
-      if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${STAGE_PT}-point margin on the right of Ghostty's windows; new windows show it.`)
+      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty, stagePtOf(theme)))?.isMarginNew ?? false
+      if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${stagePtOf(theme)}-point margin on the right of Ghostty's windows; new windows show it.`)
       // The screen's scale costs a moment of osascript: asked only for a sky
       // that shows.
-      if (isOurs) ghostty.stagePx = await stagePxOf($, isOnLinux)
+      if (isOurs) ghostty.stagePx = await stagePxOf($, ghostty, stagePtOf(theme))
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
@@ -926,12 +931,29 @@ export const register: Register = on => {
 
     if (word === 'ghostty') {
       if (ghostty === null) return { text: NOT_GHOSTTY }
-      if (await isIncluded($, ghostty)) return { text: 'Solar: Ghostty already shows the sky.' }
-      const added = await includeInGhostty($, ghostty)
+      const pt = stagePtOf(theme)
+      // Already there: the stage as wide as the theme asks, where the line
+      // is the mod's own; a padding of the person's own stays theirs.
+      if (await isIncluded($, ghostty)) {
+        const staged = await restageGhostty($, ghostty, pt)
+        if (staged === 'unreadable') return { text: UNREADABLE_CONFIG }
+        if (staged === 'restaged') {
+          ghostty.stagePx = await stagePxOf($, ghostty, pt)
+          await updateGhosttySky($, ghostty, shaderAt, skyState)
+          await reloadGhostty($, ghostty)
+
+          return { text: `Solar: the stage is now ${pt} points wide, as the theme wants; Ghostty's new windows show it.` }
+        }
+        const theirs = staged === 'same' ? null : staged.theirs
+        const wanted = theirs === null ? '' : ` The theme wants a stage ${pt} points wide; your window-padding-x gives it ${theirs}, and stays as you set it.`
+
+        return { text: `Solar: Ghostty already shows the sky.${wanted}` }
+      }
+      const added = await includeInGhostty($, ghostty, pt)
       if (added === null) return { text: UNREADABLE_CONFIG }
       const { line, config } = added
       ghostty.isIncluded = true
-      ghostty.stagePx = await stagePxOf($, ghostty.isLinux)
+      ghostty.stagePx = await stagePxOf($, ghostty, pt)
       await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($, ghostty)
 

@@ -28,6 +28,11 @@ export const THEME_EVENT_BASE = 100
 export const THEME_GLSL_MAX = 80_000
 export const SHADER_MAX = 224_000
 
+// How wide a theme may ask the stage strip at the right, in points: as
+// fyr has it, and wider in steps of 40 to a cap, so the terminal keeps
+// most of the window. One that asks none has the first.
+export const STAGE_WIDTHS = [240, 280, 320, 360, 400, 440, 480] as const
+
 // The most of the time a theme's events may keep the sky moving, summed
 // over them as chance times length over slot.
 const LIVELINESS_MAX = 0.08
@@ -72,8 +77,10 @@ export type ThemeManifest = {
   author: string
   version: string
   license: string
-  // Whether it wants the stage strip at the right.
+  // Whether it wants the stage strip at the right, and how wide, in points
+  // (one of STAGE_WIDTHS; 240 when left out).
   stage: 'wanted' | 'none'
+  stagePt?: number
   // What Claude waiting looks like in it, for /solar help and review.
   waits: string
   // Whether the theme shows the context window itself, through
@@ -124,6 +131,10 @@ export function themeOf(manifest: unknown, glsl: string): Theme | { error: strin
     if (typeof manifest[key] !== 'string') return { error: `the manifest has no ${key}` }
   }
   if (manifest.stage !== 'wanted' && manifest.stage !== 'none') return { error: 'stage is not "wanted" or "none"' }
+  if (manifest.stagePt !== undefined) {
+    if (!(STAGE_WIDTHS as readonly unknown[]).includes(manifest.stagePt)) return { error: `stagePt is not one of ${STAGE_WIDTHS.slice(0, -1).join(', ')} and ${STAGE_WIDTHS.at(-1)} points` }
+    if (manifest.stage !== 'wanted') return { error: 'stagePt is for a theme that wants the stage' }
+  }
   if (manifest.context !== 'resident' && manifest.context !== 'engine') return { error: 'context is not "resident" or "engine"' }
   if (!Array.isArray(manifest.events) || !Array.isArray(manifest.previews) || !isRecord(manifest.aliases)) return { error: 'events, previews and aliases are missing' }
   if (manifest.market !== undefined && typeof manifest.market !== 'boolean') return { error: 'market is not true or false' }
@@ -170,6 +181,11 @@ export function themeOf(manifest: unknown, glsl: string): Theme | { error: strin
   }
 
   return { manifest: manifest as ThemeManifest, glsl }
+}
+
+// How wide a theme wants the stage strip, in points.
+export function stagePtOf(theme: Theme): number {
+  return theme.manifest.stagePt ?? STAGE_WIDTHS[0]
 }
 
 // The shader's number for one of a theme's events, 0 for none of its own.

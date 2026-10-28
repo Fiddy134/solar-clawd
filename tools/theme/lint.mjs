@@ -8,7 +8,7 @@
 // Prints what is wrong and exits 1, or prints the weights and `clean`.
 
 import { checkTheme, weightOf } from '../../hooks/themes/check.ts'
-import { SHADER_MAX, THEME_GLSL_MAX } from '../../hooks/themes/theme.ts'
+import { SHADER_MAX, stagePtOf, THEME_GLSL_MAX } from '../../hooks/themes/theme.ts'
 import { themeNamed } from './load.mjs'
 
 const name = process.argv[2]
@@ -25,6 +25,7 @@ try {
 }
 const { glsl, night } = weightOf(theme)
 console.log(`${theme.manifest.name}: GLSL ${glsl} of ${THEME_GLSL_MAX} characters, the long night's shader ${night} of ${SHADER_MAX}`)
+console.log(theme.manifest.stage === 'wanted' ? `  the stage ${stagePtOf(theme)} points wide` : '  no stage')
 const problems = checkTheme(theme)
 for (const problem of problems) console.log(`  ${problem}`)
 console.log(problems.length === 0 ? 'clean' : `${problems.length} to put right`)

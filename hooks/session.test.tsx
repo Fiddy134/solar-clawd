@@ -6,6 +6,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
+import { rightPaddingOf, restaged } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
@@ -1254,4 +1255,64 @@ test('the session ends while a call runs: the last word to the tab is still its 
   await running
   await clock.advance(2_000)
   expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
+})
+
+test("the right padding Ghostty uses is the last window-padding-x's, and the mod restages only its own line", () => {
+  expect(rightPaddingOf('font-size = 14\n')).toBeNull()
+  expect(rightPaddingOf('window-padding-x = 10\n')).toBe(10)
+  expect(rightPaddingOf('window-padding-x = 4,300\nfont-size = 14\nwindow-padding-x = 2 , 240\n')).toBe(240)
+  expect(rightPaddingOf('# window-padding-x = 2,400\nwindow-padding-x = 2,120\n')).toBe(120)
+  const include = `config-file = ?${RUNTIME}/solar-clawd.ghostty`
+  const ours = `font-size = 14\n${STAGED}\n${include}\nwindow-padding-x = 6,240\n`
+  expect(restaged(ours, 400)).toBe(`font-size = 14\n${STAGED}\n${include}\nwindow-padding-x = 6,400\n`)
+  expect(restaged(ours, 240)).toBe(ours)
+  // A padding of the person's own, below the include or anywhere else, is theirs.
+  expect(restaged(`${STAGED}\n${include}\nwindow-padding-x = 6,300\n`, 400)).toBeNull()
+  expect(restaged(`${STAGED}\n${include}\nfont-size = 14\nwindow-padding-x = 6,240\n`, 400)).toBeNull()
+  expect(restaged('window-padding-x = 6,240\n', 400)).toBeNull()
+})
+
+test("/solar ghostty puts the mod's own stage line back to the theme's width, and leaves a person's own as it is", async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  // A wider theme had the stage at 400; fyr wants 240.
+  const before = `font-size = 14\n${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 2,400\n`
+  world.files.set(CONFIG, { text: before, mtimeMs: start })
+  world.answers.set('/usr/bin/osascript', '2\n')
+  const runtime = await startGhostty($, on, clock, world)
+  expect(world.files.get(CONFIG)?.text).toBe(before)
+  // Until then the stage is the theme's 240 at most, whatever the padding.
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 480.0;')
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+  expect(await solar('ghostty')).toBe("Solar: the stage is now 240 points wide, as the theme wants; Ghostty's new windows show it.")
+  expect(world.files.get(CONFIG)?.text).toBe(before.replace('2,400', '2,240'))
+  expect(await solar('ghostty')).toBe('Solar: Ghostty already shows the sky.')
+
+  world.files.set(CONFIG, { text: before.replace('2,400', '2,300'), mtimeMs: start })
+  expect(await solar('ghostty')).toBe('Solar: Ghostty already shows the sky. The theme wants a stage 240 points wide; your window-padding-x gives it 300, and stays as you set it.')
+  expect(world.files.get(CONFIG)?.text).toBe(before.replace('2,400', '2,300'))
+})
+
+test('a narrower padding of the person\'s own narrows the stage the theme draws on', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.files.set(CONFIG, { text: `${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 2,120\n`, mtimeMs: start })
+  world.answers.set('/usr/bin/osascript', '2\n')
+  const runtime = await startGhostty($, on, clock, world)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 240.0;')
+})
+
+test("a config with the include but not yet staged loses a stage line the mod wrote at any width, and keeps the person's", async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.files.set(CONFIG, { text: `font-size = 14\nwindow-padding-x = 2,300\nwindow-padding-x = 2,400\n${UNSTAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\n`, mtimeMs: start })
+  await startGhostty($, on, clock, world)
+  expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\nwindow-padding-x = 2,300\n${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`)
 })

@@ -15,7 +15,7 @@ import { EVENTS as EVENTS_GLSL } from './glsl/events'
 import { PROTOTYPES } from './glsl/prototypes'
 import { checkTheme, engineNames, longNight, NO_THEME, themeFiles, themeOfFiles, weightOf } from './themes/check'
 import { BASE_THEME, THEMES } from './themes/index'
-import { ENGINE_CONTRACT, lintTheme, SHADER_MAX, THEME_GLSL_MAX, themeOf, topLevelNames, whenOf } from './themes/theme'
+import { ENGINE_CONTRACT, lintTheme, SHADER_MAX, STAGE_WIDTHS, stagePtOf, THEME_GLSL_MAX, themeOf, topLevelNames, whenOf } from './themes/theme'
 import type { Theme, ThemeManifest, ThemeWhen } from './themes/theme'
 
 const FYR = THEMES[BASE_THEME]
@@ -386,4 +386,18 @@ test('a theme may say it shows the market, as true or false', () => {
   expect(errorOf(manifest({ market: false }))).toBeNull()
   expect(errorOf(manifest({ market: 'yes' }))).toBe('market is not true or false')
   expect(FYR.manifest.market).toBeUndefined()
+})
+
+test('a theme that wants the stage may ask it wider, 240 to 480 points in steps of 40; fyr keeps 240', () => {
+  expect([...STAGE_WIDTHS]).toEqual([240, 280, 320, 360, 400, 440, 480])
+  for (const stagePt of STAGE_WIDTHS) expect(errorOf(manifest({ stagePt }))).toBeNull()
+  const wrong = 'stagePt is not one of 240, 280, 320, 360, 400, 440 and 480 points'
+  expect(errorOf(manifest({ stagePt: 250 }))).toBe(wrong)
+  expect(errorOf(manifest({ stagePt: 520 }))).toBe(wrong)
+  expect(errorOf(manifest({ stagePt: '400' }))).toBe(wrong)
+  expect(errorOf(manifest({ stagePt: 400, stage: 'none' }))).toBe('stagePt is for a theme that wants the stage')
+  expect(stagePtOf(FYR)).toBe(240)
+  expect(FYR.manifest.stagePt).toBeUndefined()
+  const wide = themeOf(manifest({ stagePt: 400 }), '') as Theme
+  expect(stagePtOf(wide)).toBe(400)
 })

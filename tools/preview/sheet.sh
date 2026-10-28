@@ -94,7 +94,8 @@ if [ "$sheet" = theme ]; then
   theme=$variant
   [ -d "$theme" ] && theme=$(cd "$theme" && pwd)
   kinds=$("$root/tools/theme/run.sh" kinds "$theme")
-  S="--theme $theme --stage 240"
+  # At the width the theme asks, a pixel a point as in the parity.
+  S="--theme $theme --stage $("$root/tools/theme/run.sh" stage "$theme")"
   DAY="--at 2026-10-26T13:00"
   NIGHT="--at 2026-10-24T22:00"
   # frame <scene> <time> <flags>: one frame at the parity's size.
@@ -140,10 +141,17 @@ if [ "$sheet" = theme ]; then
   frame 29-light 20 $DAY --light
   frame 30-unmarked 20 $DAY --unmarked
   frame 31-band 20 --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4
+  # What Claude is doing, and the market, open and closed.
+  frame 32-tool-command 20 $DAY --tool command
+  frame 33-tool-edit-agents 20 $DAY --tool edit --agents 3
+  frame 34-tool-read-night 20 $NIGHT --tool read --agents 1
+  frame 35-market-open-up 20 --at 2026-10-28T16:30 --market up
+  frame 36-market-open-down 20 --at 2026-10-28T16:30 --market down --tool command --agents 2
+  frame 37-market-closed 20 --at 2026-10-28T23:00 --market up
   # The theme's own events and previews, each by day at 24.8 s and by
   # night at 88 and 126 (fyr's dolphins leap at 24.8, its UFO beams him up
   # at 88 and sets him down at 126).
-  i=32
+  i=38
   for kind in $kinds; do
     frame "$i-$kind-day" 24.8 --at 2026-10-24T15:35 --event "$kind"
     frame "$((i + 1))-$kind-88" 88 $NIGHT --event "$kind"
