@@ -285,6 +285,9 @@ async function writeGhosttySky(
   // a `reset` in the tab would have cleared it.
   const mark = markOf(state.catchAt(now))
   if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
+    // A helper still writing the old mark would put it back over the new
+    // one: it goes first, and one with the new mark starts below.
+    if (ghostty.ticks !== null && ghostty.ticks.mark !== mark) await stopTicks(ghostty)
     await markTab($, ghostty, mark)
     written.mark = mark
   }
@@ -369,27 +372,36 @@ done
 // times a second (TICKER). Written from inside Claude Code the same ticks
 // cost about 9 % of a core live, the helper about 1 % in its own process
 // (docs/superpowers/plans/2026-10-27-himlens-takt.md, Task 5). The mark
-// travels as an argument, so a new mark starts a new helper, once the old
-// one is gone; the mark changes a few times an hour. Its output is read
+// travels as an argument, so a new mark starts a new helper, once
+// writeGhosttySky has stopped the old one; the mark changes a few times an
+// hour. Its output is read
 // only up to the word that it ticks: the engine keeps the child until the
-// stream is closed (stopTicks) or the module unloads.
+// stream is closed (stopTicks) or the module unloads. Read further, a pull
+// left waiting on a child that says nothing more would hold up the
+// closing, so a helper that dies after it ticked goes unnoticed until the
+// mark changes or the sky stops and starts ticking again.
 export function startTicks($: EngineInterface, ghostty: Ghostty): void {
   const { tty, written } = ghostty
-  if (tty === null || ghostty.ticks?.mark === written.mark) return
-  const old = ghostty.ticks
+  if (tty === null || ghostty.ticks !== null) return
   const helper = $.process.spawn({ argv: ['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', tty, String(PACE_HZ), written.mark] })
   const started = (async () => {
-    if (old !== null) await stop(old)
-    const first = await helper.next()
-    // Ended before it ticked (no tty, no zsh): the next update tries again.
-    if (first.done && ghostty.ticks?.helper === helper) ghostty.ticks = null
+    // Ended before it ticked (a tty it could not open, says so on stderr;
+    // no zsh): the next update tries again.
+    for (;;) {
+      const piece = await helper.next()
+      if (piece.done) {
+        if (ghostty.ticks?.helper === helper) ghostty.ticks = null
+        return
+      }
+      if (piece.value.stream === 'stdout' && piece.value.text.includes('ticking')) return
+    }
   })().catch(() => {
     if (ghostty.ticks?.helper === helper) ghostty.ticks = null
   })
   ghostty.ticks = { helper, mark: written.mark, started }
 }
 
-// The sky ticks no more: the helper is ended, and gone when this resolves.
+// The sky ticks no more: the helper's stream is closed, which kills it.
 export async function stopTicks(ghostty: Ghostty): Promise<void> {
   const { ticks } = ghostty
   if (ticks === null) return
@@ -408,9 +420,11 @@ async function stop(ticks: NonNullable<Ghostty['ticks']>): Promise<void> {
 export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
+  // An update under way could still mark the tab, or start a helper:
+  // both are over before the unmarking.
+  await ghostty.written.running?.catch(() => undefined)
   await stopTicks(ghostty)
   await markTab($, ghostty, UNMARK_TAB)
-  await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty
   await $.process.run(['/bin/rm', '-f', heartbeat, ghostty.waiting]).catch(() => undefined)
   const now = await $.clock.now()

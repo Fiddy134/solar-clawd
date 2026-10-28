@@ -1152,20 +1152,50 @@ test('hidden, or ended, the sky ticks no more, and the last word to the tab is i
 
 test('one zsh beside Claude Code ticks, with the mark as its argument: a new mark is a new helper, and never two at once', TICKING, async ($, on) => {
   const { world, solar, clock } = await tickWorld($, on, 'full', true)
-  const { helpers } = world
+  const { helpers, ttyLog } = world
   expect(helpers.length).toBe(1)
   expect(helpers[0]!.argv).toEqual(['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', TTY, '24', markOf(null)])
   expect(helpers[0]!.to).toBe(null)
   await solar('catch')
   await clock.advance(3_100)
-  const marks = helpers.map(h => h.argv.at(-1))
-  expect(marks.at(-1)).toBe(world.files.get(TTY)?.text)
-  expect(new Set(marks).size).toBe(marks.length)
-  expect(helpers.filter(h => h.to === null).length).toBe(1)
-  // Each ended before the next began writing, or as it began.
-  for (let i = 1; i < helpers.length; i++) expect(helpers[i - 1]!.to!).toBeLessThanOrEqual(helpers[i]!.from + 1)
+  await solar('grill')
+  await clock.advance(3_100)
+  expect(helpers.length).toBeGreaterThan(2)
+  expect(helpers.at(-1)!.argv.at(-1)).toBe(world.files.get(TTY)?.text)
+  // In the order things reached the tab: never two helpers at once, and a
+  // new mark written only once no helper writes the old one.
+  let ticking: string | null = null
+  for (const entry of ttyLog) {
+    const [kind, ...rest] = entry.split(' ')
+    const mark = rest.join(' ')
+    if (kind === 'start') {
+      expect(ticking).toBe(null)
+      ticking = mark
+    }
+    if (kind === 'end') {
+      expect(ticking).toBe(mark)
+      ticking = null
+    }
+    if (kind === 'write' && ticking !== null) expect(mark).toBe(ticking)
+  }
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(helpers.every(h => h.to !== null)).toBe(true)
+  expect(ttyLog.at(-1)).toBe(`write ${UNMARK_TAB}`)
+  expect(ttyLog.lastIndexOf(`write ${UNMARK_TAB}`)).toBeGreaterThan(ttyLog.findLastIndex(entry => entry.startsWith('end ')))
+})
+
+test('a helper that cannot open the tab says so and ends, and the next update starts another', TICKING, async ($, on) => {
+  const { world, solar, clock } = await tickWorld($, on, 'full', true)
+  world.helperFails.value = true
+  await solar('catch')
+  await clock.advance(3_100)
+  const tried = world.helpers.length
+  expect(tried).toBeGreaterThan(1)
+  expect(world.helpers.every(h => h.to !== null)).toBe(true)
+  world.helperFails.value = false
+  await clock.advance(10_100)
+  expect(world.helpers.length).toBeGreaterThan(tried)
+  expect(world.helpers.at(-1)!.to).toBe(null)
 })
 
 test('on Linux the tab is a pts, and its mark is written there', async ($, on) => {
