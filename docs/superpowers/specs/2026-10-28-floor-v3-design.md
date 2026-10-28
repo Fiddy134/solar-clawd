@@ -1,104 +1,100 @@
-# Börsgolvet v3: NYSE och Wall Street, halva fönstret, en värld med djup
+# Börsgolvet v3: NYSE snett uppifrån, med himlen kvar till vänster
 
-Vincent, 2026-10-28 eftermiddag, efter att ha sett arket för `floor` i runda 2 (`tema-floor-r2`). Den här designen ersätter "Tema 2" i `2026-10-28-tva-teman-design.md` för `floor`. Det som inte nämns här, som kurserna, Claudes aktivitet, väntljuset, kontextfönstret och filmreferenserna, gäller som där.
+Vincent, 2026-10-28 eftermiddag, efter att ha sett arket för `floor` i runda 2 (`tema-floor-r2`) och sju omgångar skisser. Den här designen ersätter "Tema 2" i `2026-10-28-tva-teman-design.md` för `floor`. Det som inte nämns här, som kurserna, Claudes aktivitet, väntljuset, kontextfönstret och filmreferenserna, gäller som där.
 
-## Vad Vincent såg och sa
+## Vad Vincent sa, i ordning
 
-Om runda 2: *"Intressant, jag ser många ställen som behöver ändras utifrån min vision men inte dåligt alls!"* Det han saknade, med hans ord:
+Om runda 2: *"Intressant, jag ser många ställen som behöver ändras utifrån min vision men inte dåligt alls!"*
 
-- *"Jag tänker att insidan ska vara hela högra sidan så att säga och att utsidan är mer av en stadsmiljö av New York, inte att man ser skyskrapor långt på distans, alltså att det känns som att utsidan är Manhattan, stadskärnan."*
-- *"Det känns som att det kanske saknas lite detaljer på bägge sidorna."* och *"lite karaktär och mysighetskänsla på bäggesidorna också."*
-- *"Ja ungefär halva, och kör NYSE och Wall Street. Jag kan också tänka mig att vi använder även nedre halvan på högra sidan för att kunna få mer plats för visionen. Det kanske också saknas lite djup i designen just nu."*
-- *"Då kan också alla Clawd gå runt som att det är en värld i lite mer av en 3D-miljö än en 2D-miljö. Allt kändes väldigt 2D på bilderna du skickade så att säga."*
+- *"Jag tänker att insidan ska vara hela högra sidan så att säga och att utsidan är mer av en stadsmiljö av New York … Det känns som att det kanske saknas lite detaljer på bägge sidorna … lite karaktär och mysighetskänsla."*
+- *"Ja ungefär halva, och kör NYSE och Wall Street. … Det kanske också saknas lite djup i designen just nu."*
+- *"Då kan också alla Clawd gå runt som att det är en värld i lite mer av en 3D-miljö än en 2D-miljö. Allt kändes väldigt 2D."*
+- Om skisserna med flyktpunkt: *"Jag tror perspektivet kanske blir lite fel nu."* Om en gata i perspektiv bakom texten: *"i detta perspektiv så blir det nog alldeles för svårt att läsa. Ett exempel på perspektiv jag kom att tänka på är mer som Stardew Valley eller Pokémon Ruby."*
+- **Det slutliga beslutet:** *"Kanske är det faktiskt bättre att bara fokusera på den högra sidan som vi har i temat just nu och att det andra blir mer 'tomt' som det är just nu. Jag tänker som versionen nu som du gjorde och att man har kvar lite trottoar bredvid byggnaden och det perspektivet samt där inne men att man tar bort det vi tänkte som 'utsida', det kanske blir för mycket som händer och blir svårt att faktiskt fokusera på Claude Code då."*
 
-Han gav sex referensbilder. De ligger lokalt i `.preview/ref-floor/` och committas inte, eftersom de är andras foton:
-
-1. `1-golvet-ovanifran.jpg`: NYSE:s golv snett ovanifrån från en läktare, med åttakantiga poster i rader, skärmkransar, NYSE-skyltar, flaggor, kablar och klungor av folk på ett ljust golv.
-2. `2-golvet-posterna.jpg`: samma golv, nyare. Runda poster med skärmband, hängande svarta NYSE-kuber med flaggor, trägolv, barstolar och valvfönster längst bak.
-3. `3-fasader-skyltar.jpg`: Beaver Street, med tegel- och sandstensfasader och skyltar (PIZZA, TRADER'S EXPRESS DELI, CHECKS CASHED, WESTERN UNION), markiser och glastorn bakom.
-4. `4-gatan-perspektiv.jpg`: en gata i Financial District i perspektiv mot en flyktpunkt, med gula taxibilar, folk och en hörnbyggnad med rotunda.
-5. `5-stone-street-kvall.jpg`: Stone Street en regnig kväll, med ljusslingor över gatan, kullersten som blänker, brandtrappor och varma skyltfönster. Det är mysigheten.
-6. `6-wall-street-washington.jpg`: Wall Street från Federal Hall, med Washington-statyn i förgrunden, flaggor, NYSE:s kolonner och matvagnar.
+**Referenser:**
+- Vincents sex foton ligger lokalt i `.preview/ref-floor/` och committas inte, eftersom de är andras: NYSE:s golv från läktaren, posterna och kuberna, Beaver Street, en gata i Financial District, Stone Street en kväll och Wall Street med Washington.
+- Den skiss han valde är version 7: `2026-10-28-floor-v3/skiss-dag.png` och `skiss-kvall.png`. Generatorn ligger i `skisser.py`.
+- Skisserna är kompositionen, inte stilen. Husstilen gäller.
 
 ## Bilden
 
-**Halva fönstret.** Insidan syns över ungefär den högra halvan, och terminalens text får den vänstra (hur bredderna fördelas står under "Det som ändras i motorn"). Vincent sa redan i natt att texten gärna får bli mindre om världen syns mer.
+**Vänstra delen är himlen som i dag.** Ingen gata, inga fasader och ingen silhuett bakom texten. Claude Codes text ska vara det man fokuserar på där.
 
-**Djup, inte en remsa: en värld i 2,5D.** Båda sidorna ritas med perspektiv:
-- saker blir mindre och disigare ju längre bort de är
-- det närmaste överlappar det bakre
-- figurerna rör sig på ett golv eller en gata som har djup och går inte bara längs en linje
+**Högra delen är NYSE snett uppifrån, som i Stardew Valley och Pokémon Ruby.**
+- **Vinkeln:** ingen flyktpunkt. Marken och golvet ses uppifrån, och väggar och saker rakt framifrån med toppen synlig.
+- **Djupet** kommer av att det som är närmare står lägre och ritas över det bakre.
+- **Clawdarna** går på golvet i alla riktningar, som i en värld och inte längs en linje. Det är svaret på "för 2D".
 
-Det motsvarar "snett ovanifrån" på bild 1 och gatan mot flyktpunkten på bild 4.
+Uppifrån och ner:
+- **Krönet:** byggnadens gavel och NEW YORK STOCK EXCHANGE, rakt framifrån. Taket är lyft, så att man ser in.
+- **Bakväggen inifrån:**
+  - höga valvfönster mot himlen (`themeWindow` > 0 i rutorna, så att vädret syns där)
+  - den stora flaggan
+  - NYSE-kuber som hänger i vajrar och ritas som lådor med topp och front
+  - ett tickerband i fotlisten
+  - väntljuset (HALT och FILLED) mitt på väggen
+- **Golvet:**
+  - **Plankor sedda uppifrån**, i ett rutnät.
+  - **Handelsposterna** i rader med topp och front: skärmar på toppen, ett band av skärmar runt fronten och nummerskyltar. Kurserna sitter på posternas skärmar och kuberna.
+  - **Traders** i rockar som står i klungor och går mellan posterna, och papperslappar på golvet.
+  - **Huvud-Clawd** vid sin pulpet med grön bankirlampa längst fram, så att man hittar honom.
+- **Västra väggen** är en tjock mur i snitt, med en dörröppning ut mot trottoaren.
+- **Trottoaren** är en smal remsa längs muren, utanför byggnaden:
+  - plattor, lyktor (tända på kvällen) och flaggor på stänger
+  - Washington-statyn
+  - Clawdar som går till och från dörren, och en som just går in
 
-**Insidan, höger halva och hela höjden.**
-- **Bakväggen** ligger överst och längst bort: höga valvfönster mot himlen (`themeWindow` > 0 i rutorna, så att himlen och vädret syns i dem) och en stor amerikansk flagga. Hängande NYSE-kuber med skärmar och flaggor sitter under taket.
-- **Handelsposterna** står i rader som går bakåt. De är åttakantiga eller runda, med ett band av skärmar runt om och armar med skärmar uppåt, och de är numrerade som på bilderna (10, 11 och så vidare). Kurserna sitter här: på posternas skärmband, på kuberna och på tavlorna mot bakväggen. Kurstavlan är inte längre det stora elementet.
-- **Golvet** är ljust trä i perspektiv och fyller nedre halvan av fönstret. Där finns papperslappar, kablar och barstolar.
-- **Clawdarna** är traders i rockar i olika färger, med headset och telefoner. De går mellan posterna, står i klungor och ropar. De är större nära och mindre längre bort, och de skyms av posterna när de går bakom dem. Huvud-Clawd har en egen plats nära betraktaren, så att man hittar honom utan att leta.
+**Mysigheten:**
+- **På kvällen:** varmt ljus i salen, tända lyktor och en dörr som lyser ut på trottoaren.
+- **Efter stängning** står golvet inte tomt. Där finns en sen trader vid en post, städare med moppar, kryptobordet som lever dygnet runt och dämpat ljus.
+- **Detaljer som händer:** kaffe på posterna, en duva på statyn, en budbärare i dörren.
 
-**Utsidan, vänster halva bakom texten: Manhattan i gatuhöjd, låg gata och fri himmel** (Vincents val 2026-10-28: "Låg gata, fri himmel"). Fasaderna går upp till ungefär en tredjedel av vänstra halvans höjd, och glastornen bildar en låg kant mot himlen. Himlen, solen, månen och vädret hålls fria ovanför. När insidan är bred lägger motorn solens och månens bana över vänstra halvan (fyr ändras inte).
-- **Wall Street i perspektiv mot en flyktpunkt vid horisonten.** Sandstens- och tegelfasader står på båda sidor, med fönster, brandtrappor, skyltar (PIZZA, DELI, CHECKS CASHED), markiser och flaggor. Glastorn syns ovanför, mot himlen.
-- **Gatan:** kullersten och trottoar, gula taxibilar, matvagnar och folk som går, alla mindre ju längre in de är.
-- **Washington-statyn och Federal Hall** står i förgrunden vid entrén. Charging Bull får finnas kvar om den får plats, men den står egentligen vid Bowling Green.
-- **Entrén** är NYSE:s kolonnfasad med den stora flaggan. Den ligger vid gränsen mellan halvorna, och golvet syns därinne genom den.
-- **Mysigheten:** ljusslingor över gatan på kvällen, varma skyltfönster och kullersten som blänker i regn (`PRECIPITATION`). Fönstren tänds med `LOCAL_HOUR`.
-- **Texten måste gå att läsa.** Fasaderna bakom texten hålls mörka, disiga och lågkontrastiga, med ljusregeln från guiden. Den mest detaljrika delen av utsidan ligger nära entrén och längst ner, där texten oftast inte når.
+## Bredden
 
-**Karaktär överallt:** små saker som händer på båda sidor. En duva på statyn, en taxi som tutar när ett kommando körs, en matvagn som ångar på morgonen, en städare på golvet efter stängning, kaffe på posterna. Mer av det och mindre tom yta.
+Researchen 2026-10-28, i Ghostty v1.4.0-koden, visade:
+- Marginalen (`window-padding-x`) är ett heltal i punkter som varje split-ruta får för sig själv.
+- Det finns ingen procentform, ingen villkorlig config efter storlek och ingen väg att ändra den per ruta.
+- En ändrad marginal når bara nya flikar.
 
-## Det som ändras i motorn och guiden
+Med 600 pt skulle en split få ~19 kolumner, och med 400 pt ~44. Nu när vänsterdelen är tom behövs inget rum som ritas ut under texten. **Hela byggnaden står i marginalen**, och trottoarremsan ligger precis vid marginalens kant, under de sista kolumnerna av texten, där plattorna är lugna. Bredden blir 400 pt, och författaren får gå upp till 480 om salen behöver det. Fyr står kvar på 240. En ändrad bredd når bara nya flikar, och README säger det.
 
-- **Remsans bredd och rummets bredd är två olika saker** (researchen 2026-10-28, Ghostty v1.4.0-koden).
-  - **Vad researchen visade:**
-    - Marginalen (`window-padding-x`) är ett heltal i punkter som varje split-ruta får för sig själv.
-    - Det finns ingen procentform, ingen villkorlig config efter storlek, ingen escape-sekvens och ingen AppleScript-väg för att ändra den per ruta.
-    - En ändrad marginal når bara nya terminaler, medan shadern byts i alla direkt.
-    - `iResolution` är rutans hela storlek med marginalen inräknad.
-  - **Vad det betyder i kolumner:** med 600 pt får en split sida vid sida eller ett halvskärmsfönster ~19 kolumner, under de ~25–40 där Claude Codes gränssnitt rapporteras gå sönder. Med 760 pt blir det 0 kolumner. Rekommendationen ~600 pt ändras alltså till det bättre, som Vincent bad om:
-  - **Marginalen** blir 400 pt för `floor`, inom dagens tak på 480. Helskärm behåller ~138 kolumner och en split ~44.
-  - **Rummet** ritas ut till ungefär halva rutan (`max(STAGE_PX, 0.5 × iResolution.x)`) när rutan är bred, alltså helskärm eller ett brett fönster. I en smal ruta stannar det inom marginalen.
-  - **Delen av rummet som ligger under texten** (ungefär den sista sjättedelen av vänstra halvan) är entrén: NYSE:s kolonnfasad, statyn och dörrarna. Den hålls lugn och tonas ner där terminalen har text, som himlen redan gör. Golvet med posterna och folket ligger i marginalen, där ingen text når.
-  - **Overifierat, domaren och Vincent avgör:** att texten går att läsa över entrén, med prosa, tabeller och kod.
-  - En ändrad bredd når bara nya flikar. README säger det.
+## Motorn och guiden
 
-  Fyr står kvar på 240.
-- **Solens och månens bana** läggs över vänstra halvan när remsan är bred. Fyrs paritet ska vara oförändrad.
 - **Fonten:** M, N och W får en bredare variant som en egen funktion, så att NDX, MSFT, NVDA, AMZN och META går att läsa (domarens fynd från runda 2). Dagens 3×5 och `sky_glyph` lämnas orörda, så att `terminal` och guidens exempel inte rubbas. *(Mitt beslut.)*
 - **Från domaren, om författaren behöver det:**
   - en signal för New Yorks veckodag eller handelsdag
   - en rotationsprimitiv
   - att arket har en bild med öppen börs en vardag
-- **Guiden får ett avsnitt om 2,5D.** Det beskriver hur man ritar ett golv i perspektiv i en shader utan att loopa över figurer:
-  - golvets celler hashas i golvkoordinater (x, djup), som man får fram genom att räkna baklänges från perspektivet
-  - några djupband ritas bakifrån och fram, så att det närmaste hamnar överst
-  - figurernas storlek följer djupet
-  - kostnaden hålls inom bench-kvoten 1,25 × fyr
+- **Guiden får ett avsnitt om vyn snett uppifrån:**
+  - golvet som ett rutnät som hashas per ruta
+  - saker som lådor med topp och front
+  - att det som står lägre ritas över, genom några rader som ritas bakifrån och fram utan att loopa över figurer
+  - att den här vyn är billigare än perspektiv, eftersom den inte kräver någon perspektivräkning
 
-## Mina beslut efter granskarens frågor
-
-- **Efter stängning står golvet inte tomt.** Där finns en sen trader vid en post, städare med moppar, kryptobordet som lever dygnet runt och dämpat varmt ljus. Mysigheten gäller även kvällar och helger, eftersom börsen är stängd större delen av veckan.
-- **Det mest detaljrika ute** (statyn, Federal Hall, matvagnen, taxikön) står närmast entrén och längst ner, närmast gränsen mot insidan. Längre ut åt vänster, där texten alltid ligger, är fasaderna enklare och lågkontrastiga.
-- **Temats tak står kvar på 80 KB**, eftersom varje flik kompilerar hela shadern. Djupet ska komma från hashade celler och djupband, inte från mer kod.
-- **Bygget:** motorändringarna först, sedan en författare, en domare och en rättningsrunda. Därefter får Vincent arket.
+  Kostnaden ska hållas inom bench-kvoten 1,25 × fyr.
 
 ## Mål
 
-- Halva fönstret inne, hela höjden. Golvet ses snett ovanifrån med poster och folk i perspektiv, och Wall Street ute i gatuhöjd.
-- Att det läses som NYSE och Wall Street på fem sekunder, och att det har djup, detaljer och mysighet. Vincent avgör det med ögat. Domaren bedömer det mot referensbilderna.
+- NYSE snett uppifrån i marginalen, med trottoaren längs muren och Clawdar som rör sig i salen och genom dörren. Himlen är orörd till vänster.
+- Att det läses som NYSE på fem sekunder, och att det har djup, detaljer och mysighet. Vincent avgör det med ögat. Domaren bedömer det mot skissen och Vincents ord.
 - Samma hårda krav som förut: lint rent, kompilerar, bench ≤ 1,25 × fyr, texten läsbar och väntljuset läsbart.
 - Arket skickas till Vincent.
 
 ## Icke-mål
 
-- Fotorealism. Det är fortfarande husstilen, med risograf, bläck och raster, bara med djup.
-- Riktig 3D-rendering, alltså raymarching. 2,5D med perspektiv räcker och är billigare.
+- En utsida, gata eller stad bakom texten. Vincent valde bort det.
+- Fotorealism och riktig 3D. Det är fortfarande husstilen, med risograf, bläck och raster.
 - `terminal` får inte samma behandling nu. Det tar vi efter att Vincent sett `floor` v3.
 
 ## Process
 
-Detta är inte längre ett blindtest av guiden, utan att bygga Vincents vision. Författaren får guiden, det här dokumentet och referensbilderna, och får läsa `tema-floor-r2`:s tema som utgångspunkt. Det som är bra där ska behållas: väntljuset, kurserna på tavlor, aktivitetens BUY/SELL och agenterna i gula rockar. En domare jämför med referensbilderna och Vincents ord ovan. Motorändringarna görs före författaren, på en gren från `teman`.
+Detta är inte längre ett blindtest av guiden, utan att bygga Vincents vision.
+- **Författaren** får guiden, det här dokumentet, skissen och Vincents foton, och får läsa `tema-floor-r2`:s tema som utgångspunkt. Det som är bra där ska behållas: väntljuset, kurserna, aktivitetens BUY/SELL och agenterna i gula rockar.
+- **Motorändringarna** görs först, på en gren från `teman`.
+- **Sedan** en författare, en domare och en rättningsrunda. Därefter får Vincent arket.
+- **Temats tak står kvar på 80 KB**, eftersom varje flik kompilerar hela shadern.
 
 ## Lämnas åt byggaren
 
-Exakt bredd, hur många poster och djupband som får plats inom kostnaden, vilka detaljer och händelser som kommer med, och hur Clawdarnas rörelse mellan posterna schemaläggs med `iTime`, så att varje ögonblick fortfarande är en stillbild.
+Exakt bredd mellan 400 och 480, hur många poster och rader som får plats inom kostnaden, vilka detaljer och händelser som kommer med, och hur Clawdarnas rörelse på golvet schemaläggs med `iTime`, så att varje ögonblick fortfarande är en stillbild.
