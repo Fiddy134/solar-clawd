@@ -99,6 +99,20 @@ export function newYorkHour(ms: number): number {
   return local.getUTCHours() + local.getUTCMinutes() / 60
 }
 
+// The day of the week in New York, 0 on Sunday: the person's own WEEKDAY
+// may already be the next day, or still the one before.
+export function newYorkWeekday(ms: number): number {
+  return new Date(ms + newYorkOffsetMs(ms)).getUTCDay()
+}
+
+// Whether the day in New York is one its market trades on, all of it:
+// a weekday that is not one of NYSE's holidays, early closes included.
+export function newYorkTradingDay(ms: number): boolean {
+  const local = new Date(ms + newYorkOffsetMs(ms))
+
+  return marketHoursOn(local.getUTCFullYear(), local.getUTCMonth() + 1, local.getUTCDate()) !== null
+}
+
 // Whether New York's market is open at a moment.
 export function newYorkOpen(ms: number): boolean {
   const local = new Date(ms + newYorkOffsetMs(ms))

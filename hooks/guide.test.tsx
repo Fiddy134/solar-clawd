@@ -1,12 +1,15 @@
 // The theme guide, docs/THEME-GUIDE.md, held to the code: its sections are
 // the sixteen the work plan names, what it quotes of the engine and of fyr
 // is the code as it stands, its examples and its template lint clean, and
-// its tables list what the engine has. A test has no file system, so it
+// its tables list what the engine has; the sheet's daylight market frame
+// is the moment the guide says, and the floor seen from above draws as its
+// prose says. A test has no file system, so it
 // reads the guide from hooks/themes/guide.ts, which `node
 // tools/theme/guide.mjs` writes from it.
 
 import { expect, test } from 'claude-code/testing'
 
+import { STOCKHOLM } from './astro'
 import { clawdRows } from './clawd'
 import { EVENT_WORDS } from './events'
 import { BASKET } from './glsl/basket'
@@ -18,7 +21,7 @@ import { GLYPHS } from './glsl/glyphs'
 import { MAIN } from './glsl/main'
 import { PROTOTYPES } from './glsl/prototypes'
 import { SKY } from './glsl/sky'
-import { skyShader, THEME_SIGNALS } from './shader'
+import { shaderParams, skyShader, THEME_SIGNALS } from './shader'
 import { checkTheme, engineNames, longNight } from './themes/check'
 import { THEME_GUIDE } from './themes/guide'
 import { BASE_THEME, THEMES } from './themes/index'
@@ -185,4 +188,45 @@ test("the engine's props stand where the guide says, in the front pass", () => {
   const front = EVENTS_GLSL.slice(EVENTS_GLSL.indexOf('if (kind == 2) sky = balloon('))
   expect(front).toContain('if (kind == 15) sky = flag(sky, p, u);')
   expect(front).toContain('if (kind == 16) sky = maypole(sky, p, u, k);')
+})
+
+test("the sheet's frame 38 is a weekday in broad daylight with New York's market open, as §13's table says", () => {
+  // tools/preview/sheet.sh draws it at --at 2026-06-10T17:00, Stockholm's summer time.
+  expect(THEME_GUIDE).toContain('| 38 | The market open on a weekday in broad daylight, prices up: Wednesday 10 June, 17:00.')
+  expect(THEME_GUIDE).toContain('| 11:00, open |')
+  expect(THEME_GUIDE).toContain('| 39 on | Each of your events and previews')
+  const scene = shaderParams({ ms: Date.UTC(2026, 5, 10, 15), t: 0, place: STOCKHOLM, weather: null }, {})
+  expect(scene.time.weekday).toBe(3)
+  expect(scene.time.hour).toBe(17)
+  expect(scene.scene.isDay).toBe(true)
+  expect(scene.scene.elevation).toBeGreaterThan(25)
+  expect(scene.newYork).toEqual({ hour: 11, weekday: 3, isTradingDay: true, isOpen: true })
+})
+
+test('the floor seen from above is an idiom between §12 and §13, its example drawing two rows back to front, each thing reaching up at most those two', () => {
+  const start = THEME_GUIDE.indexOf('## An idiom: the floor seen from above')
+  expect(start).toBeGreaterThan(THEME_GUIDE.indexOf('## 12. '))
+  expect(start).toBeLessThan(THEME_GUIDE.indexOf('## 13. '))
+  const section = THEME_GUIDE.slice(start, THEME_GUIDE.indexOf('## 13. '))
+  for (const words of ['Stardew Valley', 'a grid', 'a top and a front', 'back to front', 'never over the figures', 'cheaper than perspective']) expect(section).toContain(words)
+  const example = /```glsl\n([\s\S]*?)```/.exec(section)![1]!
+  expect(lintTheme(example, engineNames())).toEqual([])
+  // The loop is over rows, two of them, and nothing else in it loops.
+  expect(example.match(/for \(/g)).toEqual(['for ('])
+  expect(example).toContain('for (int i = 0; i < 2; i++) {')
+  // What stands in a lot reaches up from the lot's front edge no more than
+  // two lots: a post its depth and height and the 0.2 u its foot is set
+  // in, a trader his 4 cells and a cell of key plate at 0.35 u, his walk
+  // up half a lot and the same 0.2 u.
+  const lot = /f\.lot = vec2\(([\d.]+), ([\d.]+)\) \* u;/.exec(example)!
+  const post = /vec3 size = vec3\(([\d.]+), ([\d.]+), ([\d.]+)\) \* u;/.exec(example)!
+  const depth = Number(lot[2])
+  expect(Number(post[2]) + Number(post[3]) + 0.2).toBeLessThanOrEqual(2 * depth)
+  expect(example).toContain('float cell = max(1.0, floor(0.35 * u));')
+  expect(example).toContain('-0.5 * f.lot.y * (0.5 + 0.5 * sin(')
+  expect(5 * 0.35 + 0.5 * depth + 0.2).toBeLessThanOrEqual(2 * depth)
+  // A post and a trader fit across a lot, wandering included.
+  expect(Number(post[1])).toBeLessThan(Number(lot[1]))
+  expect(7 * 0.35 + 2 * 1.0).toBeLessThan(Number(lot[1]))
+  expect(example).toContain('foot += vec2(1.0 * u * sin(')
 })

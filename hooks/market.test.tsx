@@ -20,7 +20,7 @@ import {
   SYMBOLS,
 } from './market'
 import type { MarketFile, Snapshot } from './market'
-import { marketHoursOn, newYorkOffsetMs, newYorkOpen } from './newyork'
+import { marketHoursOn, newYorkOffsetMs, newYorkOpen, newYorkTradingDay, newYorkWeekday } from './newyork'
 import { updateGhosttySky } from './ghostty'
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { MARKET_STORE, refreshMarket } from './net'
@@ -141,6 +141,57 @@ test("New York's holidays and early closes are NYSE's own for 2026 to 2028", () 
   expect(newYorkOpen(ny(2026, 11, 27, 12, 59))).toBe(true)
   expect(newYorkOpen(ny(2026, 11, 27, 13, 0))).toBe(false)
   expect(newYorkOpen(ny(2026, 11, 26, 12))).toBe(false)
+})
+
+test("New York's weekday is its own, and a trading day is a weekday NYSE keeps, early closes too", () => {
+  // Wednesday in New York, all day long, whatever the hour.
+  expect(newYorkWeekday(ny(2026, 10, 28, 0, 1))).toBe(3)
+  expect(newYorkWeekday(ny(2026, 10, 28, 23, 59))).toBe(3)
+  // Past midnight in Sweden, still Monday evening in New York.
+  const mondayEvening = ny(2026, 11, 2, 19)
+  expect(new Date(mondayEvening).getUTCDay()).toBe(2)
+  expect(newYorkWeekday(mondayEvening)).toBe(1)
+  expect(newYorkTradingDay(mondayEvening)).toBe(true)
+  // Every hour of a trading day, before the open and after the close too.
+  for (const hour of [0, 8, 9.5, 12, 16, 23.5]) expect(newYorkTradingDay(ny(2026, 10, 28, Math.floor(hour), (hour % 1) * 60))).toBe(true)
+  // Weekends and holidays are not; an early close is.
+  expect(newYorkTradingDay(ny(2026, 10, 31, 12))).toBe(false)
+  expect(newYorkTradingDay(ny(2026, 11, 1, 12))).toBe(false)
+  expect(newYorkWeekday(ny(2026, 11, 26, 12))).toBe(4)
+  expect(newYorkTradingDay(ny(2026, 11, 26, 12))).toBe(false)
+  expect(newYorkTradingDay(ny(2026, 11, 27, 15))).toBe(true)
+  expect(newYorkOpen(ny(2026, 11, 27, 15))).toBe(false)
+  expect(newYorkTradingDay(ny(2027, 3, 26, 12))).toBe(false)
+  // Each day of 2026 to 2028 is a trading day exactly when NYSE has hours for it.
+  for (let day = Date.UTC(2026, 0, 1); day < Date.UTC(2029, 0, 1); day += 86_400_000) {
+    const d = new Date(day)
+    const noon = ny(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate(), 12)
+    expect(newYorkWeekday(noon)).toBe(d.getUTCDay())
+    expect(newYorkTradingDay(noon)).toBe(marketHoursOn(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()) !== null)
+  }
+})
+
+test("the shader carries New York's weekday and whether it trades that day, by the scene's clock", () => {
+  for (const name of ['sky_NEW_YORK_WEEKDAY', 'sky_TRADING_DAY']) expect(THEME_SIGNALS).toContain(name)
+  const at = (ms: number) => skyShader(shaderParams({ ms, t: 0, place: STOCKHOLM, weather: null }, {}), FYR)
+  // Wednesday 08:00 in New York, before the open: a trading day, not open yet.
+  const early = at(ny(2026, 10, 28, 8))
+  expect(early).toContain('const int sky_NEW_YORK_WEEKDAY = 3;')
+  expect(early).toContain('const float sky_TRADING_DAY = 1.0;')
+  expect(early).toContain('const float sky_MARKET_OPEN = 0.0;')
+  // Thanksgiving: a Thursday that does not trade.
+  const thanksgiving = at(ny(2026, 11, 26, 11))
+  expect(thanksgiving).toContain('const int sky_NEW_YORK_WEEKDAY = 4;')
+  expect(thanksgiving).toContain('const float sky_TRADING_DAY = 0.0;')
+  // 01:00 on a Tuesday in Stockholm is Monday evening in New York.
+  const late = at(Date.UTC(2026, 10, 3, 0))
+  expect(late).toContain('const int WEEKDAY = 2;')
+  expect(late).toContain('const int sky_NEW_YORK_WEEKDAY = 1;')
+  expect(late).toContain('const float sky_TRADING_DAY = 1.0;')
+  // A Saturday.
+  const saturday = at(ny(2026, 10, 24, 16))
+  expect(saturday).toContain('const int sky_NEW_YORK_WEEKDAY = 6;')
+  expect(saturday).toContain('const float sky_TRADING_DAY = 0.0;')
 })
 
 // A scene's middle on the grid, and a snapshot fetched at `at`.

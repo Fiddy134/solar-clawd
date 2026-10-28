@@ -24,7 +24,7 @@ import { CONTEXT_MARK } from './glsl/context'
 import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
 import type { Market } from './market'
-import { newYorkHour, newYorkOpen } from './newyork'
+import { newYorkHour, newYorkOpen, newYorkTradingDay, newYorkWeekday } from './newyork'
 import { ENTRY_POINTS, themeEventIndex, uncommented } from './themes/theme'
 import type { Theme } from './themes/theme'
 
@@ -88,9 +88,10 @@ export type ShaderParams = {
   // The market's prices as the scene shows them (market.ts, marketAt), in
   // SYMBOLS' order; null with none fetched, or a theme that shows none.
   market: Market | null
-  // New York's clock at the scene, with its minutes, and whether its market
-  // is open then: the scene's own clock, as LOCAL_HOUR is.
-  newYork: { hour: number; isOpen: boolean }
+  // New York's clock at the scene, with its minutes, its weekday from 0 on
+  // Sunday, whether its market trades that day and whether it is open
+  // then: the scene's own clock, as LOCAL_HOUR is.
+  newYork: { hour: number; weekday: number; isTradingDay: boolean; isOpen: boolean }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
   // The width of the strip at the right where the theme stands its scenery
@@ -241,7 +242,7 @@ export function shaderParams(
     time: { hour: time.hour + time.minute / 60, weekday: time.weekday, month: time.month, day: time.day },
     temperature: weather ? Math.round(weather.temperature) : 10,
     market: options.market ?? null,
-    newYork: { hour: round(newYorkHour(ms), 0.0001), isOpen: newYorkOpen(ms) },
+    newYork: { hour: round(newYorkHour(ms), 0.0001), weekday: newYorkWeekday(ms), isTradingDay: newYorkTradingDay(ms), isOpen: newYorkOpen(ms) },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -392,12 +393,13 @@ export const THEME_SIGNALS = [
   'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
   // Added after contract 1, so prefixed: the market (market.ts) and New York's clock.
   'sky_QUOTE_COUNT', ...SYMBOLS.map(symbol => `sky_${symbol}` as const), 'sky_QUOTE_PRICE', 'sky_QUOTE_CHANGE', 'sky_QUOTES_FRESH',
-  'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR',
+  'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR', 'sky_NEW_YORK_WEEKDAY', 'sky_TRADING_DAY',
 ] as const
 
 // The market as the shader reads it: each symbol's index, its price (0
 // while unknown) and its change over the day in percent; whether every
-// price known is fresh; and New York's clock and market.
+// price known is fresh; and New York's clock, its weekday, and whether its
+// market trades today and is open now.
 function marketConstants(params: ShaderParams): string[] {
   const quotes = params.market?.quotes ?? SYMBOLS.map(() => null)
 
@@ -409,6 +411,8 @@ function marketConstants(params: ShaderParams): string[] {
     `const float sky_QUOTES_FRESH = ${params.market?.isFresh ? '1.0' : '0.0'};`,
     `const float sky_MARKET_OPEN = ${params.newYork.isOpen ? '1.0' : '0.0'};`,
     `const float sky_NEW_YORK_HOUR = ${f(params.newYork.hour)};`,
+    `const int sky_NEW_YORK_WEEKDAY = ${params.newYork.weekday};`,
+    `const float sky_TRADING_DAY = ${params.newYork.isTradingDay ? '1.0' : '0.0'};`,
   ]
 }
 

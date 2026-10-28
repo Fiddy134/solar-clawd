@@ -160,10 +160,15 @@ if [ "$sheet" = theme ]; then
   frame 35-market-open-up 20 --at 2026-10-28T16:30 --market up
   frame 36-market-open-down 20 --at 2026-10-28T16:30 --market down --tool command --agents 2
   frame 37-market-closed 20 --at 2026-10-28T23:00 --market up
+  # The market open on a weekday in broad daylight: a June Wednesday at
+  # 17:00, 11:00 in New York, since in late October the market opens in
+  # Stockholm with the sun already low and is open there for less than two
+  # hours of daylight.
+  frame 38-market-open-day 20 --at 2026-06-10T17:00 --market up
   # The theme's own events and previews, each by day at 24.8 s and by
   # night at 88 and 126 (fyr's dolphins leap at 24.8, its UFO beams him up
   # at 88 and sets him down at 126).
-  i=38
+  i=39
   for kind in $kinds; do
     frame "$i-$kind-day" 24.8 --at 2026-10-24T15:35 --event "$kind"
     frame "$((i + 1))-$kind-88" 88 $NIGHT --event "$kind"

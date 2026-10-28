@@ -423,6 +423,8 @@ The engine declares these before your text: constants written into the shader, a
 | `DAY` | int | 1 to 31 | The day of the month. | scene |
 | `sky_NEW_YORK_HOUR` | float | 0 to 24 | New York's time at the scene, the hour with its minutes. | scene |
 | `sky_MARKET_OPEN` | float | 0 or 1 | 1 from 09:30 to 16:00 in New York on a trading day, by the exchange's holidays and early closes. | scene |
+| `sky_NEW_YORK_WEEKDAY` | int | 0 to 6 | The day of the week in New York at the scene, 0 Sunday: New York's own, which late in the person's evening is still the day before theirs. | scene |
+| `sky_TRADING_DAY` | float | 0 or 1 | 1 all through a day New York's market trades on (a weekday that is not one of its holidays, early closes too), before the open and after the close as well; 0 on its weekends and holidays. | scene |
 
 <!-- guide-test: signals -->
 | Signal | Type | Values | What it says | Changes |
@@ -444,14 +446,15 @@ The engine declares these before your text: constants written into the shader, a
 | `EVENT_KIND`, `EVENT_SEED`, `EVENT_SECONDS` | int[], float[], float[] | | Each event up: its number (yours are 100 and up, in your manifest's order), its seed, and its length in seconds. `themeEvent` hands you your own; read these only to draw one of yours elsewhere (§12). | at once |
 | `INK_BLUE`, `INK_PINK`, `INK_YELLOW`, `INK_GREEN`, `INK_ORANGE`, `INK_VIOLET`, `INK_INDIGO` | vec3 | | The seven inks (§6). | never |
 
-The market's prices are fetched only for a theme whose manifest says `"market": true`, at most every five minutes, and shared by every session; a new one shows from the next scene on, so prices change the shader only when the scene does anyway. Without the field every price is 0 and `sky_QUOTES_FRESH` is 0, even though the preview's `--market up` shows prices to any theme. `sky_MARKET_OPEN` and `sky_NEW_YORK_HOUR` are there for every theme. A price has five significant figures, so one of 10,000 or more has no decimals to show, one from 1,000 one, one from 100 two, and one under 100 three or more.
+The market's prices are fetched only for a theme whose manifest says `"market": true`, at most every five minutes, and shared by every session; a new one shows from the next scene on, so prices change the shader only when the scene does anyway. Without the field every price is 0 and `sky_QUOTES_FRESH` is 0, even though the preview's `--market up` shows prices to any theme. `sky_MARKET_OPEN`, `sky_NEW_YORK_HOUR`, `sky_NEW_YORK_WEEKDAY` and `sky_TRADING_DAY` are there for every theme. A price has five significant figures, so one of 10,000 or more has no decimals to show, one from 1,000 one, one from 100 two, and one under 100 three or more.
 
-**Two clocks.** `LOCAL_HOUR`, `CLAWD_ACTIVITY` and `night()` are the person's day where they sit; `sky_NEW_YORK_HOUR` and `sky_MARKET_OPEN` are the exchange's. Light, sleep and the people of your place follow the first; anything that follows the market (a trading floor filling, a bell, a board's prices) follows the second. They are six hours apart from Sweden, so a market theme's daytime frames in the sheet are before the opening bell (§13 lists each frame's New York time): make the closed market a finished state of your world, not an empty one.
+**Two clocks.** `LOCAL_HOUR`, `WEEKDAY`, `CLAWD_ACTIVITY` and `night()` are the person's day where they sit; `sky_NEW_YORK_HOUR`, `sky_NEW_YORK_WEEKDAY`, `sky_TRADING_DAY` and `sky_MARKET_OPEN` are the exchange's. Light, sleep and the people of your place follow the first; anything that follows the market (a trading floor filling, a bell, a board's prices) follows the second. They are six hours apart from Sweden, so a market theme's daytime frames in the sheet are before the opening bell but for frame 38, a June afternoon (§13 lists each frame's New York time): make the closed market a finished state of your world, not an empty one.
 
 What the market's signals know, and what they do not:
 
-- `sky_MARKET_OPEN` is the only knowledge of trading days there is. There is no New York weekday, no "trading day today" and no session (before the open, after the close): `WEEKDAY` is the person's day, not New York's, and working New York's out from `WEEKDAY` and the gap between `LOCAL_HOUR` and `sky_NEW_YORK_HOUR` holds only in some time zones and still cannot see a holiday. Key what follows the market to `sky_MARKET_OPEN` alone: the floor full while it is 1, and a closed floor otherwise that is the same at 08:00 on a Tuesday as on a Saturday or a holiday.
-- A bell at the open or the close is a state, not a moment you can time: ring the opening bell while `sky_MARKET_OPEN` is 1 and `sky_NEW_YORK_HOUR` is below 9.6, and the closing bell while it is still 1 and the hour is 15.9 or more. A bell after 16:00 would ring on holidays too; this closing bell does not ring on a day that closes early, which is the lesser fault (§8 says how to make such a state a preview).
+- New York's day is its own: read `sky_NEW_YORK_WEEKDAY`, never `WEEKDAY` (the person's) or a sum of the gap between `LOCAL_HOUR` and `sky_NEW_YORK_HOUR`, which holds only in some time zones. `sky_TRADING_DAY` tells a working day from a weekend or a holiday all day long, so a closed floor can be a morning before the open (cleaners, the first traders coming in, `sky_TRADING_DAY` 1 and `sky_NEW_YORK_HOUR` below 9.5), an evening after the close (a late trader, the boards still lit) or a weekend or a holiday (`sky_TRADING_DAY` 0, the hall dark but for a lamp). Key the floor's crowd itself to `sky_MARKET_OPEN`: full while it is 1.
+- There is no session beyond that: no "before the open" or "after the close" signal of its own, and no closing hour, so a day that closes early at 13:00 is told from a full one only by `sky_MARKET_OPEN` going to 0 sooner.
+- A bell at the open or the close is a state, not a moment you can time: ring the opening bell while `sky_MARKET_OPEN` is 1 and `sky_NEW_YORK_HOUR` is below 9.6, and the closing bell while it is still 1 and the hour is 15.9 or more. A bell rung after 16:00 needs `sky_TRADING_DAY` 1 as well, or it rings on holidays; neither closing bell rings at 13:00 on a day that closes early, which is the lesser fault (§8 says how to make such a state a preview).
 - There are no highs (of the day, the year or all time), no history, no volume and no other symbols than the ten: a price, its change today, and whether the prices are fresh. "Bitcoin at a new high" cannot be drawn; "bitcoin up 5 % today" can.
 
 Beside the engine's signals, Ghostty's own `iTime` (seconds, §8) and `iResolution` (the window in pixels) are yours to read. Reach the cursor through `cursorAt()`, `glance()` and `shy()` (§5), and nothing else of Ghostty's.
@@ -601,6 +604,8 @@ A bitmap font of 3 × 5 cells for boards, signs and tapes. A glyph advances 4 ce
 
 ```glsl-signature
 float sky_glyph(vec2 p, vec2 origin, float cell, int code);       // 1 where glyph `code`, its top left at `origin`, is inked, else 0
+float sky_glyphWide(vec2 p, vec2 origin, float cell, int code);   // the same five cells wide: M, N and W that read, the rest centred; a glyph advances 6 cells
+bool sky_wideCell(int code, ivec2 c);                             // whether cell c of a glyph five cells wide is inked
 float sky_line16(vec2 p, vec2 origin, float cell, int text[16]);  // a line of up to 16 glyphs; -1 or 36 is a blank
 float sky_number(vec2 p, vec2 origin, float cell, float value, int width, int decimals);  // a number `width` columns wide, right-aligned
 int sky_numberCode(float value, int width, int decimals, int column);  // the code in one column of such a number
@@ -624,7 +629,17 @@ const int sky_GLYPH_DOWN = 49;
 
 The codes: `0` to `9` are 0 to 9, `A` to `Z` are 10 to 35 (as in base 36: `H` is 17, `O` 24), then space 36, `.` 37, `,` 38, `:` 39, `-` 40, `+` 41, `%` 42, `/` 43, `$` 44, `!` 45, `?` 46, `'` 47, `▲` 48 and `▼` 49. There are no lower-case letters and no `#`. A number is drawn right-aligned in `width` columns, with `decimals` (0 to 4) after a point that takes a column of its own, a minus before its first digit, and its leftmost digits cut where it does not fit; in `sky_numberCode`, column 0 is the leftmost.
 
-**`M`, `N` and `W` do not read.** In this font `M` is an `H` with its bar raised, `N` a `Π` and `W` an `H` with its bar low, and that holds at every size, since a larger cell scales the same 3 × 5 bitmap. Where the words are yours, choose words without them (LAST CALL rather than NOW BOARDING). Names you cannot change (the tickers NDX, MSFT, NVDA, AMZN and META, a flight's code) read only from their context: put them where the context says what they are (a board of tickers, a price beside each), and do not let a word with them carry a meaning nothing else carries, such as the waiting light's.
+**`M`, `N` and `W` in three columns do not read.** In `sky_glyph`'s font `M` is an `H` with its bar raised, `N` a `Π` and `W` an `H` with its bar low, and that holds at every size, since a larger cell scales the same 3 × 5 bitmap. `sky_glyphWide` draws the same codes five cells wide and five tall: `M`, `N` and `W` with strokes of their own, every other glyph its 3 × 5 cells with a blank column either side. Write a line with them at 6 cells a glyph rather than 4, chosen as any other line is (the column `p` is in, `floor((p.x - at.x) / (6.0 * cell))`, picks its one character), so the tickers NDX, MSFT, NVDA, AMZN and META, and any word of yours with those letters, read on their own:
+
+```text
+x...x..xx....x.x.    x...x...xx...xxx...xxx.
+xx..x..x.x...x.x.    xx.xx..x.....x......x..
+x.x.x..x.x....x..    x.x.x...x....xx.....x..
+x..xx..x.x...x.x.    x...x....x...x......x..
+x...x..xx....x.x.    x...x..xx....x......x..
+```
+
+A wide line is half again as long as a narrow one and its narrow letters stand further apart, as on a split-flap board; keep `sky_glyph` for prices and words without the three letters, and use the wide letters where they are. Both cost the same on the bench, and the rule below holds for them together: one call of either in a function.
 
 **One glyph a function.** On the bench (§10) each place in your text that calls `sky_glyph`, `sky_number` or `sky_line16` costs about a millisecond a frame, whether or not any pixel reaches it, so twenty signs each with a call of their own cost more than the rest of a theme. Work out first which one character `p` is over, its code, its place and its ink, and call `sky_glyph` once, at the end of the function that draws your text: one call for a whole board, a sign or a tape, not one for each line or sign. Do not copy the font into your theme to make it cheaper: your copy would not follow the engine's, and on the bench a copy chosen by `?:` cost more than `sky_glyph` itself.
 
@@ -1200,7 +1215,7 @@ Good: one light, in a place on the stage that never changes, large enough to see
 
 Bad: a light a few pixels across; an orange that your world is full of anyway; a blink that is off half the time, so that a still may show nothing; a light only one character carries about, so that it is behind something or off the stage; asking and done told apart only by speed; a light that also comes on for other reasons; words that spell the wait out and blink or invert into dark letters on orange part of the time, so that a still catches them unreadable. A blink may change how strong the light is, never whether it reads: every still shows it lit and its words legible.
 
-Words are welcome (LAST CALL, HALT, FILLED), without an `M`, `N` or `W` (§5), so long as they stay legible in every still and take the light's own colour: orange words while asking, white while done, never the cream or yellow the rest of a board is written in, or the words say nothing the lamp does not. And keep the glow off your other signs: a white glow over a yellow sign beside it washes both out, so give the light room.
+Words are welcome (LAST CALL, HALT, FILLED), with an `M`, `N` or `W` only in `sky_glyphWide` (§5), so long as they stay legible in every still and take the light's own colour: orange words while asking, white while done, never the cream or yellow the rest of a board is written in, or the words say nothing the lamp does not. And keep the glow off your other signs: a white glow over a yellow sign beside it washes both out, so give the light room.
 
 Characters may answer the light too (fyr's keeper climbs to the lantern while it is lit), but the light comes first and must read on its own.
 
@@ -1355,6 +1370,127 @@ float themeWindow(vec2 p, float u) {
 }
 ```
 
+## An idiom: the floor seen from above
+
+A room you look down into, as in Stardew Valley or Pokémon Ruby: a floor people walk about on in every direction, not along a line, with depth and no vanishing point. Fyr's world and the idiom above are side views, a strip of ground seen edge on; this one shows the floor itself.
+
+**The view.** The floor is seen from straight above, as a map is, and every thing on it from straight in front, with its top showing. Nothing gets smaller further off and no line runs to a vanishing point: a tile, a desk or a person is the same size at the back of the room as at the front. Depth comes from two things only. What is further off stands higher on the screen, and what is nearer, lower on the screen, is drawn over what is behind it. The back wall stands straight on above the floor's top edge, its windows and its signs drawn as on any wall.
+
+**The floor is a grid.** Cut it into tiles of a few `u`, find the one tile `p` is on with a subtraction and a `floor()`, and let that tile's hash say what it is: its board's shade, a seam, a slip of paper, a worn patch. That is the windows of §10 laid flat: no loop, every tile its own. Offset every other row by half a tile and boards read as boards.
+
+**Things are boxes with a top and a front.** A desk, a post, a crate, a bench: a box on the floor, its foot the middle of its front edge where it meets the floor. Its front is a rectangle as tall as the thing, straight above the foot; its top a rectangle as deep as the thing, straight above the front. Light the top as the lamps light it from above, print the front a shade darker, and the key plate on the edge between them is what makes a box of it. A person is drawn from the front, as the band's Clawd is, his feet at his foot.
+
+**What is lower is drawn over.** Things stand in lots, rows of slots across the floor, each lot larger than anything that stands in it (§10). A thing covers its own lot and reaches up over the lots behind it, as far as it is tall; it never reaches down. So a pixel can be covered only by what stands in its own row and in the few rows in front of it, as many as the tallest thing reaches over. Draw those rows back to front, the pixel's own first and the nearest last, one call a row for the one lot in it the pixel is in: a short loop over two or three rows, never over the figures, and the nearer always lands over the farther. Draw the things and the people in the same loop, in `resident`: a desk drawn in `scenery` would stand behind everyone, even the man behind it.
+
+**People walk about.** Each one keeps to his own lot, and `iTime` moves him about inside it, across and up and down, so he walks every way across the floor and every frame is still a moment (§8). A walk longer than a lot is a lot made longer (an aisle, a door) or a person whose lot is chosen by time, a few lots along a path, each a place he stands in a while.
+
+**Why it is cheaper than perspective.** In perspective every pixel of the floor must first be turned into a place on it, by a division by its height above the horizon, and everything on it follows at its own scale: the tiles narrow toward the back, each thing and each person is drawn at the size its distance gives, their cells are no longer whole pixels and shimmer, their box tests need the same sum, and which of two things is in front changes with where they stand. Seen from above there is none of that sum: the tile and the lot are a subtraction and a `floor()` away, every thing is one size with a constant box, a character's cells are whole pixels everywhere, and the order is the row's. It is the plainest kind of drawing §10 asks for, cells and hashes and one call each: the view adds no sum of its own to what the things on the floor cost, where perspective adds one to every pixel of it.
+
+A sketch of a hall's floor with trading posts and traders, drawn with the template's `clawd()` (§15). Each lot holds a post, a trader or nothing, as its hash says:
+
+```glsl
+// The floor of a hall seen from above, as in Stardew Valley: its top edge
+// is the foot of the back wall, its tiles as large near as far, and things
+// stand on it in lots, rows of slots each larger than what stands in it.
+struct Floor { vec2 origin; vec2 tile; vec2 lot; };
+
+Floor floorOf(float u) {
+  Floor f;
+  f.origin = vec2(iResolution.x - (STAGE_PX > 0.0 ? STAGE_PX : 0.3 * iResolution.x), 0.3 * iResolution.y);
+  f.tile = vec2(1.5 * u);
+  f.lot = vec2(4.5, 2.0) * u;
+  return f;
+}
+
+// The boards, a tile a cell: each tile's hash picks its shade and whether
+// a slip of paper lies on it, each row's joints half a tile on from the
+// row behind's, and the seams in the key plate. No loop: p asks its tile.
+vec3 planks(vec3 sky, vec2 p, float u, float k, Floor f) {
+  vec2 q = (p - f.origin) / f.tile;
+  if (q.x < 0.0 || q.y < 0.0) return sky;
+  q.x += 0.5 * mod(floor(q.y), 2.0);
+  vec2 c = floor(q);
+  vec2 at = (fract(q) - 0.5) * f.tile;
+  uint h = hashi(int(c.x) * 131 + int(c.y) * 977);
+  vec3 wood = tone(mix(INK_ORANGE, INK_INDIGO, 0.3 + 0.08 * float(h & 3u)), k);
+  wood = mix(wood, keyInk(k), screen(p, 0.15 + 0.1 * float((h >> 2) & 1u), pitch(u), 60.0));
+  if (min(0.5 * f.tile.y - abs(at.y), 0.5 * f.tile.x - abs(at.x)) < 0.06 * u) wood = mix(wood, keyInk(k), 0.6);
+  if ((h >> 4) % 11u == 0u) wood = ink(wood, lift(CREAM, k), box(tumble(at, float(h & 7u), 1.0), vec2(0.3, 0.2) * u), 1.0);
+  return wood;
+}
+
+// A thing on the floor as a box, `foot` the middle of its front edge where
+// it meets the floor, `size` its width, its depth on the floor and its
+// height: 1 on its top, seen from above, 2 on its front, seen from the
+// front, 0 off it. The top lies above the front by the thing's height.
+int boxFace(vec2 p, vec2 foot, vec3 size) {
+  if (abs(p.x - foot.x) > 0.5 * size.x || p.y > foot.y) return 0;
+  if (p.y > foot.y - size.z) return 2;
+  return p.y > foot.y - size.z - size.y ? 1 : 0;
+}
+
+// A trading post: its top lit from above with two screens on it, a band of
+// screens round its front, green or pink as its hash says, and its edges in
+// the key plate.
+vec3 post(vec3 sky, vec2 p, float u, float k, vec2 foot, uint h) {
+  vec3 size = vec3(3.4, 1.0, 1.4) * u;
+  int face = boxFace(p, foot, size);
+  if (face == 0) return sky;
+  vec3 wood = mix(INK_ORANGE, INK_INDIGO, 0.35);
+  vec2 top = vec2(foot.x, foot.y - size.z - 0.5 * size.y);
+  if (face == 1) {
+    vec3 c = lift(mix(wood, CREAM, 0.3), k);
+    vec2 v = vec2(abs(abs(p.x - top.x) - 0.8 * u), abs(p.y - top.y));
+    return v.x < 0.6 * u && v.y < 0.3 * u ? mix(c, keyInk(k), 0.8) : c;
+  }
+  vec3 c = tone(wood, k);
+  float band = abs(p.y - (foot.y - 0.65 * size.z));
+  if (band < 0.25 * u && abs(fract((p.x - foot.x) / (0.8 * u)) - 0.5) < 0.35) c = lift((h & 1u) == 0u ? INK_GREEN : INK_PINK, k);
+  return abs(p.y - (foot.y - size.z)) < 0.08 * u ? mix(c, keyInk(k), 0.7) : c;
+}
+
+// Everything that stands on the floor at p, back to front. A thing reaches
+// up from its foot at most two lots, so only its own row and the row in
+// front of it can cover p: the loop is over those two rows, one call a
+// turn for whatever stands in the one lot of each that p is in, and the
+// nearer row, lower on the screen, is drawn over the farther. Posts and
+// people are drawn here together, so that a post in front of a trader
+// covers him and a trader in front of a post covers it.
+vec3 standing(vec3 sky, vec2 p, float u, float k, Floor f) {
+  if (p.x < f.origin.x || p.y < f.origin.y - 2.0 * f.lot.y) return sky;
+  int col = int(floor((p.x - f.origin.x) / f.lot.x));
+  int row = int(floor((p.y - f.origin.y) / f.lot.y));
+  float cell = max(1.0, floor(0.35 * u));
+  for (int i = 0; i < 2; i++) {
+    int r = row + i;
+    if (r < 0) continue;
+    uint h = hashi(col * 313 + r * 1009);
+    vec2 foot = f.origin + vec2((float(col) + 0.5) * f.lot.x, float(r + 1) * f.lot.y - 0.2 * u);
+    if (h % 4u == 0u) sky = post(sky, p, u, k, foot, h);
+    else if (h % 4u != 1u) {
+      // A trader wandering about his own lot, every way across the floor.
+      float phase = float(h >> 8 & 255u);
+      foot += vec2(1.0 * u * sin(0.3 * iTime + phase), -0.5 * f.lot.y * (0.5 + 0.5 * sin(0.2 * iTime + 2.0 * phase)));
+      sky = clawd(sky, p, floor(foot), cell, k);
+    }
+  }
+  return sky;
+}
+
+// The back wall straight on, from the window's top to the floor; the floor
+// under it.
+vec3 scenery(vec3 sky, vec2 p, float u, float k) {
+  Floor f = floorOf(u);
+  if (p.x < f.origin.x) return sky;
+  if (p.y < f.origin.y) return tone(mix(CREAM, INK_ORANGE, 0.25), k);
+  return planks(sky, p, u, k, f);
+}
+
+vec3 resident(vec3 sky, vec2 p, float u, float k) {
+  return standing(sky, p, u, k, floorOf(u));
+}
+```
+
 ## 13. Previewing, and what goes wrong
 
 ### The tools
@@ -1376,7 +1512,7 @@ Run them from the repository's root, one at a time: they bundle the engine into 
   - `--stage <px>` is the stage in device pixels. The sheets and a plain run are at a scale of 1, a point a pixel, so there it is your `stagePt`.
   - `--width 3024 --height 1964 --stage <twice your stagePt>`: a Retina screen.
   - `--bench 200`: what it costs (§10); with `--rounds 3`, a warm-up round thrown away and three rounds of your theme, `none` and fyr by turns, the ratio the middle one.
-- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<folder>/`, named after the folder you give it: your theme at your stage's width in 37 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes about a quarter of an hour on a quiet machine, more with events, and 30 to 45 minutes while another checkout previews: run it in the background and read its output when it ends. A frame that fails because Chrome was busy is tried four times, half a minute apart, before the sheet stops; if it stops with `Command failed: … Google Chrome` and no `FAIL`, wait for the other preview to end and go on with `KEEP=1`. The scenes, with the time in Stockholm (where the preview stands) and in New York (where the market is):
+- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<folder>/`, named after the folder you give it: your theme at your stage's width in 38 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes about a quarter of an hour on a quiet machine, more with events, and 30 to 45 minutes while another checkout previews: run it in the background and read its output when it ends. A frame that fails because Chrome was busy is tried four times, half a minute apart, before the sheet stops; if it stops with `Command failed: … Google Chrome` and no `FAIL`, wait for the other preview to end and go on with `KEEP=1`. The scenes, with the time in Stockholm (where the preview stands) and in New York (where the market is):
 
 | Frames | Scene | New York, the market |
 |---|---|---|
@@ -1390,11 +1526,12 @@ Run them from the repository's root, one at a time: they bundle the engine into 
 | 26 to 31 | A demo; Linux's coordinates; Claude Code's coloured fields; the lighter sky; a tab without Claude (the terminal alone, no sky at all); the band | closed |
 | 32 to 34 | A command running by day; an edit with three subagents; a read at night with one | closed |
 | 35, 36, 37 | Wednesday: the market open with prices up (16:30); open and down, with a command and two agents (16:30); closed, at night (23:00). For a theme whose manifest does not say `"market": true` they are ordinary frames, and nothing in them is judged as the market's | 11:30, open; 11:30, open; 18:00, closed |
-| 38 on | Each of your events and previews, three frames each: Saturday 15:35, and Saturday 22:00 twice | Saturday, closed |
+| 38 | The market open on a weekday in broad daylight, prices up: Wednesday 10 June, 17:00. In late October the market opens in Stockholm with the sun already low, less than two hours before it sets, so this one frame is in June; for a theme without `"market": true` it is an ordinary summer afternoon | 11:00, open |
+| 39 on | Each of your events and previews, three frames each: Saturday 15:35, and Saturday 22:00 twice | Saturday, closed |
 
 The stand-in terminal is seven lines of text at the top left, a dark status bar near the bottom and a line of green under it. The status bar runs across the stage, 22 pixels tall at y = 862 to 884 in the sheets' 1512 × 982 (twice that, as high up, in a Retina frame), and so do Claude Code's coloured rows (frame 28) and Clawd's band (frame 31), which Ghostty's would not: in Ghostty they are the terminal's cells and stop where the stage begins. They are the stand-in's, not yours; leave no room for them, but do not put the only sight of something that matters there either (Clawd, the waiting light, a state that shows nowhere else), since whoever judges your sheet cannot see under the bar. Look at what stands there with `--zoom` or a Retina frame.
 
-A played event ignores its `when`, in the sheet (frames 38 on draw each of yours by day and by night) as in `/solar event`, so the person can see a day-only event at night: make it look right there too, or at least not wrong.
+A played event ignores its `when`, in the sheet (frames 39 on draw each of yours by day and by night) as in `/solar event`, so the person can see a day-only event at night: make it look right there too, or at least not wrong.
 
 **Reading an error.** The compiler names a line of the whole shader, which the preview leaves in `.preview/sky.glsl`, your text near its end: the line it names, less 12, is that file's line. To find your own file's line, look up in `.preview/sky.glsl` the line where your `theme.glsl`'s first line sits (`grep -n` for it): your line is that file's line, less that one, plus 1. The lint and the compiler check different things: run both.
 
@@ -1438,7 +1575,7 @@ A theme is done when every line below holds. The first six are hard: one that fa
 6. **It defines nothing of the engine's**, which the lint sees to, and draws nothing outside its own business: not the sky, not the text.
 7. **Clawd lives there, recognisably,** in the band's shape and coral (§6): in frame 01 at its own size, someone who has never seen the theme points at him within five seconds, however many other Clawds stand there. And the theme reads in five seconds as the paragraph it was written from, at 1512 × 982, with the most room given to what the paragraph names first (§6).
 8. **Its places read.** Where the theme has an outdoors and an indoors, both show in every frame, with the entrance between them clear in five seconds (the idiom after §12).
-9. **It answers what it reads.** What it takes from the engine shows in the frames made for it: what Claude is doing (32 to 34, each kind your theme answers told apart at a glance in the whole frame, not only in a zoom, §4), the context window (15 to 18, or the engine's wastebasket there for a theme that leaves it to the engine), the market for a theme that shows it (35 to 37), and its own events and previews (38 on), each noticed in its day frame by someone not told where to look (§12).
+9. **It answers what it reads.** What it takes from the engine shows in the frames made for it: what Claude is doing (32 to 34, each kind your theme answers told apart at a glance in the whole frame, not only in a zoom, §4), the context window (15 to 18, or the engine's wastebasket there for a theme that leaves it to the engine), the market for a theme that shows it (35 to 38), and its own events and previews (39 on), each noticed in its day frame by someone not told where to look (§12).
 10. **It is printed.** The house style (§6): the inks, halftone tones, the key plate, no black, the night an indigo plate, the far hazy.
 11. **Every moment is a still.** Ten frames at random `--time` values look like moments, not like glitches (§8).
 12. **Day, night and weather agree.** Day and night, dusk, rain and snow (frames 01, 05, 08, 10, 12, 13) look like the same place at another time; nothing indoors gets wet.

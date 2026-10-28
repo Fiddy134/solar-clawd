@@ -58,6 +58,15 @@ export const GLYPHS: readonly (readonly [string, readonly string[]])[] = [
   ['▼', ['...', 'xxx', '.x.', '...', '...']],
 ]
 
+// M, N and W five cells wide, as sky_glyphWide draws them: in three
+// columns they read as H with its bar raised, a Π and H with its bar low,
+// at any size. Every other glyph keeps its three columns there, centred.
+export const WIDE_GLYPHS: readonly (readonly [string, readonly string[]])[] = [
+  ['M', ['x...x', 'xx.xx', 'x.x.x', 'x...x', 'x...x']],
+  ['N', ['x...x', 'xx..x', 'x.x.x', 'x..xx', 'x...x']],
+  ['W', ['x...x', 'x...x', 'x.x.x', 'xx.xx', 'x...x']],
+]
+
 // The signs' names, for the codes after Z.
 const SIGNS: Record<string, string> = {
   ' ': 'SPACE', '.': 'DOT', ',': 'COMMA', ':': 'COLON', '-': 'MINUS', '+': 'PLUS', '%': 'PERCENT',
@@ -67,6 +76,24 @@ const SIGNS: Record<string, string> = {
 // A glyph's cells as a uint's bits: bit row * 3 + column.
 export function packGlyph(rows: readonly string[]): number {
   return rows.reduce((bits, row, y) => [...row].reduce((sum, ch, x) => (ch === 'x' ? sum + 2 ** (y * 3 + x) : sum), bits), 0)
+}
+
+// A wide glyph's cells as a uint's bits: bit row * 5 + column.
+export function packWide(rows: readonly string[]): number {
+  return rows.reduce((bits, row, y) => [...row].reduce((sum, ch, x) => (ch === 'x' ? sum + 2 ** (y * 5 + x) : sum), bits), 0)
+}
+
+// The code of each of WIDE_GLYPHS, in its order.
+const WIDE_CODES = WIDE_GLYPHS.map(([ch]) => GLYPHS.findIndex(([glyph]) => glyph === ch))
+
+// Whether cell (x, y) of glyph `code` is inked as sky_glyphWide draws it,
+// five columns wide: M, N and W their own, the rest centred in them.
+export function wideCell(code: number, x: number, y: number): boolean {
+  if (code < 0 || code >= GLYPHS.length || x < 0 || y < 0 || x > 4 || y > 4) return false
+  const wide = WIDE_CODES.indexOf(code)
+  if (wide >= 0) return WIDE_GLYPHS[wide]![1][y]![x] === 'x'
+
+  return x >= 1 && x <= 3 && GLYPHS[code]![1][y]![x - 1] === 'x'
 }
 
 // A character's code, -1 for one the font has not (a blank).
@@ -128,6 +155,26 @@ float sky_glyph(vec2 p, vec2 origin, float cell, int code) {
   vec2 v = (p - origin) / cell;
   if (v.x < 0.0 || v.y < 0.0 || v.x >= 3.0 || v.y >= 5.0) return 0.0;
   return sky_glyphCell(code, ivec2(floor(v))) ? 1.0 : 0.0;
+}
+
+// M, N and W five cells wide, bit row * 5 + column, for sky_glyphWide.
+const uint sky_WIDE_FONT[${WIDE_GLYPHS.length}] = uint[${WIDE_GLYPHS.length}](${WIDE_GLYPHS.map(([, rows]) => `${packWide(rows)}u`).join(', ')});
+
+// Whether cell c of glyph \`code\` is inked in the wide letters, five
+// columns across: M, N and W drawn wide, every other glyph centred.
+bool sky_wideCell(int code, ivec2 c) {
+  if (c.x < 0 || c.y < 0 || c.x > 4 || c.y > 4) return false;
+  int wide = code == ${WIDE_CODES[0]} ? 0 : code == ${WIDE_CODES[1]} ? 1 : code == ${WIDE_CODES[2]} ? 2 : -1;
+  if (wide < 0) return sky_glyphCell(code, c - ivec2(1, 0));
+  return ((sky_WIDE_FONT[wide] >> uint(c.y * 5 + c.x)) & 1u) == 1u;
+}
+
+// Glyph \`code\` five cells wide and five tall, its top left at \`origin\`,
+// as sky_glyph: M, N and W read, the rest centred. A glyph advances 6 cells.
+float sky_glyphWide(vec2 p, vec2 origin, float cell, int code) {
+  vec2 v = (p - origin) / cell;
+  if (v.x < 0.0 || v.y < 0.0 || v.x >= 5.0 || v.y >= 5.0) return 0.0;
+  return sky_wideCell(code, ivec2(floor(v))) ? 1.0 : 0.0;
 }
 
 // A line of up to 16 glyphs from \`origin\`, as sky_glyph; -1 or 36 for a blank.

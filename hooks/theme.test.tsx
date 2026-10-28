@@ -222,6 +222,8 @@ test('the contract is what contract 1 says it is', () => {
     'vec3 sprite(vec3 sky, vec2 p, vec2 origin, float cell, uint rows[8], ivec2 size, bool flip, vec3 palette[8], float k)',
     'bool sky_glyphCell(int code, ivec2 c)',
     'float sky_glyph(vec2 p, vec2 origin, float cell, int code)',
+    'bool sky_wideCell(int code, ivec2 c)',
+    'float sky_glyphWide(vec2 p, vec2 origin, float cell, int code)',
     'float sky_line16(vec2 p, vec2 origin, float cell, int text[16])',
     'int sky_numberCode(float value, int width, int decimals, int column)',
     'float sky_number(vec2 p, vec2 origin, float cell, float value, int width, int decimals)',
@@ -253,7 +255,7 @@ test('the contract is what contract 1 says it is', () => {
     'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
     'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
     'sky_QUOTE_COUNT', 'sky_BTC', 'sky_ETH', 'sky_NDX', 'sky_AAPL', 'sky_MSFT', 'sky_NVDA', 'sky_GOOGL', 'sky_AMZN', 'sky_META', 'sky_TSLA',
-    'sky_QUOTE_PRICE', 'sky_QUOTE_CHANGE', 'sky_QUOTES_FRESH', 'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR',
+    'sky_QUOTE_PRICE', 'sky_QUOTE_CHANGE', 'sky_QUOTES_FRESH', 'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR', 'sky_NEW_YORK_WEEKDAY', 'sky_TRADING_DAY',
   ])
   const text = skyShader(params, FYR)
   for (const signal of THEME_SIGNALS) expect(text).toMatch(new RegExp(`\\bconst \\w+ ${signal}\\b`))
