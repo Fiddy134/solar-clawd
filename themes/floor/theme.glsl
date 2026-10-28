@@ -69,7 +69,7 @@ Market marketOf() {
   bool open = sky_MARKET_OPEN > 0.5;
   // Full while it trades; filling from half past six to the bell and
   // emptying in the hour after the close on a trading day; else empty.
-  m.fill = open ? 0.95 : !trading ? 0.0 : ny >= 6.5 && ny < 9.5 ? mix(0.3, 0.8, (ny - 6.5) / 3.0) : ny >= 16.0 && ny < 17.0 ? 0.5 * (17.0 - ny) : 0.0;
+  m.fill = open ? 1.0 : !trading ? 0.0 : ny >= 6.5 && ny < 9.5 ? mix(0.2, 0.55, (ny - 6.5) / 3.0) : ny >= 16.0 && ny < 17.0 ? 0.5 * (17.0 - ny) : 0.0;
   m.staffed = open || (trading && ny >= 6.0 && ny < 19.0);
   m.late = trading && !open && ny >= 16.0 && ny < 22.0;
   m.cleaning = m.fill < 0.2;
@@ -670,9 +670,9 @@ float traderChance(Hall h, Market m, int row, float x) {
   if (row != 7 && abs(x - laneOf(h, row)) < 1.9 * h.u) return 0.0;
   bool isPostRow = row == 3 || row == 7 || row == 11;
   if (isPostRow && postGap(h, row, x) < 3.6 * h.u) return 0.0;
-  if (row % 4 == 1) return 0.3 * m.fill;
-  if (row % 4 == 0 && row > 0 && postGap(h, row - 1, x) < 3.2 * h.u) return 0.85 * m.fill;
-  return 0.35 * m.fill;
+  if (row % 4 == 1) return 0.4 * m.fill;
+  if (row % 4 == 0 && row > 0 && postGap(h, row - 1, x) < 3.2 * h.u) return 0.95 * m.fill;
+  return 0.5 * m.fill;
 }
 
 // Who stands where p is, or nobody, chosen by where p is so that the whole
@@ -805,7 +805,7 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
   int pick = int((hs >> 20) % 7u);
   w.coat = isAgent ? INK_YELLOW : pick == 0 ? INK_BLUE : pick == 1 ? INK_GREEN : pick == 2 ? INK_VIOLET : pick == 3 ? RED : pick == 4 ? INK_PINK : pick == 5 ? mix(CREAM, INK_BLUE, 0.12) : NAVY;
   int kit = int((hs >> 24) & 7u);
-  w.gear = isAgent || kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : kit == 4 ? GEAR_CAP : GEAR_NONE;
+  w.gear = isAgent || kit == 4 ? GEAR_CAP : kit == 2 || kit == 3 ? GEAR_HEADSET : kit < 2 ? GEAR_SHADES : GEAR_NONE;
   w.look = isAisle ? (dir > 0.0 ? 1 : -1) : int((mv >> 9) % 3u) - 1;
   return w;
 }
@@ -823,8 +823,8 @@ int postQuote(int which) { return which == 7 ? int(mod(floor(iTime / 10.0), 2.0)
 // number on a brass plate, a coffee on it; monitors stand on its
 // back edge. Its front is a band of screens with its stock's name and price,
 // tinted green or red by its day, dim once the floor has closed (but for the
-// late trader's post and the coin desk); marching bars while Claude is busy
-// with something else. The desk is lower, with two laptops. One
+// late trader's post and the coin desk); a page of text while Claude reads
+// and marching bars while it is busy with something else, at any hour. The desk is lower, with two laptops. One
 // sky_glyphWide for its letters.
 vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, float nt) {
   if (p.x < h.inner || p.y < h.floorY + 4.2 * u || p.y > h.floorY + 24.4 * u) return sky;
@@ -894,9 +894,16 @@ vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, float 
       bool isKnown = sky_QUOTE_PRICE[symOf(r)] > 0.0;
       float heat = isOn && isKnown ? clamp(abs(chg) / 3.0, 0.25, 0.7) : 0.0;
       col = mix(panel, tone(chg < 0.0 ? RED : INK_GREEN, k) * 0.7, heat);
-      if (tool == sky_TOOL_OTHER && isOn && !isDesk) {
+      if (tool == sky_TOOL_OTHER && !isDesk) {
         bool isBar = fract((q.x - iTime * 1.5 * u) / (0.9 * u)) < 0.45 && abs(q.y + 0.5 * fh) < 0.25 * fh;
         col = isBar ? lift(mix(INK_BLUE, CREAM, 0.5), k) : tone(mix(INK_BLUE, INK_INDIGO, 0.5), k);
+      } else if (tool == sky_TOOL_READ && !isDesk) {
+        // A page of text scrolling up, every post's screen lit with it.
+        float ly = q.y + mod(iTime * 0.6 * u, 64.0 * 0.3 * u);
+        float n = floor(ly / (0.3 * u));
+        float reach = (0.45 + 0.5 * rand(int(mod(n, 64.0)) * 7 + which)) * 2.0 * (hw - 0.45 * u);
+        bool isLine = fract(ly / (0.3 * u)) < 0.4 && q.x + hw - 0.45 * u < reach;
+        col = isLine ? keyInk(k) : lift(mix(CREAM, INK_BLUE, 0.06), k);
       } else {
         float lineTop = foot + sy0 + 0.5 * (-0.18 * u - sy0 - 11.0 * g);
         int line = p.y < lineTop + 5.5 * g ? 0 : 1;
@@ -1016,23 +1023,24 @@ vec3 frontStrip(vec3 sky, vec2 p, float u, float k, Hall h, float fall, bool hum
   return sky;
 }
 
-// While a command runs, BUY and SELL in bubbles over the traders at the
-// posts' fronts, the same lots whoAt fills, three in four of them
-// shouting. One sky_glyph for every bubble.
-vec3 shouts(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int agents) {
+// While a command runs, BUY and SELL in bubbles over the traders of every
+// other row, the same lots whoAt fills, but none hidden behind a post; three
+// in four of them shouting, over a post's screens too. One sky_glyph for
+// every bubble.
+vec3 shouts(vec3 sky, vec2 p, float u, float k, Hall h, Market m) {
   if (p.x < h.inner) return sky;
   float lot = h.width / 8.0;
-  float base = h.floorY + 5.0 * h.row - 2.45 * u;
-  float j = clamp(floor((p.y - base) / (4.0 * h.row) + 0.5), 0.0, 2.0);
-  float by = base + j * 4.0 * h.row;
+  float base = h.floorY + h.row - 2.45 * u;
+  float j = clamp(floor((p.y - base) / (2.0 * h.row) + 0.5), 0.0, 6.0);
+  float by = base + j * 2.0 * h.row;
   if (abs(p.y - by) > 1.0 * u) return sky;
-  int row = 4 + 4 * int(j);
+  int row = 2 * int(j);
   int col = int(floor((p.x - h.inner) / lot));
   float cx = h.inner + (float(col) + 0.5) * lot;
   uint hs = hashi(int(mod(float(col), 512.0)) * 31 + row * 977 + 11);
-  bool isAgent = row == 12 && col < agents;
-  if (!isAgent && float(hs & 1023u) / 1023.0 >= traderChance(h, m, row, cx)) return sky;
-  if (((hs >> 12) & 3u) == 0u || cx < h.inner + 0.9 * u) return sky;
+  bool isAgent = row == 12 && col < sky_agents();
+  if ((!isAgent && float(hs & 1023u) / 1023.0 >= traderChance(h, m, row, cx)) || ((row + 1) % 4 == 3 && postGap(h, row + 1, cx) < 3.3 * u)) return sky;
+  if (((hs >> 12) & 3u) == 0u || cx < h.inner + 0.9 * u || (row == 10 && abs(cx - h.inner - 5.0 / 6.0 * h.width) < 2.6 * u)) return sky;
   bool isSell = ((hs >> 14) & 1u) == 1u;
   vec2 bq = p - vec2(cx, by);
   float bubble = min(box(bq, vec2(1.1, 0.35) * u) - 0.12 * u, max(abs(bq.x + 0.25 * u - 0.5 * (bq.y - 0.47 * u)) - 0.1 * u, abs(bq.y - 0.6 * u) - 0.15 * u));
@@ -1049,9 +1057,10 @@ vec3 shouts(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int agents) {
 
 // Paper in the hall's air: a few order slips fluttering down while the floor
 // trades, a storm of them while Claude edits, confetti in every ink while a
-// bell rings or bitcoin is 5 % or more up on its day. One cell, one hash,
-// one slip, the cells falling as one.
-vec3 slips(vec3 sky, vec2 p, float u, float k, Hall h, float density, bool party) {
+// bell rings or bitcoin is 5 % or more up on its day, and notes drifting
+// over the whole floor while it hums. One cell, one hash, one slip, the
+// cells falling as one.
+vec3 slips(vec3 sky, vec2 p, float u, float k, Hall h, float density, bool party, bool notes) {
   if (density <= 0.0 || p.x < h.inner || p.y < h.wallTop || p.y > h.front) return sky;
   float cs = 1.6 * u;
   vec2 q = vec2(p.x - h.inner, p.y - h.wallTop - mod(iTime * 1.3 * u, 64.0 * cs));
@@ -1059,7 +1068,8 @@ vec3 slips(vec3 sky, vec2 p, float u, float k, Hall h, float density, bool party
   uint hs = hashi(int(mod(cell.y, 64.0)) * 97 + int(cell.x) * 13 + 5);
   if (float(hs & 1023u) / 1023.0 > density) return sky;
   vec2 at = (cell + vec2(0.25 + 0.5 * float((hs >> 10) & 255u) / 255.0, 0.5)) * cs + vec2(0.25 * u * sin(iTime * 1.7 + float(hs & 63u)), 0.0);
-  float slip = paperSlip(q - at, iTime * (1.2 + 0.25 * float((hs >> 18) & 7u)) + float(hs & 31u), u);
+  vec2 nq = q - at;
+  float slip = notes ? min(length(nq / vec2(1.3, 1.0)) - 0.22 * u, min(max(abs(nq.x - 0.26 * u) - 0.05 * u, abs(nq.y + 0.42 * u) - 0.42 * u), segment(nq, vec2(0.26 * u, -0.84 * u), vec2(0.55 * u, -0.5 * u)) - 0.06 * u)) : paperSlip(nq, iTime * (1.2 + 0.25 * float((hs >> 18) & 7u)) + float(hs & 31u), u);
   int pick = int((hs >> 21) % 5u);
   vec3 color = !party ? CREAM : pick == 0 ? INK_PINK : pick == 1 ? INK_YELLOW : pick == 2 ? INK_BLUE : pick == 3 ? INK_GREEN : INK_VIOLET;
   sky = ink(sky, lift(color, k), slip, 0.95);
@@ -1072,7 +1082,7 @@ vec3 slips(vec3 sky, vec2 p, float u, float k, Hall h, float density, bool party
 // shoulders, his head down with its horns, four legs striding and his tail
 // lashed up, in bronze outlined in the key plate.
 vec3 bull(vec3 sky, vec2 p, float u, float k, Hall h, float t) {
-  float s = 0.8 * u;
+  float s = 1.25 * u;
   float run = 0.5 - 0.5 * cos(2.0 * PI * t);
   float dir = t < 0.5 ? 1.0 : -1.0;
   vec2 at = vec2(mix(h.left - 2.0 * s, iResolution.x + 3.0 * s, run), h.floorY + 9.6 * h.row);
@@ -1134,6 +1144,9 @@ vec3 resident(vec3 sky, vec2 p, float u, float k) {
   float runT;
   bool humming = eventUp(0, seed, t);
   bool charging = eventUp(1, seed, runT);
+  // A command, the bell and the events bring their own crowd onto an empty
+  // floor: the hall shouts, cheers and hums with people in it.
+  if (tool == sky_TOOL_COMMAND || m.bell > 0.5 || humming || charging) m.fill = max(m.fill, 0.75);
   int beat = int(floor(iTime * 2.0)) % 2;
   sky = figure(sky, p, whoAt(p, h, m, sky_agents(), crowdPose(m, tool, humming, charging), state, residentPose(m, tool, humming)), k, beat);
   sky = post(sky, p, u, k, h, m, tool, nt);
@@ -1141,10 +1154,10 @@ vec3 resident(vec3 sky, vec2 p, float u, float k) {
   float fall = THEME_FORCE == 2 ? (age < 50.0 ? smoothstep(0.0, 1.4, age) : 0.0) : sky_QUOTE_PRICE[sky_NDX] > 0.0 && sky_QUOTE_CHANGE[sky_NDX] < -2.0 ? 1.0 : 0.0;
   sky = frontStrip(sky, p, u, k, h, fall, humming, contextFish(), state, nt);
   if (charging) sky = bull(sky, p, u, k, h, runT);
-  if (tool == sky_TOOL_COMMAND) sky = shouts(sky, p, u, k, h, m, sky_agents());
+  if (tool == sky_TOOL_COMMAND) sky = shouts(sky, p, u, k, h, m);
   bool party = m.bell > 0.5 || (sky_QUOTE_PRICE[sky_BTC] > 0.0 && sky_QUOTE_CHANGE[sky_BTC] >= 5.0);
-  float density = tool == sky_TOOL_EDIT ? 0.42 : party ? 0.4 : m.fill > 0.9 ? 0.03 : 0.0;
-  return slips(sky, p, u, k, h, density, party);
+  float density = humming ? 0.3 : tool == sky_TOOL_EDIT ? 0.42 : party ? 0.4 : m.fill > 0.9 ? 0.03 : 0.0;
+  return slips(sky, p, u, k, h, density, party, humming);
 }
 
 // The chest thump (0) and the bull run (1) are drawn indoors by resident(),
