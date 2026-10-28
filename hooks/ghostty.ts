@@ -1,8 +1,8 @@
-import type { EngineInterface } from 'claude-code'
+import type { EngineInterface, HookStream, ProcessSpawnChunk, ProcessSpawnResult } from 'claude-code'
 
 import { field, number } from './json'
 import { markOf, UNMARK_TAB } from './mark'
-import { asPace, canTick, nextTickAt, PACE_HZ, skyRules } from './pace'
+import { asPace, canTick, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
 import type { ShaderParams } from './shader'
 import { staleFiles } from './tidy'
@@ -70,9 +70,9 @@ export type Ghostty = {
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
-  // The chain of ticks: the moment its grid of frames began, whether it
-  // runs, and the mark being written, which the session's end waits on.
-  ticks: { origin: number; isRunning: boolean; writing: Promise<void> | null }
+  // The helper that ticks (startTicks), the mark it writes, and its start,
+  // which stopping it waits on; null while the sky does not tick.
+  ticks: { helper: HookStream<ProcessSpawnChunk, ProcessSpawnResult>; mark: string; started: Promise<void> } | null
   written: {
     shader: string
     include: string
@@ -335,37 +335,71 @@ async function writeGhosttySky(
   }
   written.include = include
   if (written.isReloadOwed) written.isReloadOwed = !(await reloadGhostty($, ghostty))
-  written.isTicking = isWanted && ghostty.isIncluded && rules.isTicking
+  written.isTicking = isWanted && ghostty.isIncluded && rules.isTicking && !written.isEnded
   if (written.isTicking) startTicks($, ghostty)
+  else await stopTicks(ghostty)
 }
 
-// Writes the tab's mark PACE_HZ times a second while the sky ticks, on a
+// The helper's loop: the tab's mark written PACE_HZ times a second on a
 // grid of frames held against the clock, so that a late write puts no
-// later one off and a tick woken long after its time does not make up for
-// the ones it missed. Each wakes Ghostty, which draws a frame of the sky.
-// Stops by itself once the sky ticks no more or the session has ended.
+// later one off and a wake long after its time does not make up for the
+// ones it missed; zselect waits in hundredths. Each write wakes Ghostty,
+// which draws a frame of the sky. It holds the tty open, says so once on
+// its output, and ends by itself when a write fails (the tab has closed)
+// or within a second of Claude Code ending without stopping it.
+export const TICKER = `zmodload zsh/zselect zsh/datetime zsh/mathfunc || exit 1
+tty=$1 step=$(( 1.0 / $2 )) mark=$3 parent=$PPID second=$SECONDS
+exec 3>>$tty || exit 1
+print ticking
+next=$EPOCHREALTIME
+while :; do
+  print -rn -u3 -- $mark || exit 0
+  if (( SECONDS != second )); then
+    second=$SECONDS
+    kill -0 $parent 2>/dev/null || exit 0
+  fi
+  next=$(( next + step ))
+  (( next <= EPOCHREALTIME )) && next=$(( EPOCHREALTIME + step - fmod(EPOCHREALTIME - next, step) ))
+  wait=$(( int((next - EPOCHREALTIME) * 100 + 0.5) ))
+  (( wait > 0 )) && zselect -t $wait
+done
+`
+
+// Ticks the sky: one zsh beside Claude Code writes the tab's mark PACE_HZ
+// times a second (TICKER). Written from inside Claude Code the same ticks
+// cost about 9 % of a core live, the helper about 1 % in its own process
+// (docs/superpowers/plans/2026-10-27-himlens-takt.md, Task 5). The mark
+// travels as an argument, so a new mark starts a new helper, once the old
+// one is gone; the mark changes a few times an hour. Its output is read
+// only up to the word that it ticks: the engine keeps the child until the
+// stream is closed (stopTicks) or the module unloads.
 export function startTicks($: EngineInterface, ghostty: Ghostty): void {
-  const { ticks, written } = ghostty
-  if (ticks.isRunning) return
-  ticks.isRunning = true
-  const tick = async (): Promise<void> => {
-    if (!written.isTicking || written.isEnded) {
-      ticks.isRunning = false
-      return
-    }
-    ticks.writing = markTab($, ghostty, written.mark)
-    await ticks.writing
-    ticks.writing = null
-    const now = await $.clock.now()
-    $.clock.after(Math.max(1, nextTickAt(now, ticks.origin, PACE_HZ) - now), () => void tick().catch(stop))
-  }
-  const stop = () => {
-    ticks.isRunning = false
-  }
-  void (async () => {
-    ticks.origin = await $.clock.now()
-    $.clock.after(Math.round(1000 / PACE_HZ), () => void tick().catch(stop))
-  })().catch(stop)
+  const { tty, written } = ghostty
+  if (tty === null || ghostty.ticks?.mark === written.mark) return
+  const old = ghostty.ticks
+  const helper = $.process.spawn({ argv: ['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', tty, String(PACE_HZ), written.mark] })
+  const started = (async () => {
+    if (old !== null) await stop(old)
+    const first = await helper.next()
+    // Ended before it ticked (no tty, no zsh): the next update tries again.
+    if (first.done && ghostty.ticks?.helper === helper) ghostty.ticks = null
+  })().catch(() => {
+    if (ghostty.ticks?.helper === helper) ghostty.ticks = null
+  })
+  ghostty.ticks = { helper, mark: written.mark, started }
+}
+
+// The sky ticks no more: the helper is ended, and gone when this resolves.
+export async function stopTicks(ghostty: Ghostty): Promise<void> {
+  const { ticks } = ghostty
+  if (ticks === null) return
+  ghostty.ticks = null
+  await stop(ticks)
+}
+
+async function stop(ticks: NonNullable<Ghostty['ticks']>): Promise<void> {
+  await ticks.started
+  await ticks.helper.return(undefined as never).catch(() => undefined)
 }
 
 // The session is ending: its heartbeat goes, and the sky with it unless
@@ -374,7 +408,7 @@ export function startTicks($: EngineInterface, ghostty: Ghostty): void {
 export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason: string): Promise<void> {
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
-  await ghostty.ticks.writing?.catch(() => undefined)
+  await stopTicks(ghostty)
   await markTab($, ghostty, UNMARK_TAB)
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty

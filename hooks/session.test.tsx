@@ -6,7 +6,9 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
-import { UNMARK_TAB } from './mark'
+import { markOf, UNMARK_TAB } from './mark'
+import { TICKER } from './ghostty'
+import { PACE_HZ } from './pace'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
 import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
@@ -921,6 +923,7 @@ async function paceWorld($: Engine, on: On, version: string | null, config: stri
   const clock = mock.clock(on, { now: start })
   const world = ghosttyWorld(on, idle)
   world.tick(start)
+  world.helpersOn(clock)
   if (version !== null) world.env.set('TERM_PROGRAM_VERSION', version)
   if (config !== null) world.files.set(CONFIG, { text: config, mtimeMs: start })
   on('classic.Notification', () => ({}))
@@ -1020,7 +1023,8 @@ test('on Linux the pace stays as it is, and nothing is written for it', async ($
 
 // A Ghostty 1.3.1 session on a Mac showing the sky, at this pace, with or
 // without the vsync line, with another app in front; and how many times the
-// tab's mark is written over a stretch of time.
+// tab's mark is written over a stretch of time, by the session itself or
+// by its helper, PACE_HZ times a second for as long as one runs.
 async function tickWorld($: Engine, on: On, pace: 'full' | 'spar', isVsyncOff: boolean, version: string | null = '1.3.1', idle = { value: 1 }) {
   const world = await paceWorld($, on, version, 'font-size = 14\n', idle)
   await world.solar('ghostty')
@@ -1028,11 +1032,17 @@ async function tickWorld($: Engine, on: On, pace: 'full' | 'spar', isVsyncOff: b
   world.world.files.set(SETTINGS, { text: JSON.stringify({ pace }), mtimeMs: start })
   if (isVsyncOff) world.world.files.set(VSYNC, { text: 'window-vsync = false\n', mtimeMs: start })
   await world.clock.advance(11_000)
+  const written = () => {
+    const now = world.clock.now()
+    const ticked = world.world.helpers.reduce((sum, h) => sum + Math.floor(((h.to ?? now) - h.from) * PACE_HZ / 1000), 0)
+
+    return world.world.writes.filter(path => path === TTY).length + ticked
+  }
   const marks = async (ms: number) => {
-    const before = world.world.writes.filter(path => path === TTY).length
+    const before = written()
     await world.clock.advance(ms)
 
-    return world.world.writes.filter(path => path === TTY).length - before
+    return written() - before
   }
   const include = () => world.world.files.get(`${RUNTIME}/solar-clawd.ghostty`)?.text ?? ''
   const shader = () => world.world.files.get(`${RUNTIME}/sky.glsl`)?.text ?? ''
@@ -1040,8 +1050,11 @@ async function tickWorld($: Engine, on: On, pace: 'full' | 'spar', isVsyncOff: b
   return { ...world, marks, include, shader }
 }
 const within = (count: number, expected: number) => Math.abs(count - expected) <= 1
+// While a helper's stream is open the test kit's clock moves slowly in
+// real time (about 50 ms a second of the clock), so tests that tick get longer.
+const TICKING = { timeoutMs: 30_000 }
 
-test('full with the vsync line ticks the mark 24 times a second, as the animation false', async ($, on) => {
+test('full with the vsync line ticks the mark 24 times a second, as the animation false', TICKING, async ($, on) => {
   const idle = { value: 1 }
   const { world, marks, include, shader, clock } = await tickWorld($, on, 'full', true, '1.3.1', idle)
   world.power.text = "Now drawing from 'Battery Power'\n"
@@ -1058,7 +1071,7 @@ test('full with the vsync line ticks the mark 24 times a second, as the animatio
   expect(within(await marks(1_000), 24)).toBe(true)
 })
 
-test('spar ticks only in front while something moves, and the sweep behind', async ($, on) => {
+test('spar ticks only in front while something moves, and the sweep behind', TICKING, async ($, on) => {
   const { world, marks, solar, clock } = await tickWorld($, on, 'spar', true)
   await solar('event dolphin')
   await clock.advance(4_000)
@@ -1099,9 +1112,10 @@ test('on Linux the sky ticks not, whatever the pace and the vsync file say', asy
   const before = world.writes.filter(path => path === TTY).length
   await clock.advance(10_000)
   expect(world.writes.filter(path => path === TTY).length - before).toBeLessThanOrEqual(1)
+  expect(world.helpers).toEqual([])
 })
 
-test('another session changes the pace: this one follows within seconds', async ($, on) => {
+test('another session changes the pace: this one follows within seconds', TICKING, async ($, on) => {
   const { world, marks, solar, include, clock } = await tickWorld($, on, 'full', true)
   await solar('event dolphin')
   await clock.advance(1_000)
@@ -1118,7 +1132,7 @@ test('another session changes the pace: this one follows within seconds', async 
   expect(await marks(5_000)).toBeLessThanOrEqual(1)
 })
 
-test('hidden, or ended, the sky ticks no more, and the last word to the tab is its unmarking', async ($, on) => {
+test('hidden, or ended, the sky ticks no more, and the last word to the tab is its unmarking', TICKING, async ($, on) => {
   const { world, marks, solar, clock } = await tickWorld($, on, 'full', true)
   expect(within(await marks(1_000), 24)).toBe(true)
   await solar('')
@@ -1134,6 +1148,24 @@ test('hidden, or ended, the sky ticks no more, and the last word to the tab is i
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
   expect(await marks(5_000)).toBe(0)
+})
+
+test('one zsh beside Claude Code ticks, with the mark as its argument: a new mark is a new helper, and never two at once', TICKING, async ($, on) => {
+  const { world, solar, clock } = await tickWorld($, on, 'full', true)
+  const { helpers } = world
+  expect(helpers.length).toBe(1)
+  expect(helpers[0]!.argv).toEqual(['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', TTY, '24', markOf(null)])
+  expect(helpers[0]!.to).toBe(null)
+  await solar('catch')
+  await clock.advance(3_100)
+  const marks = helpers.map(h => h.argv.at(-1))
+  expect(marks.at(-1)).toBe(world.files.get(TTY)?.text)
+  expect(new Set(marks).size).toBe(marks.length)
+  expect(helpers.filter(h => h.to === null).length).toBe(1)
+  // Each ended before the next began writing, or as it began.
+  for (let i = 1; i < helpers.length; i++) expect(helpers[i - 1]!.to!).toBeLessThanOrEqual(helpers[i]!.from + 1)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(helpers.every(h => h.to !== null)).toBe(true)
 })
 
 test('on Linux the tab is a pts, and its mark is written there', async ($, on) => {

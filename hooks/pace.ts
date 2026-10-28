@@ -78,13 +78,3 @@ export function skyRules(o: {
 
   return { animation: 'false', isLight: o.isOnBattery || isAway, isTicking }
 }
-
-// When the tick after `now` is due: the next point of a grid of frames
-// from `origin`, so a late tick puts no later one off, and one woken long
-// after its time is one tick, not those it missed.
-export function nextTickAt(now: number, origin: number, hz: number): number {
-  const frame = 1000 / hz
-  const next = origin + (Math.floor((now - origin) / frame) + 1) * frame
-
-  return next > now ? next : next + frame
-}

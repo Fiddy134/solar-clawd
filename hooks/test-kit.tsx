@@ -77,6 +77,22 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     }
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
+  // The helpers started (startTicks's zsh), each with the moments it ran
+  // from and to (null while it runs), on the clock `helpersOn` is given:
+  // it says it ticks, and ends when the mod closes its stream.
+  const helpers: { argv: string[]; from: number; to: number | null }[] = []
+  let helperClock: ReturnType<typeof mock.clock> | null = null
+  on('process.spawn', async function* (_, e) {
+    const helper = { argv: [...e.argv], from: helperClock?.now() ?? now, to: null as number | null }
+    helpers.push(helper)
+    try {
+      yield { stream: 'stdout' as const, text: 'ticking\n' }
+    } finally {
+      helper.to = helperClock?.now() ?? now
+    }
+
+    return { value: { code: null, signal: 'SIGTERM' } }
+  })
   on('session.id', () => ({ value: 'this-session' }))
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', (_, e) => {
@@ -84,7 +100,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers,
+    helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
+    tick: (ms: number) => (now = ms),
+  }
 }
 
 // The terminal a Ghostty session's tab is, where its mark is written.
