@@ -120,8 +120,8 @@ bool isTower(vec2 p, float u, vec2 foot) {
 
 // The control tower on the airfield beyond the plane at the gate: its
 // concrete shaft, its cab's green glass lit by night and while Claude is on
-// the web, the mast with its red light, the radar turning on the roof, and
-// radio rings from the mast while Claude is on the web. Behind the text, so
+// the web, the mast with its red light, and radio rings from the mast while
+// Claude is on the web. Behind the text, so
 // hazed and never lighter than the sky.
 vec3 tower(vec3 sky, vec2 p, float u, float k, vec2 foot, float n, bool isWeb) {
   float y = foot.y - p.y;
@@ -136,10 +136,7 @@ vec3 tower(vec3 sky, vec2 p, float u, float k, vec2 foot, float n, bool isWeb) {
   vec3 steel = sky_under(mix(tone(STEEL, k) * (1.0 - 0.5 * n), sky, 0.2), sky);
   if (y > 8.6 * u) {
     if (x < 0.07 * u && y < 10.0 * u) return mix(sky, keyInk(k), 0.9);
-    sky = ink(sky, RED_INK, length(p - mast) - 0.14 * u, 1.0);
-    vec2 r = p - vec2(foot.x + 1.2 * u, foot.y - 9.0 * u);
-    float wide = (0.15 + 0.55 * abs(cos(mod(iTime, 3600.0) * (isWeb ? 3.0 : 0.7)))) * u;
-    return ink(sky, steel, min(box(r, vec2(wide, 0.1 * u)), box(r - vec2(0.0, 0.25 * u), vec2(0.05 * u, 0.2 * u))), 1.0);
+    return ink(sky, RED_INK, length(p - mast) - 0.14 * u, 1.0);
   }
   if (!isTower(p, u, foot)) return isTower(p - keyShift(u), u, foot) ? mix(sky, keyInk(k), 0.4) : sky;
   if (y > 5.8 * u && y < 8.1 * u) {
@@ -362,7 +359,7 @@ int seatPart(vec2 q, float x0, float sw, float n, float foot, bool isBack) {
   if (lx < 0.0 || lx > sw * n || dy < 0.0) return 0;
   float sx = mod(lx, sw);
   bool isIn = sx > 0.12 && sx < sw - 0.12;
-  if (dy < 0.25) return abs(abs(sx - 0.5 * sw) - 0.5 * sw + 0.4) < 0.1 || (dy > 0.15 && isIn) ? 5 : 0;
+  if (dy < 0.25) return dy > 0.15 && isIn ? 5 : 0;
   if (!isIn) return 0;
   if (isBack) return dy < 1.15 ? 1 : dy < 1.4 ? 2 : 0;
   if (dy < 0.45) return 4;
@@ -500,7 +497,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     else c = mix(STEEL, CREAM, 0.15);
   } else {
     // The carpet, a tile a cell: each tile's hash picks its motif, a
-    // square, a dot, a dash or nothing, every other row half a tile on.
+    // square, a dash or nothing, every other row half a tile on.
     vec2 t = q / 1.6;
     t.x += 0.5 * mod(floor(t.y), 2.0);
     vec2 ft = fract(t) - 0.5;
@@ -510,9 +507,9 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     deep = mix(CARPET, INK_INDIGO, 0.5);
     shade = 0.2 + 0.1 * float((h >> 4) & 1u);
     angle = 60.0;
-    vec2 fa = abs(ft - (motif == 1 ? vec2(0.2, -0.18) : vec2(0.0)));
-    if (motif == 0 ? abs(max(fa.x, fa.y) - 0.13) < 0.035 : motif == 1 ? max(fa.x, fa.y) < 0.07 : motif == 2 && fa.x < 0.25 && fa.y < 0.04) {
-      c = mix(motif == 0 ? INK_YELLOW : motif == 1 ? INK_ORANGE : mix(INK_BLUE, CREAM, 0.4), CARPET, 0.5);
+    vec2 fa = abs(ft);
+    if (motif == 0 ? abs(max(fa.x, fa.y) - 0.13) < 0.035 : motif == 1 && fa.x < 0.25 && fa.y < 0.04) {
+      c = mix(motif == 0 ? INK_YELLOW : INK_ORANGE, CARPET, 0.5);
       shade = 0.0;
     }
     if (abs(ft.y) > 0.47) c = mix(c, INK_GREEN, 0.2);
@@ -521,10 +518,9 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     bool isAway = cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED;
     float xs = 2.0 + (S - 9.0) * abs(2.0 * fract(time / 40.0) - 1.0);
     if (isEdit) if (q.y > 16.9 && q.y < 18.3 && (fract(time / 40.0) < 0.5 ? q.x < xs : q.x > xs && q.x < S - 6.6)) {
-      // Wet behind the scrubber: the carpet shining in streaks.
-      c = mix(c, mix(INK_BLUE, CREAM, 0.55), 0.55);
+      // Wet behind the scrubber: the carpet shining.
+      c = mix(c, mix(INK_BLUE, CREAM, 0.6), 0.6);
       shade = 0.0;
-      if (fract((q.x + 1.5 * q.y) / 1.1) < 0.12) c = CREAM;
     }
     // A shadow on the carpet just in front of what stands on it.
     float sy = q.y > 20.0 ? 26.2 : q.y > 17.0 ? 18.0 : q.y > 9.0 ? 14.6 : q.y > 4.0 ? (q.x > S - 6.2 ? 6.6 : 7.6) : 2.6;
@@ -546,7 +542,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         // the belt runs.
         c = hop == 1 ? mix(STEEL, CREAM, 0.3) : mix(STEEL, INK_INDIGO, 0.25);
         vec2 fq = q - vec2(S - 3.6, 23.2);
-        if (hop == 2 && abs(fq.x) < 0.7 && abs(fq.y) < 1.0) c = fract(fq.x / 0.28) < (isRunning ? 0.3 : 0.85) ? mix(INK_INDIGO, INK_GREEN, 0.3) : dk;
+        if (hop == 2 && abs(fq.x) < 0.7 && abs(fq.y) < 1.0) c = isRunning ? dk : mix(INK_INDIGO, INK_GREEN, 0.3);
       } else if (outer < -1.25) {
         // The island in the middle, steel, its name on it.
         c = outer > -1.4 ? key : mix(STEEL, CREAM, 0.25);
@@ -649,9 +645,8 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         // them, and at their heads the two GROUP signs, lit while boarding.
         float lx = 1.6 + 3.8 * floor((q.x - 1.6) / 3.8 + 0.5);
         float py = 4.4 + 3.0 * clamp(ceil((q.y - 4.4) / 3.0), 0.0, 2.0);
-        if (abs(q.x - lx) < 0.13 && q.y < py && q.y > py - 0.95) c = q.y < py - 0.85 ? CREAM : STEEL;
+        if (abs(q.x - lx) < 0.13 && q.y < py && q.y > py - 0.95) c = STEEL;
         else if (abs(q.x - lx) < 0.07 && q.y > 3.6 && q.y < 9.6) c = mix(INK_BLUE, INK_INDIGO, 0.5);
-        else if (abs(q.x - lx) < 0.25 && abs(q.y - py - 0.12) < 0.12) c = mix(c, dk, 0.4);
         if (abs(fract((q.x - 1.6) / 3.8) - 0.5) < 0.47 && q.y > 2.85 && q.y < 3.45) c = agents > 0 ? mix(INK_INDIGO, INK_BLUE, 0.4) : mix(INK_INDIGO, CARPET, 0.3);
         if (q.y < 3.5) shade = 0.0;
       } else if (abs(rug.x) < 4.2 && abs(rug.y) < 2.55) {
@@ -948,7 +943,7 @@ vec3 figure(vec3 sky, vec2 p, Fig f, float k) {
   if (tool == sky_TOOL_READ || tool == sky_TOOL_WEB) {
     vec2 tv = abs(v - vec2(3.0, 2.7));
     if (f.thing > 1 && tv.y < 1.0 && tv.x < (f.thing == 2 ? 3.8 : 2.4)) {
-    vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 || fract(v.y * 2.0) < 0.3 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
+    vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
     return mix(sky, f.thing == 3 && v.y < 2.6 ? sheet : lift(sheet, k), 0.97);
     }
     if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.35);
