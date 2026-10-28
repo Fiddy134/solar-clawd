@@ -2,7 +2,7 @@
 // as an SVG, and an SVG or a PNG laid down in .preview/.
 
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { fromBase64 } from '../../hooks/paint.ts'
@@ -97,20 +97,36 @@ const HEADLESS = ['--headless', '--hide-scrollbars', `--user-data-dir=${join(OUT
 // shader on real hardware rather than for its pixels.
 const WEBGL = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']
 const WEBGL_GPU = ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist']
+// How long one run of Chrome may take before it is stopped as hung: a
+// bench of 200 frames at a Retina size takes a few minutes at most.
+const CHROME_TIMEOUT = 15 * 60_000
 const flagsFor = webgl => (webgl === 'gpu' ? WEBGL_GPU : webgl ? WEBGL : ['--disable-gpu'])
 
 // A page (an .svg or .html in .preview/) laid down as a PNG at exactly
 // width × height.
 export function screenshot(file, width, height, name, webgl = false) {
   const png = join(OUT, `${name}.png`)
-  execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${file}`], { stdio: 'ignore' })
+  execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', `--screenshot=${png}`, `--window-size=${width},${height}`, `file://${file}`], { stdio: 'ignore', timeout: CHROME_TIMEOUT })
 
   return png
 }
 
 // The page's DOM once its scripts have run, for what a page reports back.
+// Chrome writes it into a file rather than a pipe: a helper of Chrome's
+// left behind after a crash can hold a pipe open, and the run would wait
+// on it for good.
 export function dumpDom(file, webgl = false) {
-  return execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', '--dump-dom', `file://${file}`], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] })
+  const out = join(OUT, `dom-${process.pid}.html`)
+  const fd = openSync(out, 'w')
+  try {
+    execFileSync(CHROME, [...HEADLESS, ...flagsFor(webgl), '--virtual-time-budget=4000', '--dump-dom', `file://${file}`], { stdio: ['ignore', fd, 'ignore'], timeout: CHROME_TIMEOUT })
+  } finally {
+    closeSync(fd)
+  }
+  const dom = readFileSync(out, 'utf8')
+  unlinkSync(out)
+
+  return dom
 }
 
 // An SVG laid down as a PNG at exactly width × height, by headless Chrome.

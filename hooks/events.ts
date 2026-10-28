@@ -165,11 +165,19 @@ export function wordsOf(theme: Theme): Record<EventKind, string> {
 }
 
 // The kind /solar event means by `name`: a word, a kind, a word the mod
-// once spoke or one of the theme's aliases; undefined for none.
+// once spoke or one of the theme's aliases; undefined for none. /solar
+// hands it the person's words in lower case, and a word with a letter
+// such as ä may come composed or as a letter and its mark, so both sides
+// are compared composed and in lower case. Only a table's own words count,
+// never a name every object has.
 export function kindOf(name: string, theme: Theme): EventKind | undefined {
+  const said = name.normalize('NFC').toLowerCase()
+  const isSaid = (word: string) => word.normalize('NFC').toLowerCase() === said
   const words = wordsOf(theme)
+  const own = Object.keys(words).find(kind => isSaid(words[kind]!) || kind.toLowerCase() === said)
+  const old = Object.hasOwn(OLD_EVENT_WORDS, said) ? OLD_EVENT_WORDS[said] : undefined
 
-  return Object.keys(words).find(kind => words[kind] === name || kind.toLowerCase() === name) ?? OLD_EVENT_WORDS[name] ?? theme.manifest.aliases[name]
+  return own ?? old ?? Object.entries(theme.manifest.aliases).find(([word]) => isSaid(word))?.[1]
 }
 
 // A theme's condition for an event as a predicate, in the engine's own

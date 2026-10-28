@@ -14,6 +14,7 @@
 //   --market up|down (prices for a theme that shows them, fresh, every symbol's day up or down; NDX down 2.4 %)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
 //   --bench 200 (ms a frame, and what the theme costs: its frame less the engine's alone, and against fyr's)
+//   --rounds 3 (with --bench: a warm-up round thrown away, then three rounds of theme, none and fyr by turns, and the middle ratio)
 //   --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
 //   --theme fyr (the theme the sky is drawn with, fyr by default; none for the engine alone, the four
 //   functions stubbed; or a folder with a manifest.json and a theme.glsl)
@@ -32,6 +33,17 @@ import { NO_THEME } from '../../hooks/themes/check.ts'
 import { THEMES } from '../../hooks/themes/index.ts'
 import { themeNamed } from '../theme/load.mjs'
 import { cellsSvg, dumpDom, options, OUT, screenshot, timeOf, weatherOf } from './lib.mjs'
+
+// Whether another headless Chrome is drawing on this machine (a preview in
+// another checkout, say): a bench taken then measures that as well.
+function warnIfBusy() {
+  try {
+    execFileSync('pgrep', ['-f', 'Google Chrome.*--headless'], { stdio: 'ignore' })
+    console.log('warning: another headless Chrome is running on this machine, so this bench is noise; wait for it and run it again')
+  } catch {
+    // pgrep found none (or is not there): nothing to say.
+  }
+}
 
 const o = options({ width: 1512, height: 982, time: 20, background: '282c34' })
 const [width, height] = [Number(o.width), Number(o.height)]
@@ -302,6 +314,7 @@ const html = join(OUT, `${o.out ?? 'shader'}.html`)
 writeFileSync(html, page)
 
 const webgl = o.gpu ? 'gpu' : true
+if (o.bench && !o['bench-alone']) warnIfBusy()
 const dom = dumpDom(html, webgl)
 const renderer = /<pre id="renderer"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1]
 console.log('renderer:', renderer ? renderer.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : 'unknown')
@@ -319,17 +332,51 @@ if (o.bench) {
   // others run one after the other in a process each, as this one did; on
   // a busy machine the difference is noise, so read it on a calm one.
   if (!o['bench-alone'] && theme !== NO_THEME) {
-    const other = name => {
-      const args = [...process.argv.slice(2), '--theme', name, '--bench-alone', '--out', `${o.out ?? 'shader'}-${name}`]
+    const other = (name, label = name) => {
+      const args = [...process.argv.slice(2), '--theme', name, '--bench-alone', '--out', `${o.out ?? 'shader'}-${label}`]
       const text = execFileSync(process.execPath, [process.argv[1], ...args], { encoding: 'utf8', env: process.env })
       return Number(/([\d.]+) ms a frame/.exec(text)?.[1])
     }
-    const none = other('none')
-    const cost = Number(frame) - none
-    console.log(`none: ${none.toFixed(2)} ms a frame`)
-    console.log(`theme cost = ${Number(frame).toFixed(2)} − ${none.toFixed(2)} = ${cost.toFixed(2)} ms a frame`)
-    const fyrCost = theme === THEMES.fyr ? cost : other('fyr') - none
-    console.log(`ratio to fyr = ${(cost / fyrCost).toFixed(2)}${theme === THEMES.fyr ? ' (this is fyr)' : ` (fyr's cost ${fyrCost.toFixed(2)} ms a frame)`}`)
+    const rounds = Math.max(1, Math.floor(Number(o.rounds ?? 1)))
+    if (rounds === 1) {
+      const none = other('none')
+      const cost = Number(frame) - none
+      console.log(`none: ${none.toFixed(2)} ms a frame`)
+      console.log(`theme cost = ${Number(frame).toFixed(2)} − ${none.toFixed(2)} = ${cost.toFixed(2)} ms a frame`)
+      const fyrCost = theme === THEMES.fyr ? cost : other('fyr') - none
+      console.log(`ratio to fyr = ${(cost / fyrCost).toFixed(2)}${theme === THEMES.fyr ? ' (this is fyr)' : ` (fyr's cost ${fyrCost.toFixed(2)} ms a frame)`}`)
+    } else {
+      // --rounds n: the frame above was the theme's first, which reads
+      // high on a shader the browser has not compiled before, so it is
+      // thrown away with a whole round after it (none and fyr new as well).
+      // Then n rounds of the theme, none and fyr by turns, each round its
+      // own ratio. A round whose none is more than 15 % slower than the
+      // quietest none ran on a busy machine and is left out; the ratio is
+      // the middle one of the rest.
+      const self = o.theme ?? 'fyr'
+      const isFyr = theme === THEMES.fyr
+      const measured = []
+      for (let i = 0; i <= rounds; i++) {
+        warnIfBusy()
+        const themeFrame = other(self, 'theme')
+        const none = other('none')
+        const fyrFrame = isFyr ? themeFrame : other('fyr')
+        const round = { themeFrame, none, cost: themeFrame - none, fyrCost: fyrFrame - none }
+        const said = `theme ${themeFrame.toFixed(2)}, none ${none.toFixed(2)}, fyr ${fyrFrame.toFixed(2)} ms a frame: cost ${round.cost.toFixed(2)} against fyr's ${round.fyrCost.toFixed(2)}, ratio ${(round.cost / round.fyrCost).toFixed(2)}`
+        if (i === 0) console.log(`warm-up, not counted: ${said}`)
+        else {
+          console.log(`round ${i}: ${said}`)
+          measured.push(round)
+        }
+      }
+      const quietest = Math.min(...measured.map(round => round.none))
+      const kept = measured.filter(round => round.none <= 1.15 * quietest)
+      if (kept.length < measured.length) console.log(`left out: ${measured.length - kept.length} round(s) whose none was over 15 % slower than the quietest, ${quietest.toFixed(2)} ms`)
+      const middle = values => [...values].sort((a, b) => a - b)[Math.floor((values.length - 1) / 2)]
+      const ratio = middle(kept.map(round => round.cost / round.fyrCost))
+      console.log(`theme cost ${middle(kept.map(round => round.cost)).toFixed(2)} ms a frame, fyr's ${middle(kept.map(round => round.fyrCost)).toFixed(2)}, the middle of ${kept.length} round(s)`)
+      console.log(`ratio to fyr = ${ratio.toFixed(2)}${isFyr ? ' (this is fyr)' : ''}`)
+    }
   }
   process.exit(0)
 }

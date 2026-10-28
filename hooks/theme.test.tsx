@@ -357,6 +357,27 @@ test("fyr's dolphins answer to their old Swedish words, as aliases now", () => {
   expect(wordsOf(FYR).surf).toBe('surf')
 })
 
+test("/solar event finds a theme's word with a space or a capital, and an alias with ä however it is typed", () => {
+  const gate: Theme = {
+    ...bare,
+    manifest: {
+      ...bare.manifest,
+      events: [{ kind: 'landing', word: 'A380 landing', slotMinutes: 60, chance: 0.5, minutes: 1, layer: 'front', when: {} }],
+      previews: [{ kind: 'fountain', word: 'fountain' }],
+      aliases: { fontän: 'fountain' },
+    },
+  }
+  // /solar lowers what the person typed before it asks.
+  expect(kindOf('a380 landing', gate)).toBe('landing')
+  expect(kindOf('fontän', gate)).toBe('fountain')
+  expect(kindOf('fontän'.normalize('NFD'), gate)).toBe('fountain')
+  expect(kindOf('fountain', gate)).toBe('fountain')
+  // A name every object has is no word.
+  expect(kindOf('constructor', gate)).toBeUndefined()
+  expect(kindOf('tostring', FYR)).toBeUndefined()
+  expect(kindOf('luftballong', gate)).toBe('balloon')
+})
+
 test('fyr packs to a manifest.json and a theme.glsl that read back as fyr and check clean', () => {
   const files = themeFiles(FYR)
   expect(Object.keys(files)).toEqual(['manifest.json', 'theme.glsl'])
