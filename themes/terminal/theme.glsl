@@ -267,8 +267,8 @@ vec3 boardOf(Gate g, float u) {
 // The gate's sign, hung over the desk: its middle and half its size.
 vec4 signOf(Gate g, float u) { return vec4(g.left + 5.2 * u, g.top - 8.6 * u, 3.7 * u, 1.3 * u); }
 
-// Whether p is on one of the cables the board, the sign, the clock and the
-// signs to the toilets hang from.
+// Whether p is on one of the cables the board, the sign and the signs to
+// the toilets hang from.
 bool isCable(vec2 p, float u, Gate g) {
   float gy = (p.y - g.ceil) / u;
   vec3 b = boardOf(g, u);
@@ -276,8 +276,7 @@ bool isCable(vec2 p, float u, Gate g) {
   float pw = (p.x - g.left) / u - g.width / u + 3.5;
   return (p.y < b.y && abs(abs(p.x - b.x - 53.0 * b.z) - 46.0 * b.z) < 0.07 * u)
       || (p.y < s.y && abs(abs(p.x - s.x) - 3.0 * u) < 0.07 * u)
-      || (gy < 9.7 && abs(abs(pw) - 2.2) < 0.07)
-      || (gy < 1.8 && abs(p.x - g.left - 3.4 * u) < 0.07 * u);
+      || (gy < 9.7 && abs(abs(pw) - 2.2) < 0.07);
 }
 
 // Whether p is in a pane of the glass wall or of a skylight, and which: 0
@@ -301,7 +300,6 @@ int paneAt(vec2 p, float u, Gate g) {
   if (bq.x > -0.5 * u && bq.x < 106.0 * b.z + 0.4 * u && bq.y > -0.5 * u && bq.y < 30.0 * b.z + 0.2 * u) return 0;
   vec4 s = signOf(g, u);
   if (abs(p.x - s.x) < s.z + 0.1 * u && abs(p.y - s.y) < s.w + 0.1 * u) return 0;
-  if (length(p - vec2(g.left + 3.4 * u, g.ceil + 3.2 * u)) < 1.5 * u) return 0;
   if (q.x > S - 6.1 && q.x < S - 0.9 && gy > 9.7 && gy < 11.5) return 0;
   return p.y > g.apron ? 2 : 1;
 }
@@ -490,7 +488,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
     vec2 bq = p - b.xy;
     vec4 s = signOf(g, u);
     vec2 sq = abs(p - s.xy);
-    vec2 cc = vec2(g.left + 3.4 * u, g.ceil + 3.2 * u);
     float pw = q.x - S + 3.5;
     c = STEEL;
     if (bq.x > -0.5 * u && bq.x < 106.0 * b.z + 0.4 * u && bq.y > -0.5 * u && bq.y < 30.0 * b.z + 0.2 * u) {
@@ -507,15 +504,6 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
       // The gate's sign, its letters and its lamps put on it later.
       c = sq.x > s.z - 0.2 * u || sq.y > s.w - 0.2 * u ? STEEL : mix(INK_INDIGO, INK_BLUE, 0.2) * 0.7;
       dim = 0.0;
-    } else if (length(p - cc) < 1.45 * u) {
-      // The clock, its hours from the place's own time.
-      float d = length(p - cc);
-      c = d > 1.25 * u ? STEEL : CREAM;
-      dim = 0.0;
-      if (d > 0.95 * u && d < 1.15 * u && (abs(p.x - cc.x) < 0.07 * u || abs(p.y - cc.y) < 0.07 * u)) c = key;
-      float hours = mod(LOCAL_HOUR, 12.0) / 12.0 * 2.0 * PI;
-      float minutes = fract(LOCAL_HOUR) * 2.0 * PI;
-      c = ink(c, key, min(segment(p, cc, cc + vec2(sin(hours), -cos(hours)) * 0.65 * u) - 0.1 * u, segment(p, cc, cc + vec2(sin(minutes), -cos(minutes)) * 1.0 * u) - 0.06 * u), 1.0);
     } else if (abs(pw) < 2.6 && gy > 9.7 && gy < 11.5) {
       // The signs to the toilets and the way out: a man, a woman and an
       // arrow in cream on blue.
@@ -662,11 +650,11 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         shade = 0.0;
       } else if (garden < 0.0) {
         // On the planter, leaves a cell each and flowers now and then.
-        vec2 lf = fract(q / 0.8) - 0.5;
-        uint lh = hashi(int(floor(q.x / 0.8)) * 37 + int(floor(q.y / 0.8)) * 101 + 3);
+        vec2 lc = floor(q / 0.8);
+        vec2 lf = abs(fract(q / 0.8) - 0.5);
+        float lh = fract(lc.x * 0.37 + lc.y * 0.61);
         c = garden > -0.15 ? mix(CREAM, INK_ORANGE, 0.3) : mix(INK_ORANGE, INK_INDIGO, 0.6);
-        if (garden < -0.15 && length(lf - 0.15 * vec2(float(lh & 3u) - 1.5, float((lh >> 2) & 3u) - 1.5)) < 0.42) c = mix(INK_GREEN, INK_INDIGO, 0.12 * float((lh >> 4) & 3u));
-        if (garden < -0.15 && (lh >> 6) % 9u == 0u && length(lf) < 0.18) c = (lh & 64u) == 0u ? INK_PINK : INK_YELLOW;
+        if (garden < -0.15 && lf.x + lf.y < 0.6) c = lh < 0.12 ? (lh < 0.06 ? INK_PINK : INK_YELLOW) : mix(INK_GREEN, INK_INDIGO, 0.3 * lh);
         shade = 0.0;
       }
     } else if (q.y < 14.7) {
@@ -941,13 +929,18 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
 
 // Outside, 1, but under the bridge's roof; on the stage, 1 in the
 // skylights, 0.85 through the glass wall onto the sky and 0.5 onto the
-// apron, and 0 everywhere else: no rain falls in the gate.
+// apron, and 0 everywhere else: in the walls, the ceiling, the floor and on
+// the board, the sign and the kiosk hung or standing before the glass. No
+// rain falls in the gate.
 float themeWindow(vec2 p, float u) {
   Gate g = gateOf(u);
   if (p.x < g.left) return p.x > g.left - 6.6 * u && p.y > g.floorY - 2.45 * u && p.y < g.floorY - 0.3 * u ? 0.0 : 1.0;
-  if (p.y > g.top) return 0.0;
-  int pane = paneAt(p, u, g);
-  return pane == 3 ? 1.0 : pane == 1 ? 0.85 : pane == 2 ? 0.5 : 0.0;
+  if (p.y > g.top - 0.45 * u || p.x < g.left + 1.2 * u) return 0.0;
+  if (p.y < g.ceil) return p.y > 0.14 * g.ceil && p.y < 0.51 * g.ceil && abs(mod((p.x - g.left) / u - 1.2, 5.4) - 2.7) < 2.0 ? 1.0 : 0.0;
+  vec3 b = boardOf(g, u);
+  vec4 s = signOf(g, u);
+  if ((p.x > b.x - 0.5 * u && p.y < b.y + 30.0 * b.z + 0.2 * u) || (abs(p.x - s.x) < s.z && abs(p.y - s.y) < s.w) || (p.x > g.left + g.width - 6.2 * u && p.y > g.top - 1.7 * u)) return 0.0;
+  return p.y > g.apron ? 0.5 : 0.85;
 }
 
 // --- People ----------------------------------------------------------------------------
@@ -1004,15 +997,13 @@ vec3 figure(vec3 sky, vec2 p, Fig f, float k) {
     vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 || fract(v.y * 2.0) < 0.3 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
     return mix(sky, f.thing == 3 && v.y < 2.6 ? sheet : lift(sheet, k), 0.97);
   }
-  if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.4 * screen(p, 0.5, pitch(c), 15.0) + 0.15);
+  if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.35);
   if (kind == 2) return mix(sky, keyInk(k), 0.97);
   if (kind != 0) return mix(sky, lift(kind == 1 ? CORAL : kind == 4 ? f.jumper : kind == 5 ? f.hatInk : CORAL_DEEP, k), 0.97);
   if (f.thing == 1) {
     vec2 bq = vec2(float(cc.x) + 1.5, float(cc.y) - 2.5);
     if (abs(bq.x) < 1.0 && abs(bq.y) < 1.5) return mix(sky, lift(bq.y < -1.0 ? KEY : mix(f.hatInk, INK_INDIGO, 0.25), k), bq.y < -1.0 && abs(bq.x) > 0.5 ? 0.0 : 0.97);
   }
-  vec2 sh = abs(p - f.feet - vec2(0.5 * c, 0.1 * c)) / c;
-  if (f.pose != 3 && sh.x / 3.4 + sh.y / 0.8 < 1.0) return mix(sky, keyInk(k), 0.35);
   // His key plate: his head and arms again, off register.
   vec2 kv = v - max(1.0, floor(0.4 * c)) / c;
   if (kv.y >= 0.0 && kv.y < 3.0 && kv.x >= (kv.y < 2.0 ? 1.0 : 0.0) && kv.x < (kv.y < 2.0 ? 5.0 : 6.0)) sky = mix(sky, keyInk(k), 0.55);
@@ -1031,11 +1022,12 @@ Fig traveller(vec2 feet, float cell, uint h) {
 
 // When the moment of slot `slot` begins, `period` seconds a slot: one in a
 // slot with a chance of `chance`, at a time that leaves it `lasts` seconds;
-// -1 for a slot without one.
+// -1 for a slot without one. The slots' numbers go by the golden ratio, a
+// sequence as even as a hash and cheaper.
 float momentStart(float slot, float period, float lasts, float chance, int salt) {
-  int n = int(mod(slot, 100000.0)) * 7 + salt;
-  if (rand(n) >= chance) return -1.0;
-  return slot * period + rand(n + 1) * (period - lasts);
+  float r = fract(mod(slot, 1000.0) * 0.6180339 + float(salt) * 0.137);
+  if (r >= chance) return -1.0;
+  return slot * period + fract(r * 7.31) * (period - lasts);
 }
 
 // Seconds into the moment at `time`, -1 when none is on. `preview` is its
@@ -1167,7 +1159,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       float j = mod(floor(fract((3.0 - q.x) / len - T) * N + 0.5), N);
       f = vec2(3.0 - fract(T + j / N) * len, 10.2);
       found = true;
-      h = hashu(uint(j) * 7u + 3u);
+      h = uint(j) * 7u + 3u;
       pose = 1;
       eyes = 1;
       flip = 1;
@@ -1179,12 +1171,12 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       found = true;
       pose = 3;
       jumper = INK_GREEN;
-      h = 6u;
+      h = 6u | 1u << 31;
     } else if (isOpen && tool == sky_TOOL_OTHER && q.y > 5.0) {
       int i = int(clamp(floor((q.x - S + 5.8) / 1.6), 0.0, 2.0));
       f = vec2(S - 5.0 + 1.6 * float(i), 8.4);
       found = true;
-      h = hashu(uint(i) * 5u + 41u);
+      h = uint(i) * 5u + 41u;
       eyes = 3;
     }
   } else if (q.y < 2.9 && q.x < 12.0) {
@@ -1194,13 +1186,13 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       found = true;
       pose = agents > 0 && fract(time / 3.0 + 0.5 * float(i)) < 0.3 ? 2 : 3;
       jumper = mix(INK_BLUE, INK_INDIGO, 0.4);
-      h = 1u << 12;
+      h = 1u << 12 | 1u << 31;
     } else if (q.x > 9.0 && isDay) {
       int i = q.x < 10.6 ? 0 : 1;
       f = vec2(9.9 + 1.4 * float(i), 0.95);
       found = true;
       cell = max(1.0, floor(0.25 * u));
-      h = hashu(uint(i) * 3u + 77u);
+      h = uint(i) * 3u + 77u;
       eyes = 3;
     }
   } else if (q.x < 9.0 && q.y > 3.4 && q.y < 10.0) {
@@ -1209,7 +1201,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     if (d * 2 + lane < agents) {
       f = vec2(3.5 + 3.8 * float(lane), 6.1 + 1.7 * float(d));
       found = true;
-      h = hashu(uint(d * 2 + lane) * 7u + 3u);
+      h = uint(d * 2 + lane) * 7u + 3u;
       eyes = 3;
       thing = int((h >> 5) & 1u);
     }
@@ -1221,7 +1213,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     eyes = 1;
     flip = fract(time / 40.0) < 0.5 ? 0 : 1;
     jumper = INK_GREEN;
-    h = 2u << 12 | 2u << 4;
+    h = 2u << 12 | 2u << 4 | 1u << 31;
   } else if (q.y > 17.5 && q.y < 21.1 && q.x < 10.0 && (cs == CONTEXT_CLEARING || cs == CONTEXT_CLEARED)) {
     f = vec2((cs == CONTEXT_CLEARED ? 0.6 : 2.6) + 0.6, 19.0 + c / u);
     found = true;
@@ -1229,13 +1221,13 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     eyes = 1;
     flip = 1;
     jumper = INK_BLUE;
-    h = 1u << 12 | 2u << 4;
+    h = 1u << 12 | 2u << 4 | 1u << 31;
   } else if (q.y > 18.9 && q.y < 21.1 && tool == sky_TOOL_COMMAND) {
     int i = int(floor(q.x / 2.6));
     if (q.x > 2.0 && q.x < S - 5.0 && rand(i * 3 + 91) < 0.75) {
       f = vec2(2.6 * float(i) + 1.3, 20.95);
       found = true;
-      h = hashu(uint(i) * 9u + 13u);
+      h = uint(i) * 9u + 13u;
       eyes = 3;
     }
   } else {
@@ -1246,7 +1238,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     if (isSitter && !(isWalker && w.y > s.y)) {
       f = s.xy;
       found = true;
-      h = hashu(uint(s.z) * 13u + 7u);
+      h = uint(s.z) * 13u + 7u;
       thing = tool == sky_TOOL_READ ? 2 : tool == sky_TOOL_WEB ? 3 : 0;
       if (q.y > 9.9 && q.y < 11.5) {
         thing = 0;
@@ -1257,7 +1249,7 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     } else if (w.x > 0.0) {
       f = w.xy;
       found = true;
-      h = hashi(int(w.z) * 29 + 3);
+      h = uint(w.z) * 29u + 3u;
       pose = 1;
       flip = fract(w.z) > 0.25 ? 1 : 0;
       eyes = w.w > 0.5 ? 3 : 1;
@@ -1265,7 +1257,8 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
     }
   }
   if (!found) return none;
-  Fig t = traveller(floor(o + f * u), cell, h);
+  // A fixed look (the top bit set) as it is, anyone else by his hash.
+  Fig t = traveller(floor(o + f * u), cell, h >= 1u << 31 ? h : hashu(h));
   t.pose = pose;
   if (eyes >= 0) t.eyes = eyes;
   if (flip >= 0) t.flip = flip == 1;
