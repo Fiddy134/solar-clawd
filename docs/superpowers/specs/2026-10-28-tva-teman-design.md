@@ -36,7 +36,7 @@ Ordleken: en flygplatsterminal i Claude Codes terminal.
   - Claude är klar (done): en stadigt vit "LANDED" eller "ARRIVED"
   - frågan har väntat länge (urgent): sista utropet, blinket snabbare
 - **Kontextfönstret:** väskor på bagagebandet, en för varje tiondel. När konversationen kompakteras eller rensas hämtar en bagagevagn dem.
-- **The Terminal (2004):** huvud-Clawd bor vid gate 67 som Viktor Navorski. Han sover på stolarna med `CLAWD_ASLEEP`, äter kex med ketchup och senap (kaffet i `CLAWD_ACTIVITY`) och har en burk Planters-nötter. På tavlan står alltid en avgång till KRAKOZHIA som DELAYED, och den slår ibland om till CANCELED. Någon gång samlar han in bagagevagnar för kvartsdollarns pant.
+- **The Terminal (2004):** huvud-Clawd bor vid en avstängd gate som Viktor Navorski (gate 67 i filmen; i temat B4, eftersom 67 läses som memet, se `2026-10-28-terminal-v3-design.md`). Han sover på stolarna med `CLAWD_ASLEEP`, äter kex med ketchup och senap (kaffet i `CLAWD_ACTIVITY`) och har en burk Planters-nötter. På tavlan står alltid en avgång till KRAKOZHIA som DELAYED, och den slår ibland om till CANCELED. Någon gång samlar han in bagagevagnar för kvartsdollarns pant.
 - **Tid och väder:** natten har få avgångar, ett nattflyg och städare. På dagen är det fullt vid gaten. I regn är plattan blöt.
 - **Egna händelser (förslag, författarens val):** ett Concorde-förbiflyg (sällsynt), en A380 som landar, ett fågelsträck över banan. Previews: Viktors fontän, vagnarna.
 

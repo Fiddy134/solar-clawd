@@ -4,7 +4,7 @@ Vincent, 2026-10-28 eftermiddag, efter att ha sett `terminal` från runda 2 (`te
 - Claudes aktivitet
 - väntljuset
 - kontextfönstret som väskor
-- The Terminal med Viktor, gate 67 och KRAKOZHIA
+- The Terminal med Viktor och KRAKOZHIA (men gaten heter nu B4, se nedan)
 
 ## Vad Vincent sa
 
@@ -20,12 +20,12 @@ Skissen ligger i `2026-10-28-terminal-v3/skiss-dag.png` och `skiss-kvall.png`. G
 **Insidan ses snett uppifrån, som `floor` v3** (`2026-10-28-floor-v3-design.md`). Ingen flyktpunkt: golvet ses uppifrån, och saker rakt framifrån med toppen synlig. Det som står lägre ritas över. Uppifrån och ner:
 - **Innertaket:** stålfackverk och takfönster där himlen syns. På kvällen tända lampor.
 - **Bakväggen** är en hel glasvägg mot plattan, med `themeWindow` > 0 så att himlen och vädret syns. Genom den syns planets nos vid gaten.
-- **Framför glaset** hänger avgångstavlan med fällblad (67 CLAUDE, 12 KRAKOZHIA DELAYED och så vidare) och gate 67-skylten, där väntljuset bor.
+- **Framför glaset** hänger avgångstavlan med fällblad (B4 CLAUDE, KRAKOZHIA DELAYED och så vidare) och skylten för gate B4, där väntljuset bor.
 - **Golvet:**
   - en mönstrad matta sedd uppifrån
   - stolsrader där resenärs-Clawdar sitter
   - andra som går med väskor i alla riktningar
-  - Viktors hörna vid gate 67 med filten och Planters-burken
+  - Viktors hörna vid gate B4 med filten och Planters-burken
   - kaffekiosken
 - **Längst fram:** bagagebandet som en slinga sedd uppifrån, där väskorna är kontextfönstret.
 - **Västra väggen** är ett snitt där jetbryggan kommer in, och där resenärer kliver av och på.
@@ -40,6 +40,8 @@ Skissen ligger i `2026-10-28-terminal-v3/skiss-dag.png` och `skiss-kvall.png`. G
 - **Utrop och skyltar:** piktogram för toaletter och utgångar, och en klocka.
 
 **Kommandot ska synas i hela bilden** (domarens fynd i runda 2: det var ett litet sken i ett hörn). Ett exempel är att bagagebandet startar och väskor åker runt, och att en utropslampa blinkar.
+
+**Gaten heter B4, inte 67.** Vincent 2026-10-28: *"tyvärr så är det också ett dåligt populärkulturskämt som alla har tröttnat på, jag tror de flesta kommer tro det är en pik mot det, så det måste tyvärr ändras även om det passar bra som referens till filmen!"* Siffran 67 får inte stå någonstans i temat, varken på skyltar, tavlor eller i kod som syns. Det gäller också i skissen och i `tema-terminal-r2`, som utgår från 67. Undvik andra nummer som läses som memes (42, 69, 420 och liknande). Filmreferensen bärs av Viktor, KRAKOZHIA, nötburken, vagnarna och fontänen.
 
 **Viktor** ska gå att hitta också när han sover. Han ska få en egen färg eller plats som skiljer honom från stolsryggarna.
 

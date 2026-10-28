@@ -41,6 +41,7 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
     - utsidan behålls från runda 2
     - gaten snett uppifrån: fackverkstak, glasvägg mot plattan, avgångstavlan, stolsrader, Viktors hörna, kiosken och bagagebandet längst fram
     - "ta gärna inspiration från riktiga flygplatser"
+    - **gaten heter B4, aldrig 67** (Vincent: 67 läses som memet)
     - skissen: `2026-10-28-terminal-v3/skiss-*.png`
   - **Vincents egna foton** till `floor` ligger lokalt i `.preview/ref-floor/` och committas inte.
   - Skissgeneratorn är `docs/superpowers/specs/2026-10-28-floor-v3/skisser.py`. Den gör SVG, som renderas med headless Chrome. Skisserna visades i brainstorm-companionen i scratch.
