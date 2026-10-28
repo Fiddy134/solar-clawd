@@ -140,6 +140,7 @@ What differs from macOS:
 | `/solar catch` | The keeper lands a fish, as when another tenth of the context window fills (without the shader, Clawd throws a ball of paper in the wastebasket) |
 | `/solar grill` | The keeper grills his catch for a while, as on `/compact` or `/clear`, or without the shader the wastebasket burns (the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
+| `/solar theme <name>` | Draw the sky with another theme in every session: fyr, built in, or a folder of [`themes/`](themes/README.md) (floor, terminal). The stage takes the theme's width where the margin is the mod's own; a padding you set stays yours. `/solar theme` alone says which there are (Ghostty) |
 | `/solar full` | The sky moves 24 times a second whenever it shows, in front or behind, on battery too, until 20 minutes without you (Ghostty on a Mac) |
 | `/solar spar` | The sky moves 24 times a second only where it moved before: Ghostty in front, something moving, on mains, you there; the default |
 | `/solar vsync off` | Turn Ghostty's vsync off for every window, which the pace needs on Ghostty 1.3 (see [The sky's pace](#the-skys-pace)) |

@@ -56,13 +56,28 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
   const unreadable = new Set<string>()
-  on('fs.read', (_, e) => (files.has(e.path) && !unreadable.has(e.path) ? { value: files.get(e.path)!.text } : { deny: 'ENOENT' }))
+  // Every path read, so a test can find the plugin's own folder.
+  const reads: string[] = []
+  on('fs.read', (_, e) => {
+    reads.push(e.path)
+
+    return files.has(e.path) && !unreadable.has(e.path) ? { value: files.get(e.path)!.text } : { deny: 'ENOENT' }
+  })
   on('fs.exists', (_, e) => ({ value: files.has(e.path) }))
-  on('fs.list', (_, e) => ({
-    value: [...files.entries()]
-      .filter(([path]) => path.startsWith(`${e.path}/`) && !path.slice(e.path.length + 1).includes('/'))
-      .map(([path, file]) => ({ name: path.slice(e.path.length + 1), kind: 'file' as const, size: file.text.length, mtimeMs: file.mtimeMs, isLink: false })),
-  }))
+  // A folder is there when a file is somewhere beneath it.
+  on('fs.list', (_, e) => {
+    const below = [...files.entries()].filter(([path]) => path.startsWith(`${e.path}/`))
+    const folders = [...new Set(below.map(([path]) => path.slice(e.path.length + 1)).filter(rest => rest.includes('/')).map(rest => rest.split('/')[0]!))]
+
+    return {
+      value: [
+        ...below
+          .filter(([path]) => !path.slice(e.path.length + 1).includes('/'))
+          .map(([path, file]) => ({ name: path.slice(e.path.length + 1), kind: 'file' as const, size: file.text.length, mtimeMs: file.mtimeMs, isLink: false })),
+        ...folders.map(name => ({ name, kind: 'dir' as const, size: 0, mtimeMs: 0, isLink: false })),
+      ],
+    }
+  })
   on('process.run', (_, e) => {
     runs.push([...e.argv])
     const [command] = e.argv
@@ -110,7 +125,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog,
+  return { files, reads, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog,
     helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
     tick: (ms: number) => (now = ms),
   }

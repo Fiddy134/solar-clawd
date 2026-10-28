@@ -493,6 +493,41 @@ export async function readPace($: EngineInterface, ghostty: Ghostty): Promise<Pa
   return asPace(await $.fs.read(ghostty.settings).catch(() => ''))
 }
 
+// The theme the settings file names (/solar theme), null where it names none.
+export function themeNameOf(text: string): string | null {
+  try {
+    const value = JSON.parse(text) as unknown
+    const name = typeof value === 'object' && value !== null ? (value as { theme?: unknown }).theme : undefined
+
+    return typeof name === 'string' ? name : null
+  } catch {
+    return null
+  }
+}
+
+export async function readThemeName($: EngineInterface, ghostty: Ghostty): Promise<string | null> {
+  return themeNameOf(await $.fs.read(ghostty.settings).catch(() => ''))
+}
+
+// Sets some of the settings file's keys and keeps the rest: /solar full
+// keeps the theme, /solar theme the pace.
+export function withSettings(text: string, patch: Record<string, unknown>): string {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    value = {}
+  }
+  const kept = typeof value === 'object' && value !== null && !Array.isArray(value) ? value : {}
+
+  return JSON.stringify({ ...kept, ...patch })
+}
+
+export async function writeSettings($: EngineInterface, ghostty: Ghostty, patch: Record<string, unknown>): Promise<void> {
+  const text = await $.fs.read(ghostty.settings).catch(() => '')
+  await $.fs.write(ghostty.settings, withSettings(text, patch))
+}
+
 // Whether the person has turned Ghostty's vsync off: the line in its file.
 export async function isVsyncOff($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
   const text = await $.fs.read(ghostty.vsync).catch(() => '')

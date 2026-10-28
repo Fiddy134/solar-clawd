@@ -6,6 +6,8 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
+import { themeFiles } from './themes/check'
+import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
@@ -943,6 +945,59 @@ test('/solar full and spar are saved for every session, and on Ghostty 1.3 say w
   await solar('vsync off')
   expect(await solar('spar')).toBe(SPAR)
   expect(world.files.get(SETTINGS)?.text).toBe('{"pace":"spar"}')
+})
+
+// A theme from elsewhere in the plugin's themes/: fyr's own GLSL under
+// another name, asking a wider stage, and one that does not lint.
+const FYR = THEMES.fyr
+
+function seedThemes(world: { files: Map<string, { text: string; mtimeMs: number }>; reads: string[] }) {
+  const { files } = world
+  const moon = world.reads.find(path => path.endsWith('/assets/moon.rgba'))!
+  const root = moon.slice(0, -'/assets/moon.rgba'.length)
+  const harbour = themeFiles({ manifest: { ...FYR.manifest, name: 'harbour', stagePt: 400 }, glsl: FYR.glsl })
+  for (const [file, text] of Object.entries(harbour)) files.set(`${root}/themes/harbour/${file}`, { text, mtimeMs: 0 })
+  const broken = themeFiles({ manifest: { ...FYR.manifest, name: 'broken' }, glsl: `${FYR.glsl}\nvoid mainImage() {}\n` })
+  for (const [file, text] of Object.entries(broken)) files.set(`${root}/themes/broken/${file}`, { text, mtimeMs: 0 })
+}
+
+test("/solar theme draws a theme of themes/ in every session, keeps the pace, and gives the mod's stage its width", async ($, on) => {
+  const { world, solar, clock, config } = await paceWorld($, on, '1.4.0')
+  seedThemes(world)
+  await solar('ghostty')
+  await solar('full')
+  expect(await solar('theme')).toBe("Solar: the sky's theme is fyr. Themes: fyr, broken, harbour. /solar theme <name> changes it in every session.")
+  const reloads = RELOADS(world.runs)
+  expect(await solar('theme harbour')).toBe("Solar: the sky is harbour now, in every session. Its stage is 400 points wide; Ghostty's new windows show it.")
+  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'full', theme: 'harbour' })
+  expect(rightPaddingOf(config())).toBe(400)
+  await clock.advance(100)
+  expect(RELOADS(world.runs)).toBeGreaterThan(reloads)
+  expect(await solar('theme')).toContain("the sky's theme is harbour")
+  expect(await solar('theme harbour')).toBe("Solar: the sky's theme is already harbour.")
+  // /solar spar keeps the theme.
+  await solar('spar')
+  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'spar', theme: 'harbour' })
+  // A theme that does not lint, or none by that name, leaves the sky as it is.
+  expect(await solar('theme broken')).toMatch(/^Solar: broken: .*mainImage.*\. Themes: fyr, broken, harbour\.$/)
+  expect(await solar('theme ../etc')).toBe('Solar: no theme called "../etc". Themes: fyr, broken, harbour.')
+  expect(JSON.parse(world.files.get(SETTINGS)!.text).theme).toBe('harbour')
+  // Back to fyr: its own stage again.
+  expect(await solar('theme fyr')).toBe("Solar: the sky is fyr now, in every session. Its stage is 240 points wide; Ghostty's new windows show it.")
+  expect(rightPaddingOf(config())).toBe(240)
+})
+
+test('a session follows the theme another chose within a few seconds', async ($, on) => {
+  const { world, solar, clock } = await paceWorld($, on, '1.4.0')
+  seedThemes(world)
+  await solar('ghostty')
+  // Another session's /solar theme: this one draws it within a few seconds.
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', theme: 'harbour' }), mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(await solar('theme')).toContain("the sky's theme is harbour")
+  // A padding of the person's own stays theirs.
+  world.files.set(CONFIG, { text: world.files.get(CONFIG)!.text.replace(/window-padding-x = (\d+),400/, 'window-padding-x = $1,300'), mtimeMs: clock.now() })
+  expect(await solar('theme fyr')).toBe('Solar: the sky is fyr now, in every session. It wants a stage 240 points wide; your window-padding-x gives it 300, and stays as you set it.')
 })
 
 test('/solar vsync off writes the line in a file of its own, included once, and /solar vsync on empties it', async ($, on) => {

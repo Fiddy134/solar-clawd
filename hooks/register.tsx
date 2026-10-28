@@ -20,6 +20,7 @@ import {
   isIncluded,
   isVsyncOff,
   readPace,
+  readThemeName,
   reloadGhostty,
   remark,
   restageGhostty,
@@ -27,9 +28,11 @@ import {
   setVsync,
   shareWaiting,
   stagedPadding,
+  themeNameOf,
   tidy,
   ttyOf,
   updateGhosttySky,
+  writeSettings,
 } from './ghostty'
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
@@ -48,6 +51,7 @@ import type { ShaderParams } from './shader'
 import { skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
 import { BASE_THEME, THEMES } from './themes/index'
+import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
 
@@ -202,6 +206,7 @@ export const register: Register = on => {
   // What the sky's engine draws its world with: its scenery, who lives
   // there and the events of its own.
   let theme: Theme = THEMES[BASE_THEME]
+  let themeName: string = BASE_THEME
   // Claude's state as Clawd shows it: a turn running, waiting on the person,
   // and the last passing reaction.
   const claude = {
@@ -247,6 +252,10 @@ export const register: Register = on => {
   const power = { isOnBattery: false }
   // Updates the Ghostty sky at once, once a Ghostty session has started.
   let refreshSky: (() => void) | null = null
+  // Draws the sky with another theme in this session, giving the stage
+  // its width where the margin is the mod's own (restageGhostty's answer);
+  // null outside Ghostty.
+  let useTheme: ((chosen: Theme, name: string) => Promise<Awaited<ReturnType<typeof restageGhostty>>>) | null = null
   // The calls the engine put to the person (tool.check's ask), by id: a
   // permission asked for is answered when its own call goes on and ends.
   const askingCalls = new Set<string>()
@@ -428,7 +437,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | full | spar | vsync off|on]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | theme <name> | full | spar | vsync off|on]',
       immediate: true,
     })
 
@@ -453,6 +462,14 @@ export const register: Register = on => {
       const xdgConfig = isOnLinux ? (await $.env.get('XDG_CONFIG_HOME')) || null : null
       const xdgState = isOnLinux ? (await $.env.get('XDG_STATE_HOME')) || null : null
       const folder = runtimeFolder(home, isOnLinux, xdgState)
+      // The theme chosen with /solar theme, for every session; fyr where
+      // none is, or where the one chosen cannot be drawn.
+      const chosen = themeNameOf(await $.fs.read(`${folder.slice(0, -'/runtime'.length)}/sky.json`).catch(() => ''))
+      if (chosen !== null && chosen !== themeName) {
+        const found = await themeNamed($, chosen)
+        if ('error' in found) $.ui.toast(`Solar: the sky keeps fyr: ${found.error}.`)
+        else [theme, themeName] = [found, chosen]
+      }
       await $.process.run(['/bin/mkdir', '-p', folder]).catch(() => undefined)
       const id = await $.session.id().catch(() => 'session')
       ghostty = {
@@ -569,12 +586,24 @@ export const register: Register = on => {
         })().catch(() => undefined)
       })
       // The market's prices, for a theme that shows them: the shared file
-      // looked at every few minutes, fetched again only once it is old.
-      const marketPath = sky.market
-      if (marketPath !== null) {
-        const fetchMarket = () => void refreshMarket($, marketPath, sky.id).catch(() => undefined)
+      // looked at every few minutes, fetched again only once it is old. The
+      // theme may change: each look asks whether it still shows them.
+      const fetchMarket = () => {
+        const marketPath = sky.market
+        if (marketPath !== null) void refreshMarket($, marketPath, sky.id).catch(() => undefined)
+      }
+      fetchMarket()
+      $.clock.every(MARKET_MS, fetchMarket)
+      useTheme = async (chosen, name) => {
+        ;[theme, themeName] = [chosen, name]
+        sky.market = chosen.manifest.market === true ? `${sky.folder}/market.json` : null
         fetchMarket()
-        $.clock.every(MARKET_MS, fetchMarket)
+        const pt = stagePtOf(chosen)
+        const staged = (await hasOurInclude($, sky)) ? await restageGhostty($, sky, pt) : ({ theirs: null } as const)
+        sky.stagePx = await stagePxOf($, sky, pt)
+        refreshSky?.()
+
+        return staged
       }
     }
 
@@ -606,6 +635,12 @@ export const register: Register = on => {
         // or the person may have changed: the sky is updated at once.
         if (ghostty !== null) {
           activity.pace = await readPace($, ghostty)
+          // Another session's /solar theme: this one follows.
+          const name = (await readThemeName($, ghostty)) ?? BASE_THEME
+          if (name !== themeName && useTheme !== null) {
+            const found = await themeNamed($, name)
+            if (!('error' in found)) await useTheme(found, name)
+          }
           // Ghostty in front matters only to spar's ticks.
           if (ghostty.written.canTick && activity.pace === 'spar') activity.isGhosttyInFront = await isGhosttyInFront($, isOnLinux)
           if (paceKey() !== before) refreshSky?.()
@@ -911,7 +946,7 @@ export const register: Register = on => {
       if (ghostty.version === null && pace !== 'vsync on') return { text: PACE_WORDS.unknownVersion }
       const needsLine = ghostty.version === null || needsVsyncLine(ghostty.version)
       if (pace === 'full' || pace === 'spar') {
-        await $.fs.write(ghostty.settings, JSON.stringify({ pace: pace }))
+        await writeSettings($, ghostty, { pace })
         refreshSky?.()
         const isLineMissing = needsLine && !(await isVsyncOff($, ghostty))
 
@@ -927,6 +962,33 @@ export const register: Register = on => {
       refreshSky?.()
 
       return { text: pace === 'vsync off' ? PACE_WORDS.vsyncOff : PACE_WORDS.vsyncOn }
+    }
+
+    // The sky's theme, for every session: one built in or a folder of
+    // themes/. The stage gets the theme's width where the margin is the
+    // mod's own; the person's own padding stays theirs.
+    if (word === 'theme' || word.startsWith('theme ')) {
+      const names = await themeNames($)
+      const name = word.slice('theme'.length).trim()
+      if (name === '') return { text: `Solar: the sky's theme is ${themeName}. Themes: ${names.join(', ')}. /solar theme <name> changes it in every session.` }
+      if (ghostty === null || useTheme === null) return { text: NOT_GHOSTTY }
+      const found = await themeNamed($, name)
+      if ('error' in found) return { text: `Solar: ${found.error}. Themes: ${names.join(', ')}.` }
+      await writeSettings($, ghostty, { theme: name })
+      if (name === themeName) return { text: `Solar: the sky's theme is already ${name}.` }
+      const staged = await useTheme(found, name)
+      const pt = stagePtOf(found)
+      const theirs = typeof staged === 'object' ? staged.theirs : null
+      const stage =
+        staged === 'unreadable'
+          ? ` Ghostty's config could not be read, so its stage is left as it is.`
+          : staged === 'restaged'
+            ? ` Its stage is ${pt} points wide; Ghostty's new windows show it.`
+            : theirs !== null && theirs !== pt
+              ? ` It wants a stage ${pt} points wide; your window-padding-x gives it ${theirs}, and stays as you set it.`
+              : ''
+
+      return { text: `Solar: the sky is ${name} now, in every session.${stage}` }
     }
 
     if (word === 'ghostty') {
@@ -1053,7 +1115,7 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar full, /solar spar or /solar vsync off|on.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar theme <name>, /solar full, /solar spar or /solar vsync off|on.' }
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -177,7 +177,7 @@ A plain variable at the top of your text, such as `float roomNight;` (not `const
 |---|---|
 | `engine` | `1`, the contract this guide describes. |
 | `name` | 1 to 32 of `a` to `z`, `0` to `9` and `-`: the folder's name, which the lint holds it to. |
-| `title` | A short title. Nothing shows it yet; it is kept for `/solar theme`, which is planned. |
+| `title` | A short title. Nothing shows it yet. |
 | `description` | A sentence or two: what stands there and what goes on. |
 | `author` | Who wrote it. |
 | `version` | Its version, as `1.0.0`. |
@@ -1711,6 +1711,6 @@ float themeWindow(vec2 p, float u) { return 1.0; }
 
 ## 16. Sharing a theme
 
-A theme is its folder, `themes/<name>/` with its `manifest.json` and `theme.glsl`, and is shared as those two files. There is no switching between themes in a session yet: `/solar theme` and a repository of community themes are planned, not built. Until then a theme is seen through the preview tools, and becomes one the sky can show by being built in: wrapped in TypeScript under `hooks/themes/<name>/`, as fyr is, once the mod's author has looked at it.
+A theme is its folder, `themes/<name>/` with its `manifest.json` and `theme.glsl`, and is shared as those two files. A folder in the mod's own `themes/` is one the sky can show: `/solar theme <name>` draws it in every Ghostty session, after the same lint and caps as `tools/theme/run.sh lint`, and gives the stage its `stagePt` where the margin is the mod's own. A repository of community themes is planned, not built; until then a theme from elsewhere is seen through the preview tools, or put in `themes/` by hand.
 
 The repository of themes is planned with a folder for each theme (the two files, a `preview.png` and a `README.md`) and, on every pull request, the checks of §14 run by machine: the lint, compiling it in headless WebGL and drawing its sheet, compiling it again with `glslangValidator` as GLSL 4.30, its bench against fyr, its brightness and its size. A theme written to this guide is written to pass them.
