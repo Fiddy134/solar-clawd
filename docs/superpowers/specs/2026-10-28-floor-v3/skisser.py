@@ -841,3 +841,122 @@ if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'v7':
                     f'<div style="margin-top:10px">{scene7(mood)}</div></div>')
     html.append('</div>')
     open(sys.argv[1], 'w').write('\n'.join(html))
+
+# --- The airport: the outside as it is, the gate seen from above ---------
+def apron(p, mood):
+    out = []
+    # the apron and runway low at the horizon behind the text
+    out.append(rect(0, HZ - 6, 1100, H - HZ + 6, '#7E8AA6' if mood == 'day' else '#2F3358', 'opacity="0.55"'))
+    out.append(rect(0, HZ + 40, 1100, 26, '#5C6584' if mood == 'day' else '#252948', 'opacity="0.7"'))
+    for x in range(0, 1100, 50):
+        out.append(rect(x, HZ + 52, 24, 3, '#F2ECE0', 'opacity="0.5"'))
+        if mood == 'eve':
+            out.append(f'<circle cx="{x + 12}" cy="{HZ + 38}" r="2" fill="#FFD27A"/><circle cx="{x + 12}" cy="{HZ + 68}" r="2" fill="#7FB2FF"/>')
+    # the tower
+    out.append(rect(860, HZ - 150, 14, 150, '#9AA3BF' if mood == 'day' else '#4A4F78') + rect(846, HZ - 172, 42, 22, '#3A4566') + rect(850, HZ - 168, 34, 10, '#9FD3F5' if mood == 'day' else '#F6C770'))
+    # a plane taking off far off, one parked at the jet bridge
+    out.append(poly([(260, HZ - 40), (330, HZ - 62), (336, HZ - 56), (268, HZ - 34)], '#E8E6EE') + poly([(296, HZ - 50), (300, HZ - 70), (308, HZ - 52)], '#E07A5F'))
+    px = 900
+    out.append(rect(px, HZ - 30, 150, 22, '#EDEAF2', 'rx="10"') + poly([(px + 10, HZ - 30), (px - 4, HZ - 62), (px + 12, HZ - 62), (px + 34, HZ - 30)], '#E07A5F'))
+    out.append(poly([(px + 60, HZ - 10), (px + 40, HZ + 18), (px + 70, HZ + 18), (px + 90, HZ - 10)], '#C9C6D3'))
+    for k in range(9):
+        out.append(rect(px + 30 + k * 12, HZ - 24, 6, 5, '#3A4566'))
+    # the jet bridge from the plane's door into the gate's west wall
+    out.append(poly([(px + 140, HZ - 26), (1100, HZ - 120), (1100, HZ - 98), (px + 140, HZ - 8)], '#B9BCCB' if mood == 'day' else '#6B6E8A'))
+    return out
+
+def gate(p, mood):
+    out = []
+    C = 1072
+    rnd = random.Random(61)
+    # the ceiling: white steel trusses and skylights
+    out.append(rect(C, 0, W - C, 92, '#D9DDE8' if mood == 'day' else '#6E7392'))
+    for x in range(C, W, 48):
+        out.append(f'<line x1="{x}" y1="0" x2="{x + 24}" y2="86" stroke="#8C93AD" stroke-width="2"/><line x1="{x + 48}" y1="0" x2="{x + 24}" y2="86" stroke="#8C93AD" stroke-width="2"/>')
+    for x in range(C + 30, W - 40, 110):
+        out.append(rect(x, 20, 60, 30, p['sky0'] if mood == 'day' else '#2B2E6A'))
+    if mood == 'eve':
+        for x in range(C + 50, W, 110):
+            out.append(f'<circle cx="{x}" cy="80" r="5" fill="#FFE2A0"/><circle cx="{x}" cy="80" r="18" fill="#FFD27A" opacity="0.2"/>')
+    out.append(rect(C, 86, W - C, 8, '#5C6584'))
+    # the back wall all glass onto the apron: a plane's nose at the gate seen through it
+    glass = p['sky0'] if mood == 'day' else '#2B2E6A'
+    out.append(rect(C, 94, W - C, 330, glass))
+    out.append(rect(C, 330, W - C, 94, '#7E8AA6' if mood == 'day' else '#2F3358'))     # the apron through the glass
+    out.append(rect(C + 110, 250, 230, 70, '#EDEAF2', 'rx="30"') + rect(C + 150, 268, 160, 10, '#3A4566', 'opacity="0.5"'))
+    out.append(poly([(C + 110, 285), (C + 60, 300), (C + 60, 312), (C + 112, 316)], '#C9C6D3'))
+    out.append(rect(C + 300, 300, 22, 40, '#E07A5F'))
+    for x in range(C, W, 64):
+        out.append(rect(x, 94, 4, 330, '#5C6584'))
+    out.append(rect(C, 250, W - C, 4, '#5C6584'))
+    # the departure board hanging in front of the glass, KRAKOZHIA delayed as ever
+    out.append(f'<line x1="{C + 150}" y1="94" x2="{C + 150}" y2="128" stroke="#333"/><line x1="{C + 290}" y1="94" x2="{C + 290}" y2="128" stroke="#333"/>')
+    out.append(box(C + 110, 214, 220, 80, 10, '#1E2236', '#3A3E4C'))
+    rows = [('DEPARTURES', '#F6C770'), ('67 CLAUDE  ON TIME', '#F2ECE0'), ('12 KRAKOZHIA DELAYED', '#F2ECE0'), ('31 LONDON   BOARDING', '#F2ECE0')]
+    for i, (t, c) in enumerate(rows):
+        out.append(text(C + 118, 150 + i * 18, t, 11, c, 'font-weight="bold"'))
+    out.append(box(C + 360, 200, 46, 40, 8, '#F6C770' if mood == 'eve' else '#E1B12C', '#F2D27A') + text(C + 368, 228, '67', 20, '#1F2350', 'font-weight="bold"'))
+    out.append(rect(C, 424, W - C, 10, '#3A3F52'))
+    # the floor from above: carpet in a pattern
+    out += tilefloor(C, 434, W, H, '#5B6F9E' if mood == 'day' else '#4A5A86', '#3E4E7E', 0.6)
+    for y in range(446, H, 48):
+        for x in range(C + 12, W, 48):
+            out.append(rect(x, y, 6, 6, '#E1B12C', 'opacity="0.35"'))
+    # rows of seats in three-quarter view, travellers in them and walking with bags
+    coats = ['#2F5DA8', '#B23A3A', '#2E7A55', '#E1B12C', '#6A4C93']
+    things = []
+    for y in [520, 640, 760]:
+        for x in [C + 30, C + 230]:
+            things.append((y, 'seats', x))
+    for _ in range(14):
+        things.append((rnd.uniform(470, 900), 'walker', rnd.uniform(C + 20, W - 20)))
+    things.append((560, 'kiosk', W - 92))
+    things.append((560, 'viktor', C + 30))
+    for y, kind, x in sorted(things):
+        if kind == 'seats':
+            for k in range(5):
+                sx = x + k * 32
+                out.append(box(sx, y, 28, 10, 18, '#2F3B6B', '#3E4E86'))
+                if rnd.random() < 0.55:
+                    out.append(clawd(sx + 14, y - 14, 1.4, rnd.choice(coats)))
+        elif kind == 'walker':
+            out.append(clawd(x, y, 1.6, rnd.choice(coats)) + box(x + 12, y + 4, 12, 14, 4, '#7A4A3A', '#9A5E48'))
+        elif kind == 'kiosk':
+            out.append(box(x, y, 80, 40, 18, '#B23A3A', '#D9D2C4') + text(x + 10, y - 20, 'COFFEE', 11, '#F2ECE0', 'font-weight="bold"'))
+            if mood == 'eve':
+                out.append(f'<circle cx="{x + 40}" cy="{y - 40}" r="30" fill="#FFD27A" opacity="0.18"/>')
+        else:
+            # Viktor's corner at gate 67: a blanket, the peanut can, the carts
+            out.append(rect(x, y + 8, 60, 16, '#6A4C93', 'opacity="0.8"') + clawd(x + 18, y + 14, 1.8, '#6A4C93'))
+            out.append(box(x + 66, y + 20, 12, 14, 4, '#3F7A4A', '#C9A646'))
+    # the baggage belt at the front: a loop seen from above, the context window's bags on it
+    out.append(box(C + 40, 940, W - C - 80, 24, 70, '#3A3F52', '#4A5068'))
+    out.append(rect(C + 60, 884, W - C - 120, 26, '#2A2E3E'))
+    for k in range(7):
+        out.append(box(C + 70 + k * 46, 902, 30, 12, 10, ['#B23A3A', '#2E7A55', '#E1B12C', '#2F5DA8'][k % 4], '#D9D2C4'))
+    out.append(text(C + 46, 975, 'BAGGAGE CLAIM', 11, '#F2ECE0', 'font-weight="bold"'))
+    if mood == 'eve':
+        out.append(rect(C, 94, W - C, H - 94, '#FFB35C', 'opacity="0.08"'))
+    # the west wall, cut, where the jet bridge comes in
+    out.append(rect(C - 14, 0, 14, HZ - 124, '#2A2440') + rect(C - 12, 0, 10, HZ - 124, '#C9C6D3'))
+    out.append(rect(C - 14, HZ - 96, 14, H - HZ + 96, '#2A2440') + rect(C - 12, HZ - 96, 10, H - HZ + 96, '#C9C6D3'))
+    out.append(clawd(C + 6, HZ - 100, 1.6, '#2E7A55'))
+    return out
+
+def scene_airport(mood, with_text=True):
+    p = PAL[mood]
+    parts = sky(p, mood) + apron(p, mood) + gate(p, mood)
+    if with_text:
+        parts += terminal(mood)
+    return f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;border-radius:6px">' + ''.join(parts) + '</svg>'
+
+if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'air':
+    html = ['<h2>Flygplatsen v3 – skiss: gaten snett uppifrån</h2>',
+            '<p class="subtitle">Utsidan som i runda 2: banan, tornet och planen lågt vid horisonten bakom texten, jetbryggan in genom västra väggen. Insidan snett uppifrån som NYSE: innertak med fackverk och takfönster, en hel glasvägg mot plattan med planet vid gaten, avgångstavlan, stolsrader och resenärer, Viktors hörna vid gate 67, kaffekiosken, bagagebandet längst fram.</p>',
+            '<div class="options">']
+    for key, title, mood in [('l', 'Dag', 'day'), ('m', 'Kväll', 'eve')]:
+        html.append(f'<div class="option" data-choice="{key}" onclick="toggleSelect(this)" style="flex-direction:column;align-items:stretch">'
+                    f'<div style="display:flex;gap:12px;align-items:center"><div class="letter">{key.upper()}</div><div class="content"><h3>{title}</h3></div></div>'
+                    f'<div style="margin-top:10px">{scene_airport(mood)}</div></div>')
+    html.append('</div>')
+    open(sys.argv[1], 'w').write('\n'.join(html))
