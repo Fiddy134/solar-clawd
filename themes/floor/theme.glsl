@@ -191,70 +191,54 @@ vec4 smallFlag(vec2 q, vec2 size, float u) {
 }
 
 // The sidewalk outside the west wall, under the text's last columns: stone
-// plates in calm, low tones, never lighter than the sky behind them, its curb
-// and the street beyond fading out; by night the door's light on it. Its
-// lamps by the curb, lit at night; the flags on their poles; and Washington
-// in bronze on his pedestal, a pigeon on his head.
+// plates in calm, low tones, its curb and the street beyond fading out; its
+// lamps by the curb; the flags on their poles; and Washington in bronze on
+// his pedestal, a pigeon on his head. Each thing is a distance and the
+// nearest wins, so the colour is chosen once and brought down once to the
+// sky's lightness behind the text; only the lights are laid over it: the
+// lanterns by night and the door's light on the plates.
 vec3 sidewalk(vec3 sky, vec2 p, float u, float k, Hall h, float nt) {
   if (p.y < h.floorY - u || p.x < h.walk - 2.0 * u) return sky;
-  float dark = 1.0 - 0.6 * nt;
-  float fade = smoothstep(h.floorY - u, h.floorY + 2.0 * u, p.y);
   float x = p.x - h.walk;
   vec2 v = vec2(x, p.y - h.floorY);
-  vec2 cell = floor(v / (2.0 * u));
-  vec2 at = v - (cell + 0.5) * 2.0 * u;
-  uint hs = hashi(int(cell.x) * 71 + int(cell.y) * 313 + 3);
-  vec3 col = sky_under(mix(tone(mix(STONE, INK_VIOLET, 0.12 + 0.05 * float(hs & 3u)), k) * 0.78 * dark, sky, 0.25 * nt), sky);
-  if (u - max(abs(at.x), abs(at.y)) < 0.06 * u) col = mix(col, keyInk(k), 0.3);
-  if (x < 0.3 * u) col = sky_under(mix(tone(mix(STONE, INK_INDIGO, 0.35), k) * dark, sky, 0.25 * nt), sky);
-  vec2 door = vec2(h.left, 0.5 * (h.doorTop + h.doorBot));
-  col = mix(col, INK_YELLOW, screen(p, 0.4 * nt * exp(-length((p - door) / vec2(1.0, 1.3)) / (0.9 * u)), pitch(u), 0.0));
-  sky = x < 0.0 ? mix(sky, sky_under(tone(INK_INDIGO, k) * 0.55 * dark, sky), 0.5 * fade * smoothstep(-2.0 * u, 0.0, x)) : mix(sky, col, fade);
-  // The lamps by the curb: a post, its lantern lit by night.
-  float along = (p.y - h.floorY) / u;
+  vec2 at = mod(v, 2.0 * u) - u;
+  uint hs = hashi(int(floor(v.x / (2.0 * u))) * 71 + int(floor(v.y / (2.0 * u))) * 313 + 3);
+  vec3 col = mix(STONE, INK_VIOLET, 0.12 + 0.05 * float(hs & 3u)) * 0.78;
+  if (u - max(abs(at.x), abs(at.y)) < 0.06 * u || x < 0.3 * u) col = mix(col, INK_INDIGO, 0.3);
+  float a = smoothstep(h.floorY - u, h.floorY + 2.0 * u, p.y) * (x < 0.0 ? 0.5 * smoothstep(-2.0 * u, 0.0, x) : 1.0);
+  if (x < 0.0) col = INK_INDIGO * 0.55;
+  // A lamp: its post and its lantern.
+  float along = v.y / u;
   vec2 lq = p - vec2(h.walk + 1.2 * u, h.floorY + nearest(along + 2.0, vec3(6.0, 19.5, 31.0)) * u);
-  if (abs(lq.x) < 2.0 * u && lq.y < 0.3 * u && lq.y > -4.5 * u) {
-    vec3 iron = sky_under(tone(NAVY, k) * 0.8 * dark, sky);
-    vec2 lantern = vec2(0.0, -2.45 * u);
-    if (nt > 0.3) sky = mix(sky, INK_YELLOW, screen(p, 0.45 * nt * exp(-length(lq - lantern) / (0.45 * u)), pitch(u), 0.0));
-    sky = ink(sky, iron, min(max(abs(lq.x) - 0.08 * u, max(lq.y, -2.2 * u - lq.y)), box(lq + vec2(0.0, 0.1 * u), vec2(0.22, 0.12) * u)), 1.0);
-    float glassD = box(lq - lantern, vec2(0.24, 0.3) * u);
-    sky = ink(sky, iron, min(glassD - 0.06 * u, box(lq - lantern + vec2(0.0, 0.42 * u), vec2(0.3, 0.07) * u)), 1.0);
-    sky = ink(sky, nt > 0.3 ? mix(INK_YELLOW, CREAM, 0.3) : sky_under(tone(mix(NAVY, INK_BLUE, 0.3), k) * dark, sky), glassD, 1.0);
-  }
-  // The flags on their poles out of the wall.
+  vec2 lantern = lq + vec2(0.0, 2.45 * u);
+  float glass = box(lantern, vec2(0.2, 0.26) * u);
+  if (min(max(abs(lq.x) - 0.08 * u, max(lq.y, -2.2 * u - lq.y)), min(box(lq + vec2(0.0, 0.1 * u), vec2(0.22, 0.12) * u), glass - 0.07 * u)) < 0.0) col = NAVY * 0.8;
+  // A flag on its pole out of the wall, hanging from it.
   vec2 root = vec2(h.left, h.floorY + nearest(along, vec3(2.5, 16.5, 27.5)) * u);
-  vec2 tip = root + vec2(-3.6 * u, -1.3 * u);
-  if (p.x > tip.x - 0.3 * u && p.y > tip.y - 0.4 * u && p.y < root.y + 1.6 * u) {
-    float poleY = root.y - 1.3 * (h.left - p.x) / 3.6;
-    vec4 f = smallFlag(vec2(p.x - h.left + 3.4 * u, p.y - poleY), vec2(2.1, 1.4) * u, u);
-    if (f.a > 0.0) sky = mix(sky, mix(tone(f.rgb, k) * dark, sky, 0.2), 0.95);
-    sky = ink(sky, sky_under(tone(BRASS, k) * dark, sky), segment(p, root, tip) - 0.06 * u, 1.0);
-  }
-  // Washington on his pedestal against the wall, his hand out over the
-  // street, a pigeon on his head.
+  vec4 f = smallFlag(vec2(p.x - h.left + 3.4 * u, p.y - root.y + 1.3 * (h.left - p.x) / 3.6), vec2(2.1, 1.4) * u, u);
+  if (f.a > 0.0) col = mix(f.rgb, col, 0.2);
+  if (segment(p, root, root + vec2(-3.6 * u, -1.3 * u)) < 0.06 * u) col = BRASS;
+  // Washington: his pedestal, his coat widening to its skirts, his legs,
+  // his head, his arm out over the street, the fasces his other hand rests
+  // on, and a pigeon on his head.
   vec2 sq = (p - vec2(h.left - 1.6 * u, h.floorY + 13.0 * u)) / 1.4;
-  if (abs(sq.x) > 1.3 * u || sq.y > 0.1 * u || sq.y < -4.0 * u) return sky;
-  vec3 stone = sky_under(tone(STONE, k) * 0.85 * dark, sky);
-  float pedTop = box(sq + vec2(0.0, 1.25 * u), vec2(0.95, 0.25) * u);
-  float pedFront = box(sq + vec2(0.0, 0.5 * u), vec2(0.95, 0.5) * u);
-  sky = ink(sky, mix(stone, keyInk(k), 0.25), pedFront, 1.0);
-  sky = ink(sky, stone, pedTop, 1.0);
-  sky = ink(sky, keyInk(k), abs(min(pedTop, pedFront)) - 0.04 * u, 0.6);
+  float ped = box(sq + vec2(0.0, 0.75 * u), vec2(0.95, 0.75) * u);
+  if (ped < 0.0) col = sq.y < -1.0 * u ? STONE : mix(STONE, INK_INDIGO, 0.25);
   vec2 b = sq + vec2(0.0, 1.3 * u);
-  // His coat widening to its skirts, his legs, his head, his arm out over
-  // the street and the fasces his other hand rests on.
   float body = box(b + vec2(0.0, 1.1 * u), vec2(0.3 * u + 0.12 * (b.y + 1.6 * u), 0.5 * u));
   body = min(body, box(vec2(abs(b.x) - 0.15 * u, b.y + 0.3 * u), vec2(0.08, 0.3) * u));
   body = min(body, length(b + vec2(0.0, 1.95 * u)) - 0.26 * u);
   body = min(body, segment(b, vec2(-0.25 * u, -1.5 * u), vec2(-0.8 * u, -1.15 * u)) - 0.09 * u);
   body = min(body, box(b + vec2(-0.55 * u, 0.4 * u), vec2(0.1, 0.42) * u));
-  vec3 bronze = sky_under(tone(BRONZE, k) * dark, sky);
-  bronze = mix(bronze, mix(bronze, INK_INDIGO, 0.4), screen(p, 0.3 + 0.4 * step(0.0, b.x), pitch(u), 45.0));
-  sky = ink(sky, bronze, body, 1.0);
-  sky = ink(sky, keyInk(k), abs(body) - 0.03 * u, 0.5);
-  float pigeon = min(length((b + vec2(-0.05 * u, 2.3 * u)) / vec2(1.4, 1.0)) - 0.13 * u, length(b + vec2(0.12 * u, 2.38 * u)) - 0.07 * u);
-  return ink(sky, sky_under(tone(mix(STONE, INK_VIOLET, 0.3), k) * dark, sky), pigeon, 1.0);
+  if (body < 0.0) col = b.x > 0.0 ? mix(BRONZE, INK_INDIGO, 0.3) : BRONZE;
+  if (abs(body) < 0.04 * u || abs(ped) < 0.04 * u) col = mix(col, INK_INDIGO, 0.5);
+  if (length((b + vec2(-0.05 * u, 2.3 * u)) / vec2(1.4, 1.0)) < 0.13 * u) col = mix(STONE, INK_VIOLET, 0.3);
+  sky = mix(sky, sky_under(tone(col, k) * (1.0 - 0.6 * nt), sky), a);
+  // The lights: the door's on the plates, and the lanterns by night.
+  vec2 door = vec2(h.left, 0.5 * (h.doorTop + h.doorBot));
+  float glow = 0.4 * exp(-length((p - door) / vec2(1.0, 1.3)) / (0.9 * u)) + 0.45 * exp(-length(lantern) / (0.45 * u));
+  sky = mix(sky, INK_YELLOW, screen(p, nt * glow * step(0.0, x), pitch(u), 0.0));
+  return glass < 0.0 ? (nt > 0.3 ? mix(INK_YELLOW, CREAM, 0.3) : sky_under(tone(NAVY, k), sky)) : sky;
 }
 
 // --- The building ----------------------------------------------------------------
@@ -377,23 +361,6 @@ vec3 bigFlag(vec3 sky, vec2 p, float u, float k, Hall h, float nt, float lights)
   c = indoor(c, k, nt, lights);
   c = mix(c, mix(c, INK_INDIGO, 0.3), screen(p, 0.35 * (0.5 + 0.5 * sin(x / (0.7 * u) + 1.3)), pitch(u), 75.0));
   return x < 0.06 * u || x > 5.54 * u ? mix(c, keyInk(k), 0.6) : c;
-}
-
-// New York's clock on the left pier, its hands at the hour there.
-vec3 nyClock(vec3 sky, vec2 p, float u, float k, vec2 at) {
-  vec2 q = p - at;
-  float r = 1.2 * u;
-  float d = length(q) - r;
-  if (d > 0.25 * u) return sky;
-  float ny = sky_NEW_YORK_HOUR;
-  sky = ink(sky, lift(CREAM, k), d, 1.0);
-  sky = ink(sky, tone(BRASS, k), abs(d) - 0.12 * u, 1.0);
-  float tick = abs(fract(atan(q.x, -q.y) / (2.0 * PI) * 12.0 + 0.5) - 0.5);
-  if (length(q) > 0.78 * r && length(q) < 0.92 * r && tick < 0.07) sky = mix(sky, keyInk(k), 0.9);
-  float hourA = 2.0 * PI * mod(ny, 12.0) / 12.0;
-  float minuteA = 2.0 * PI * fract(ny);
-  float hands = min(segment(q, vec2(0.0), 0.5 * r * vec2(sin(hourA), -cos(hourA))) - 0.09 * u, segment(q, vec2(0.0), 0.8 * r * vec2(sin(minuteA), -cos(minuteA))) - 0.06 * u);
-  return ink(sky, keyInk(k), hands, 1.0);
 }
 
 // The brass bell on its bracket on the right pier, swinging and ringing out
@@ -555,7 +522,6 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   float mid = h.inner + 0.5 * h.width;
   sky = backWall(sky, p, u, k, h, nt, lights);
   sky = hallLamps(sky, p, u, k, h, nt, lights);
-  sky = nyClock(sky, p, u, k, vec2(h.inner + h.width / 3.0, 16.2 * u));
   sky = bell(sky, p, u, k, vec2(h.inner + 2.0 * h.width / 3.0, 15.4 * u), m.bell > 0.5);
   sky = bigFlag(sky, p, u, k, h, nt, lights);
   sky = cubes(sky, p, u, k, h, sky_tool() == sky_TOOL_WEB);
@@ -912,7 +878,7 @@ vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool, float 
         int i = int(floor((p.x - x0) / (6.0 * g)));
         l.at = vec2(x0 + 6.0 * g * float(i), lineTop + 6.0 * g * float(line));
         l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : line == 0 ? int((nameOf(r) >> uint(6 * i)) & 63u) : priceCode(r, i);
-        l.color = !isOn && isKnown ? mix(panel, CREAM, 0.25) : lift(line == 0 ? INK_YELLOW : CREAM, k);
+        l.color = !isOn ? mix(panel, CREAM, 0.25) : lift(line == 0 ? INK_YELLOW : CREAM, k);
       }
     } else if (q.y > -0.18 * u) {
       col = tone(BRASS, k) * 0.8;
@@ -960,67 +926,40 @@ vec3 jenga(vec3 sky, vec2 p, float u, float k, vec2 at, float floorY, float fall
 // tenth has just filled; while the conversation compacts the
 // cleaner has mopped them into one heap, and just after the floor is bare.
 // Then the resident's pulpit, a box with a top and a front, hiding his legs:
-// his banker's lamp lit on it, the Jenga tower at his side (The Big Short's:
-// it lies fallen while the Nasdaq-100 is down more than 2 %) and, while he
-// hums, notes rising over his head.
-vec3 frontStrip(vec3 sky, vec2 p, float u, float k, Hall h, float fall, bool humming, int full, int state, float nt) {
+// his banker's lamp lit on it and the Jenga tower at his side (The Big
+// Short's: it lies fallen while the Nasdaq-100 is down more than 2 %).
+vec3 frontStrip(vec3 sky, vec2 p, float u, float k, Hall h, float fall, int full, int state, float nt) {
   if (p.y < h.front - 2.0 * u || p.x < h.inner) return sky;
   float bottom = iResolution.y;
-  vec3 paper = lift(CREAM, k);
-  if (state == CONTEXT_CLEARING) {
-    vec2 hq = p - vec2(h.inner + 2.2 * u, bottom - 1.2 * u);
-    float heap = max(length(hq / vec2(1.6, 1.0)) - (0.35 + 0.07 * float(full)) * u, hq.y);
-    sky = ink(sky, mix(paper, keyInk(k), step(0.75, fract(hq.y / (0.13 * u))) * 0.5), heap, 1.0);
-    sky = ink(sky, keyInk(k), abs(heap) - 0.04 * u, 0.6);
-  } else if (state != CONTEXT_CLEARED) {
-    float sp = 1.25 * u;
-    int i = int(floor((p.x - h.inner - 0.4 * u) / sp));
-    if (i >= 0 && i < full) {
-      uint hs = hashi(i * 23 + 7);
-      float tall = (0.5 + 0.4 * float(hs & 255u) / 255.0) * u;
-      bool isFresh = state == CONTEXT_GAINED && i == full - 1;
-      vec2 q = p - vec2(h.inner + 0.4 * u + (float(i) + 0.5) * sp, bottom - 1.2 * u);
-      vec3 sheet = isFresh ? lift(mix(INK_YELLOW, CREAM, 0.4), k) : paper;
-      float pileFront = box(q + vec2(0.0, 0.5 * tall), vec2(0.45 * u, 0.5 * tall));
-      float pileTop = box(q + vec2(0.0, tall + 0.2 * u), vec2(0.45 * u, 0.2 * u));
-      sky = ink(sky, mix(sheet, keyInk(k), step(0.7, fract(q.y / (0.12 * u))) * 0.45), pileFront, 1.0);
-      sky = ink(sky, sheet, pileTop, 1.0);
-      sky = ink(sky, keyInk(k), abs(min(pileFront, pileTop)) - 0.04 * u, 0.6);
-    }
-  }
+  // The paper: a pile of sheets for each full tenth, its front ruled with
+  // their edges, or the one heap the cleaner has mopped them into.
+  float sp = 1.25 * u;
+  int i = int(floor((p.x - h.inner - 0.4 * u) / sp));
+  uint hs = hashi(i * 23 + 7);
+  float tall = (0.7 + 0.4 * float(hs & 255u) / 255.0) * u;
+  vec2 q = p - vec2(h.inner + 0.4 * u + (float(i) + 0.5) * sp, bottom - 1.2 * u);
+  vec2 hq = p - vec2(h.inner + 2.2 * u, bottom - 1.2 * u);
+  bool isClearing = state == CONTEXT_CLEARING;
+  float pile = isClearing ? max(length(hq / vec2(1.6, 1.0)) - (0.35 + 0.07 * float(full)) * u, hq.y) : i >= 0 && i < full && state != CONTEXT_CLEARED ? box(q + vec2(0.0, 0.5 * tall), vec2(0.45 * u, 0.5 * tall)) : 1e4;
+  vec3 sheet = state == CONTEXT_GAINED && i == full - 1 ? mix(INK_YELLOW, CREAM, 0.4) : CREAM;
+  if (pile < 0.0) sky = lift(pile > -0.05 * u ? INK_INDIGO : fract((isClearing ? hq.y : q.y) / (0.12 * u)) > 0.7 || q.y < 0.15 * u - tall ? mix(sheet, INK_INDIGO, 0.25) : sheet, k);
   vec2 res = vec2(h.inner + 0.68 * h.width, bottom - 0.8 * u);
-  if (abs(p.x - res.x) > 4.0 * u) return sky;
-  // The pulpit: its top seen from above, its front in dark wood with a brass
-  // rail and a brass seal.
-  vec2 q = p - res;
+  q = p - res;
+  if (abs(q.x) > 4.0 * u || q.y < -3.0 * u) return sky;
+  // The pulpit: its top seen from above, its front in dark wood with a
+  // brass rail and a brass seal, its edges in the key plate.
   float pfront = box(q + vec2(0.0, 0.65 * u), vec2(2.8, 0.65) * u);
   float ptop = box(q + vec2(0.0, 1.65 * u), vec2(2.8, 0.35) * u);
-  vec3 wood = indoor(mix(WOOD, INK_INDIGO, 0.2), k, nt, 1.0);
-  sky = ink(sky, mix(wood, mix(wood, INK_INDIGO, 0.4), screen(p, 0.35, pitch(u), 75.0)), pfront, 1.0);
-  sky = ink(sky, tone(BRASS, k), max(pfront, abs(q.y + 1.15 * u) - 0.1 * u), 1.0);
-  sky = ink(sky, tone(BRASS, k), length(q + vec2(0.0, 0.55 * u)) - 0.32 * u, 1.0);
-  sky = ink(sky, indoor(mix(WOOD, CREAM, 0.35), k, nt, 1.0), ptop, 1.0);
-  sky = ink(sky, keyInk(k), abs(min(pfront, ptop)) - 0.05 * u, 0.7);
+  float pulpit = min(pfront, ptop);
+  vec3 c = ptop < 0.0 ? mix(WOOD, CREAM, 0.35) : abs(q.y + 1.15 * u) < 0.1 * u || length(q + vec2(0.0, 0.55 * u)) < 0.32 * u ? BRASS : mix(WOOD, INK_INDIGO, 0.2 + 0.3 * screen(p, 0.35, pitch(u), 75.0));
+  if (pulpit < 0.0) sky = pulpit > -0.06 * u ? keyInk(k) : indoor(c, k, nt, 1.0);
   // The banker's lamp: a brass stem, its green shade, its light on the
   // pulpit's top.
   vec2 lq = q - vec2(-2.2 * u, -1.75 * u);
-  if (abs(lq.x) < 1.3 * u && lq.y < 0.6 * u && lq.y > -1.4 * u) {
-    if (ptop < 0.0) sky = mix(sky, lift(INK_YELLOW, k), screen(p, 0.75 * exp(-length(lq) / (0.5 * u)), pitch(u), 0.0));
-    sky = ink(sky, tone(BRASS, k), min(max(abs(lq.x) - 0.07 * u, max(lq.y, -lq.y - 0.8 * u)), box(lq, vec2(0.3, 0.06) * u)), 1.0);
-    sky = ink(sky, lift(INK_GREEN, k), max(length((lq + vec2(0.0, 0.8 * u)) / vec2(0.6, 0.3)) - u, lq.y + 0.8 * u), 1.0);
-  }
-  sky = jenga(sky, p, u, k, res + vec2(2.1 * u, -1.6 * u), bottom - 0.2 * u, fall);
-  if (!humming) return sky;
-  // The hum: three notes rising from over his head and drifting off to the
-  // right, each a third of the way behind the last.
-  for (int i = 0; i < 3; i++) {
-    float f = fract(iTime * 0.4 + float(i) / 3.0);
-    vec2 nq = p - vec2(res.x + (0.9 + 1.6 * f) * u, res.y - 1.5 * u - 4.5 * h.rc - 2.2 * f * u);
-    float note = min(length(nq / vec2(1.3, 1.0)) - 0.22 * u, min(max(abs(nq.x - 0.26 * u) - 0.05 * u, abs(nq.y + 0.42 * u) - 0.42 * u), segment(nq, vec2(0.26 * u, -0.84 * u), vec2(0.55 * u, -0.5 * u)) - 0.06 * u));
-    sky = ink(sky, lift(CREAM, k), note, 1.0);
-    sky = ink(sky, keyInk(k), abs(note) - 0.04 * u, 0.6);
-  }
-  return sky;
+  if (ptop < 0.0) sky = mix(sky, lift(INK_YELLOW, k), screen(p, 0.75 * exp(-length(lq) / (0.5 * u)), pitch(u), 0.0));
+  if (min(max(abs(lq.x) - 0.07 * u, max(lq.y, -lq.y - 0.8 * u)), box(lq, vec2(0.3, 0.06) * u)) < 0.0) sky = tone(BRASS, k);
+  if (max(length((lq + vec2(0.0, 0.8 * u)) / vec2(0.6, 0.3)) - u, lq.y + 0.8 * u) < 0.0) sky = lift(INK_GREEN, k);
+  return jenga(sky, p, u, k, res + vec2(2.1 * u, -1.6 * u), bottom - 0.2 * u, fall);
 }
 
 // While a command runs, BUY and SELL in bubbles over the traders of every
@@ -1152,7 +1091,7 @@ vec3 resident(vec3 sky, vec2 p, float u, float k) {
   sky = post(sky, p, u, k, h, m, tool, nt);
   float age = mod(iTime, 60.0);
   float fall = THEME_FORCE == 2 ? (age < 50.0 ? smoothstep(0.0, 1.4, age) : 0.0) : sky_QUOTE_PRICE[sky_NDX] > 0.0 && sky_QUOTE_CHANGE[sky_NDX] < -2.0 ? 1.0 : 0.0;
-  sky = frontStrip(sky, p, u, k, h, fall, humming, contextFish(), state, nt);
+  sky = frontStrip(sky, p, u, k, h, fall, contextFish(), state, nt);
   if (charging) sky = bull(sky, p, u, k, h, runT);
   if (tool == sky_TOOL_COMMAND) sky = shouts(sky, p, u, k, h, m);
   bool party = m.bell > 0.5 || (sky_QUOTE_PRICE[sky_BTC] > 0.0 && sky_QUOTE_CHANGE[sky_BTC] >= 5.0);
