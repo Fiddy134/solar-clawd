@@ -5,10 +5,10 @@
 //
 //   node tools/theme/guide.mjs                         (writes hooks/themes/guide.ts)
 //   node tools/theme/guide.mjs --check                 (exits 1 if that copy is not the guide as it is)
-//   node tools/theme/guide.mjs template themes/<name>  (writes the template's manifest.json and theme.glsl)
+//   node tools/theme/guide.mjs template themes/<name>  (writes the template's manifest.json, named after the folder, and theme.glsl)
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { dirname, join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
@@ -57,7 +57,11 @@ if (command === undefined) {
   }
   const dir = resolve(folder)
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'manifest.json'), manifest)
+  // The manifest named after its folder, as the lint wants it, where the
+  // folder's name is one a theme may have.
+  const name = basename(dir)
+  const named = /^[a-z0-9-]{1,32}$/.test(name) ? manifest.replace('"name": "my-theme"', `"name": "${name}"`) : manifest
+  writeFileSync(join(dir, 'manifest.json'), named)
   writeFileSync(join(dir, 'theme.glsl'), glsl)
   console.log(dir)
 } else {

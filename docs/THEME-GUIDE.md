@@ -1,6 +1,7 @@
 # Writing a theme for Solar Clawd
 
 <!--
+For the guide's maintainers; a theme's author can pass over this comment.
 This guide is the whole of what a theme's author is given. hooks/guide.test.tsx
 holds it to the code: the lines of a glsl-signature block are the engine's
 own, every glsl block lints clean, the glsl-fyr and glsl-engine excerpts are
@@ -9,22 +10,22 @@ fyr's manifest, the template (json-template and glsl-template) checks clean,
 the text-reserved block is the engine's names, the text-clawd block is the
 band's Clawd, the codes one-liner has the font's order, and each table after
 a guide-test comment lists what the code has. After an edit, run
-`node tools/theme/guide.mjs`, which writes the copy the test reads
-(hooks/themes/guide.ts), and then `claude plugin test .`.
+`node tools/theme/guide.mjs` with no arguments, which writes the copy the
+test reads (hooks/themes/guide.ts), and then `claude plugin test .`.
 -->
 
-The sky behind Claude Code in Ghostty is an engine and a theme. The engine draws the sky; a theme draws a world in it at the right of the window, and Clawd lives there. This guide is everything you need to write one. With it and a paragraph saying what your theme is, you can write a theme that lints, compiles and looks right in one sweep, without reading the engine (`hooks/`) or another theme. Every signature, signal, name and excerpt in it is checked against the code by a test, so you can take it as the truth.
+The sky behind Claude Code in Ghostty is an engine and a theme. The engine draws the sky; a theme draws a world in it at the right of the window, and Clawd lives there. This guide is everything you need to write one. With it and a paragraph saying what your theme is, you can write a theme that lints, compiles and looks right in one sweep, without reading the engine (`hooks/`) or another theme. Every signature, signal name, reserved name, manifest field and excerpt in it is checked against the code by a test, and every example lints clean; the rest (the signals' types and values, timings, the tools' flags, the prose) is written from the code but not tested against it.
 
 Work like this, from the repository's root:
 
 1. Read the guide through once. Themes go wrong in §2 (the world), §3 (the contract), §8 (time) and §11 (the waiting light).
-2. Make `themes/<name>/` and put the template's two files in it (§15): `node tools/theme/guide.mjs template themes/<name>` writes them.
-3. Write your world into them, and lint after every change: `tools/theme/run.sh lint themes/<name>`.
+2. Make `themes/<name>/` and put the template's two files in it (§15): `node tools/theme/guide.mjs template themes/<name>` writes them, with the folder's name in the manifest.
+3. Write your world into them, and after every change lint it and draw a frame (step 4): `tools/theme/run.sh lint themes/<name>`. The lint does not check types; only the compiler does.
 4. Look at single frames as you go: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00` prints the path of a PNG; read it.
 5. When it stands, draw the whole sheet with `tools/preview/sheet.sh theme themes/<name>`, look at every frame against the checklist (§14), and measure what it costs (§10).
 6. Put right what the lint, the compiler and the sheet show, until the checklist holds.
 
-The tools need node, ffmpeg and Google Chrome at `/Applications/Google Chrome.app`, which they run headless.
+The tools need node with npx (they fetch esbuild 0.24.0 the first time, which needs the network), ffmpeg, and Google Chrome at `/Applications/Google Chrome.app`, which they run headless.
 
 ## 1. What a theme is
 
@@ -81,12 +82,12 @@ x = 0                                               W - STAGE_PX            W
 5. The moon.
 6. The sky dimmed by `k` and saturated as the print is.
 7. The sun.
-8. The events behind the clouds: shooting stars, a comet, a rainbow, and your events whose layer is `behind` (`themeEvent` with `isBehind` true).
+8. The events behind the clouds: shooting stars, a satellite, a comet, the Clawd constellation, a rainbow, the Christmas star, and your events whose layer is `behind` (`themeEvent` with `isBehind` true).
 9. The ISS on a pass.
 10. **`scenery`**: your ground, your props and the waiting light.
 11. **`resident`**: your characters and their things.
 12. **`themeWindow`**: wherever it is above 0, the clouds, the events in front (the engine's balloons, planes, birds and kites, and your events whose layer is `front`, `themeEvent` with `isBehind` false) and the rain and snow, mixed in as much as it says.
-13. The wastebasket, if your manifest says `"context": "engine"`.
+13. The wastebasket, if your manifest says `"context": "engine"`: about 2 `u` wide and 2.2 `u` tall, its middle 1.9 `u` from the window's right edge, standing on the bottom edge, with its smoke and flames reaching 7.3 `u` up and 4.4 `u` in from the right. Keep that corner clear, or give it a floor it reads on.
 14. The rim round the terminal's text, and the terminal over everything.
 
 What follows from the order:
@@ -162,17 +163,17 @@ Your text comes after the engine's in the shader, so you can call any of the eng
 | Field | What it holds |
 |---|---|
 | `engine` | `1`, the contract this guide describes. |
-| `name` | 1 to 32 of `a` to `z`, `0` to `9` and `-`: the folder's name. |
-| `title` | A short title, as `/solar` names the theme. |
+| `name` | 1 to 32 of `a` to `z`, `0` to `9` and `-`: the folder's name, which the lint holds it to. |
+| `title` | A short title. Nothing shows it yet; it is kept for `/solar theme`, which is planned. |
 | `description` | A sentence or two: what stands there and what goes on. |
 | `author` | Who wrote it. |
 | `version` | Its version, as `1.0.0`. |
 | `license` | Its licence; the mod's own is `GPL-3.0`. |
-| `stage` | `"wanted"` for the strip at the right where the terminal's text never goes, or `"none"` for a theme that draws over the whole window and wants no margin. |
+| `stage` | `"wanted"` for the strip at the right where the terminal's text never goes, or `"none"` for a theme that draws over the whole window and wants no margin. Only the preview tools honour `"none"` so far: a session still gives such a theme the 240-point strip. |
 | `stagePt` | How wide the strip is, in points: 240, 280, 320, 360, 400, 440 or 480, and only with `"stage": "wanted"`; 240 when left out. Wider shows more of your world and leaves the terminal less room: choose by what your world needs, and judge it on the sheet. |
-| `waits` | What Claude waiting looks like in your theme, in a sentence, for `/solar` to say. |
+| `waits` | What Claude waiting looks like in your theme, in a sentence, for the person reviewing the theme (nothing shows it yet). |
 | `context` | `"resident"` if your theme shows the context window itself, through `contextFish()` and `contextState()` (§4); `"engine"` to have the engine's wastebasket in the bottom right corner instead. |
-| `market` | `true` if your theme shows prices (§4): a session fetches them only then. Leave it out otherwise. |
+| `market` | `true` if your theme shows prices (§4): a session fetches them only then. `false`, or leave it out, otherwise. |
 | `events` | Your events, which the engine schedules (below, and §12). `[]` for none. |
 | `previews` | Moments your theme schedules itself from `iTime`, each `{ "kind": …, "word": … }`. The engine never schedules them; `/solar event <word>` plays one for 90 seconds through `THEME_FORCE` (§8). `[]` for none. |
 | `aliases` | Other words `/solar event` takes for your events and previews, each `"word": "kind"`. `{}` for none. |
@@ -333,7 +334,7 @@ Inside a function a name may be anything GLSL allows, but a local named like a f
 `tools/theme/run.sh lint themes/<name>` reads the manifest as the engine does, then checks the GLSL against a subset of GLSL that cannot read the terminal, hang the GPU or redefine the engine. It prints the weights and the stage, then each problem, and `clean` when there are none:
 
 - No `while` or `do` loop.
-- A `for` loop only as `for (int i = a; i < b; i++)`: `a` and `b` whole numbers written out, at most 48 either way; `<`, `<=`, `>` or `>=`; a step of `i++`, `++i`, `i--`, `--i`, `i += n` or `i -= n` (n a whole number above 0) toward the bound; the index never assigned in the body; the body a `{ }` block. `break` and `continue` are fine. A bound you know only at run time goes in the body: `for (int i = 0; i < 4; i++) { if (i >= EVENT_COUNT) break; … }`.
+- A `for` loop only as `for (int i = a; i < b; i++)`: `a` and `b` whole numbers written out, both between −48 and 48 (so at most 97 turns); `<`, `<=`, `>` or `>=`; a step of `i++`, `++i`, `i--`, `--i`, `i += n` or `i -= n` (n a whole number above 0) toward the bound; the index never assigned in the body; the body a `{ }` block. `break` and `continue` are fine. A bound you know only at run time goes in the body: `for (int i = 0; i < 4; i++) { if (i >= EVENT_COUNT) break; … }`.
 - Loops nested at most two deep, a loop that calls a function counting that function's own loops under it (the engine's helpers are not counted).
 - Nothing that reads an image: no `texture…(` or `texelFetch…(` call (so no function of yours whose name starts with `texture` either), no `iChannel`, no `iPalette` (the tab's mark comes through `contextFish()`, `contextState()`, `sky_tool()` and `sky_agents()`).
 - No preprocessor (`#` anywhere outside a comment), no `discard`, no `mainImage`.
@@ -341,7 +342,7 @@ Inside a function a name may be anything GLSL allows, but a local named like a f
 - No `out` or `inout` parameter that is an `int` or a `uint`, and none of the built-ins that write one (`frexp`, `imulExtended`, `umulExtended`, `uaddCarry`, `usubBorrow`): return a struct or an `ivec2` instead.
 - None of the engine's names defined again, and no top-level name of yours starting with `sky_`.
 
-When it says it cannot count your loops, it found a block after a `)` whose function's name it could not read: write every signature plainly, `vec3 name(vec3 sky, vec2 p) {`.
+When it says it cannot count your loops, it found a block after a `)` whose function's name it could not read, or calls between your functions nested deeper than it follows: write every signature plainly, `vec3 name(vec3 sky, vec2 p) {`, and keep calls between your functions shallow.
 
 ### The caps
 
@@ -369,11 +370,11 @@ The engine declares these before your text: constants written into the shader, a
 | `MOON_UP` | float | 0 or 1 | Whether the moon is above the horizon. | scene |
 | `AURORA` | float | 0 to 1 | How strong an aurora the Kp index and a clear sky allow, before the night dims it: the engine draws `AURORA * max(AURORA_FLOOR, night())`. | scene |
 | `AURORA_FLOOR` | float | 0 or 0.4 | 0.4 while an aurora is forced with `/solar aurora`, so that it shows at dusk too. | at once |
-| `SHOOTING_RATE` | float | per hour | Shooting stars an hour: 2 on a clear night, 10 in a meteor shower, 0 otherwise. `shootingStarAge` (§5) finds the latest. | scene |
+| `SHOOTING_RATE` | float | per hour | Shooting stars an hour: 2 on a clear night, 10 in a meteor shower, 0 otherwise; 900 while `/solar event shooting star` (or the preview's `--event shootingStar`) plays a shower. `shootingStarAge` (§5) finds the latest. | scene |
 | `ISS_UP` | float | 0 or 1 | Whether the ISS is on a pass you could see. | every 2 s on a pass |
 | `ISS_AT`, `ISS_TRAIL` | vec2 | the dome | Where it is, and where it was 20 seconds before: `domeToPixel(ISS_AT)`. | every 2 s on a pass |
 | `FIREWORKS` | float | 0 to 1 | How much of the sky New Year's fireworks fill. | scene |
-| `FLAG_DAY` | float | 0 or 1 | 1 while the engine flies the flag on Sweden's national day. | scene |
+| `FLAG_DAY` | float | 0 or 1 | 1 while the engine flies the flag on Sweden's national day. | at once |
 | `DEMO_COUNT`, `DEMO_SECONDS`, `DEMO_ELEVATION`, `DEMO_PROGRESS`, `DEMO_DAY` | int, float, float[], float[], float[] | | `/solar demo`'s day, a scene every quarter of an hour played round in 48 seconds; `DEMO_COUNT` is 0 outside a demo. Read the scene through `sceneNow()` and `night()` instead. | at once |
 
 <!-- guide-test: signals -->
@@ -390,14 +391,14 @@ The engine declares these before your text: constants written into the shader, a
 |---|---|---|---|---|
 | `WAITING` | int | 0, 1, 2 | Claude waiting on the person: 0 not, 1 asking (a permission or a question), 2 done (its answer is finished and it is the person's turn). Every session's waits are shown in every tab, the most pressing first (§11). | at once |
 | `WAITING_URGENT` | float | 0 or 1 | 1 once a question has waited two minutes. | at once |
-| `CLAWD_ASLEEP` | float | 0 or 1 | Clawd in the band is asleep, from 03:00 to 06:00 (up all New Year's night). | scene |
-| `CLAWD_ACTIVITY` | int | 0 to 5 | Clawd's day: 0 early bird (06–08), 1 coffee (08–12), 2 work (12–16), 3 vibing (16–22), 4 night owl (22–03), 5 asleep (03–06). | scene |
+| `CLAWD_ASLEEP` | float | 0 or 1 | Clawd in the band is asleep, from 03:00 to 06:00 (up all New Year's night, and up at 05:00 for Lucia, 13 December). | scene |
+| `CLAWD_ACTIVITY` | int | 0 to 5 | Clawd's day: 0 early bird (06–08), 1 coffee (08–12), 2 work (12–16), 3 vibing (16–22), 4 night owl (22–03), 5 asleep (03–06; 03–05 on Lucia, when he is an early bird from 05). | scene |
 | `CONTEXT` | int | 0 or 1 | 1 where the tab's mark carries the context window: always in a Ghostty session, and in a preview given `--fish`. | never |
 | `contextFish()` | int | 0 to 10 | How many tenths of this tab's context window are full; 0 where `CONTEXT` is 0. | mark |
 | `contextState()` | int | `CONTEXT_` | What the context window is doing: `CONTEXT_IDLE`, `CONTEXT_CLEARING` (the conversation compacting or cleared, and 8 seconds after), `CONTEXT_CLEARED` (just compacted, 3 seconds) or `CONTEXT_GAINED` (a tenth just filled, 2.5 seconds). | mark |
 | `CONTEXT_IDLE`, `CONTEXT_CLEARING`, `CONTEXT_CLEARED`, `CONTEXT_GAINED` | int | 0 to 3 | The states `contextState()` returns. | never |
 | `sky_tool()` | int | `sky_TOOL_` | The kind of Claude's newest call still running, in the main conversation or a subagent; a kind stays at least 1.5 seconds. | mark |
-| `sky_TOOL_NONE`, `sky_TOOL_COMMAND`, `sky_TOOL_EDIT`, `sky_TOOL_READ`, `sky_TOOL_WEB`, `sky_TOOL_OTHER` | int | 0 to 5 | None; a command (Bash); an edit (Edit, Write, MultiEdit, NotebookEdit); a read or a search (Read, Grep, Glob, LS, NotebookRead, ToolSearch); the web (WebFetch, WebSearch); anything else, an MCP server's tools among them. An Agent call and a question to the person leave the kind as it was: the subagent's own calls show, and `WAITING` shows the question. | never |
+| `sky_TOOL_NONE`, `sky_TOOL_COMMAND`, `sky_TOOL_EDIT`, `sky_TOOL_READ`, `sky_TOOL_WEB`, `sky_TOOL_OTHER` | int | 0 to 5 | None; a command (Bash, BashOutput, KillShell); an edit (Edit, Write, MultiEdit, NotebookEdit); a read or a search (Read, Grep, Glob, LS, NotebookRead, ToolSearch); the web (WebFetch, WebSearch); anything else, an MCP server's tools among them. An Agent or Task call and a question to the person (AskUserQuestion) leave the kind as it was: the subagent's own calls show, and `WAITING` shows the question. | never |
 | `sky_agents()` | int | 0 to 7 | How many subagents are at work now. | mark |
 
 <!-- guide-test: signals -->
@@ -415,7 +416,7 @@ The engine declares these before your text: constants written into the shader, a
 |---|---|---|---|---|
 | `sky_QUOTE_COUNT` | int | 10 | How many symbols there are. | never |
 | `sky_BTC`, `sky_ETH`, `sky_NDX`, `sky_AAPL`, `sky_MSFT`, `sky_NVDA`, `sky_GOOGL`, `sky_AMZN`, `sky_META`, `sky_TSLA` | int | 0 to 9 | Each symbol's index into the two arrays below: bitcoin, ether, the Nasdaq-100 and the seven largest stocks. | never |
-| `sky_QUOTE_PRICE` | float[10] | | Each price in US dollars (the coins in USDT), to five significant figures; 0 while not known. Stocks are 15 minutes late. | scene |
+| `sky_QUOTE_PRICE` | float[10] | | Each price in US dollars (the coins in USDT from Binance, or in USD from Coinbase when Binance does not answer), to five significant figures; 0 while not known. Stocks are 15 minutes late. | scene |
 | `sky_QUOTE_CHANGE` | float[10] | percent | Each price's change today, to a hundredth of a percent: a stock against yesterday's close, a coin over 24 hours. | scene |
 | `sky_QUOTES_FRESH` | float | 0 or 1 | 1 while every known price was fetched within 15 minutes. | scene |
 
@@ -430,7 +431,7 @@ The engine declares these before your text: constants written into the shader, a
 | `EVENT_KIND`, `EVENT_SEED`, `EVENT_SECONDS` | int[], float[], float[] | | Each event up: its number (yours are 100 and up, in your manifest's order), its seed, and its length in seconds. `themeEvent` hands you your own; read these only to draw one of yours elsewhere (§12). | at once |
 | `INK_BLUE`, `INK_PINK`, `INK_YELLOW`, `INK_GREEN`, `INK_ORANGE`, `INK_VIOLET`, `INK_INDIGO` | vec3 | | The seven inks (§6). | never |
 
-The market's prices are fetched only for a theme whose manifest says `"market": true`, at most every five minutes, and shared by every session; a new one shows from the next scene on, so prices change the shader only when the scene does anyway. Without the field every price is 0 and `sky_QUOTES_FRESH` is 0, even though the preview's `--market up` shows prices to any theme. `sky_MARKET_OPEN` and `sky_NEW_YORK_HOUR` are there for every theme. A price has five significant figures, so one above 10,000 has no decimals to show and one under 1,000 has two.
+The market's prices are fetched only for a theme whose manifest says `"market": true`, at most every five minutes, and shared by every session; a new one shows from the next scene on, so prices change the shader only when the scene does anyway. Without the field every price is 0 and `sky_QUOTES_FRESH` is 0, even though the preview's `--market up` shows prices to any theme. `sky_MARKET_OPEN` and `sky_NEW_YORK_HOUR` are there for every theme. A price has five significant figures, so one of 10,000 or more has no decimals to show, one from 1,000 one, one from 100 two, and one under 100 three or more.
 
 Beside the engine's signals, Ghostty's own `iTime` (seconds, §8) and `iResolution` (the window in pixels) are yours to read. Reach the cursor through `cursorAt()`, `glance()` and `shy()` (§5), and nothing else of Ghostty's.
 
@@ -608,7 +609,7 @@ vec3 quote(vec3 sky, vec2 p, vec2 at, float cell, int symbol, float k) {
   float price = sky_QUOTE_PRICE[symbol];
   if (price <= 0.0) return mix(sky, lift(CREAM, k), sky_line16(p, at, cell, int[16](40, 40, 40, 40, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36, 36)));
   float change = sky_QUOTE_CHANGE[symbol];
-  sky = mix(sky, lift(CREAM, k), sky_number(p, at, cell, price, 7, price < 1000.0 ? 2 : 0));
+  sky = mix(sky, lift(CREAM, k), sky_number(p, at, cell, price, 7, price < 1000.0 ? 2 : price < 10000.0 ? 1 : 0));
   vec3 way = lift(change < 0.0 ? INK_PINK : INK_GREEN, k);
   sky = mix(sky, way, sky_glyph(p, at + vec2(32.0 * cell, 0.0), cell, change < 0.0 ? sky_GLYPH_DOWN : sky_GLYPH_UP));
   return mix(sky, way, sky_number(p, at + vec2(36.0 * cell, 0.0), cell, change, 6, 2));
@@ -648,11 +649,13 @@ OOOOOO
 .O..O.
 ```
 
-`O` is his coral, `K` his eyes in indigo. His legs are a deeper coral, `mix(CORAL, INK_INDIGO, 0.22)` with the template's `CORAL`, he is under the indigo plate at night (`nightInk`), and his key plate is a pixel or so off register down and to the right. The band also draws him looking left (`.KOKO.`) or right (`.OKOK.`), with his eyes shut in the deeper coral (`.kOOk.`), with his arms up (the arm row `.OOOO.`, and an `O` above each end of his head, `O....O`), and walking (his legs `O...O.` and `.O...O` by turns). Draw him with a grid function, as the keeper in §7 and the template's `clawd()` are drawn. He may wear things (a hat, glasses, a jumper over his arms), and others may stand beside him in other inks, but he stays a coral box with two eyes, his arms the whole width and two legs.
+`O` is his coral, `K` his eyes in indigo. His legs are shaded a deeper coral, `mix(CORAL, INK_INDIGO, 0.22)` with the template's `CORAL` (the band dots it over every other pixel of them; at a theme's cell size a solid deeper coral reads the same), outdoors he is under the indigo plate at night (`nightInk`) while indoors the room's lamps light him (`lift`, §9), and his key plate is a pixel or so off register down and to the right. The band also draws him looking left (`.KOKO.`) or right (`.OKOK.`), with his eyes shut in the deeper coral (`.kOOk.`), with his arms up (the arm row `.OOOO.`, and an `O` above each end of his head, `O....O`), and walking (his legs `O...O.` and `.O...O` by turns). Draw him with a grid function, as the keeper in §7 and the template's `clawd()` are drawn. He may wear things (a hat, glasses, a jumper over his arms), and others may stand beside him in other inks, but he stays a coral box with two eyes, his arms the whole width and two legs. A prop in front of him (a counter, a desk) may hide his legs; his head, eyes and arm row show.
+
+**His size.** At the template's cell of `max(1.0, floor(0.25 * u))` he is 24 × 16 pixels in the sheets, the least that reads, and right beside a lamp post on open ground. Beside larger props size him from them, as fyr sizes its keeper from the lighthouse, so that he stands as tall as a person would among them: indoors behind a counter or at a desk that is a cell of about `0.35 * u` to `0.5 * u` (5 to 8 pixels in the sheets). Look at him in frame 01 at its own size: if you have to search for him, he is too small.
 
 ## 7. Worked examples
 
-Six things from the engine and from fyr, each with what to take from it. The excerpts are the code as it stands, with `// …` where lines are left out; what they call and do not show is fyr's own or the engine's. Do not copy names from them: `balloon`, `plane` and the rest are taken (§3), and fyr's names are fyr's.
+Six things from the engine and from fyr, each with what to take from it. The excerpts are the code as it stands, with `// …` where lines are left out; what they call and do not show is fyr's own or the engine's. The names taken are the reserved ones (§3) and those starting with `sky_`: the engine's `balloon`, `plane` and the rest among them. Fyr's own names and the guide's examples are not taken, since only one theme is compiled at a time, and you may use them; take a name for what it means in your world, not for what it meant in fyr's.
 
 ### The balloon: a thing in the sky, printed
 
@@ -988,11 +991,11 @@ Call it with `iTime`; when it is not -1, its result is the age that picks the ph
 
 **`k` and `LUMINANCE`.** The engine keeps the sky's brightest point at `LUMINANCE` (0.8), so that the terminal's light text stays readable over it, and `k` is how much it dimmed the sky to do so: 1 nearly always, less in a bright sunset. `tone(c, k)` dims an ink the same way and saturates it as the print does: use it for large areas. `lift(c, k)` dims half as much: use it for small things, which would vanish if dimmed with the sky.
 
-**The night is yours to draw.** `k` does not darken your world at night. `night()` is 0 by day and 1 in the dark: darken what stands outdoors by `1.0 - 0.6 * night()`, put characters under the indigo plate with `nightInk`, and let things far off take the sky's colour. What is lit stays lit: lamps, windows, screens and the waiting light are the brightest things in your world at night.
+**The night is yours to draw.** `k` does not darken your world at night. `night()` is 0 by day and 1 in the dark: darken what stands outdoors by `1.0 - 0.6 * night()`, put characters outdoors under the indigo plate with `nightInk`, and let things far off take the sky's colour. What is lit stays lit: lamps, windows, screens and the waiting light are the brightest things in your world at night.
 
 **Lamps.** A light's glow is halftone, like every tone: `mix(sky, color, screen(p, strength * exp(-d / reach), pitch(u), angle))`. `screen` draws nothing under a tone of 0.01, so the glow ends at `d = reach * ln(100 * strength)`: make your box test that wide, or its edge shows as a cut. `lamp()` is the same glow smooth, for a light seen through haze.
 
-**Interiors.** A room is lit by its own lamps, not by the sky. Do not darken it with `night()` as you do the outdoors: keep it lit, warmer at night if you like, and dark (indigo, never black) only when its lamps are off. Through its windows the real sky shows. The idiom after §12 puts it together.
+**Interiors.** A room is lit by its own lamps, not by the sky. Do not darken it with `night()` as you do the outdoors: keep it lit, warmer at night if you like, and dark (indigo, never black) only when its lamps are off. A character inside is lit by the room too: draw him with `lift`, not `nightInk`, or with a weaker plate if the room is dim. Through its windows the real sky shows. The idiom after §12 puts it together.
 
 **The brightness check.** The terminal's light text stays readable because the sky is never lighter than `LUMINANCE` and the engine darkens a thin rim round each glyph. Everything you draw left of the stage is behind text, and a real session fills that side from top to bottom: keep it no lighter than the sky beside it, in calm, plain tones, with no large light areas and no fine bright pattern; `CREAM` and white only in small marks. Look at it with text over it: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --prose` fills the window below its top third with paragraphs of text, and the first two (light and grey) must read as easily over your world as over the bare sky; do it again at `--at 2026-10-24T22:00`. On the stage, where no text goes, you may be as light as the inks allow, but the waiting light must still stand out (§11).
 
@@ -1056,7 +1059,7 @@ vec3 crowd(vec3 sky, vec2 p, float u, float k, float x0, float x1, float ground)
 
 Rows further back stand higher and may be smaller; give each row its own salt so that they do not line up.
 
-**The bench.** `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --bench 200` draws 200 frames with your theme, then with no theme (`none`) and with fyr, and prints what each costs and your theme's cost against fyr's, as `ratio to fyr = …`. It must be 1.25 or less. It runs on the CPU (SwiftShader), takes a minute or two, and is noisy on a busy machine: measure on a quiet one, and twice if it is close. A theme that costs next to nothing can come out a little below 0, which is the noise. Bench the busiest scene your theme has as well (your crowd at its fullest, your events up with `--event`).
+**The bench.** `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --bench 200` draws 200 frames with your theme, then with no theme (`none`) and with fyr, each with the same flags (an `--event` or `--waiting` you pass is in all three), and prints what each costs. Your theme's cost is its frame less `none`'s; fyr's is fyr's frame less `none`'s; `ratio to fyr = …` is the first over the second. It must be 1.25 or less, for the command as written above. It runs on the CPU (SwiftShader), takes a minute or two, and is noisy on a busy machine: measure on a quiet one, and when it comes within 0.25 of 1.25 run it three times and take the middle one, since fyr's own cost moves by a quarter between runs and scenes. A theme that costs next to nothing can come out a little below 0, which is the noise. Bench the busiest scene your theme has as well (your crowd at its fullest, your events up with `--event`).
 
 ## 11. The waiting light
 
@@ -1105,6 +1108,8 @@ bool eventUp(int kind, out float seed, out float t) {
 
 A theme whose stage is the inside of a building: the sky, the sun, the moon and the weather stay outdoors at the left, the room is at the right, and an entrance between them shows where one becomes the other. Both always show, with a clear border that makes sense of itself.
 
+**What you look at** is a cutaway: the stage strip is the inside of the building, and its left edge is the outer wall cut through, so the door in it is a gap you see the lit room through. The sketch's building is tall, its wall and room the whole height of the window. A low one has a roofline under the window's top with the sky above it: there `scenery` leaves `sky` and `themeWindow` is 1, and a hanging lamp's cord starts at the ceiling, not at y = 0.
+
 **Where things are.** The stage strip is the room. Its left edge is the building's outer wall with the entrance in it, and the floor inside is at the horizon's line, where the ground outside meets it, so that you can see someone walk in. Left of the wall the outdoors goes on behind the terminal's text: the sky as the engine draws it, and low on the horizon whatever stands outside, never more than a few units high, hazed into the sky and darker by night, in plain tones, with the ground at its foot fading out. Above it the sky is the text's.
 
 **The entrance** is the one thing that has to read at a glance: a wall, a frame or a front of glass at the strip's left edge, a door or an opening in it on the floor line, its frame in the key plate. At night light from inside spills out of it onto the ground; by day it may stand open. Characters may stand in it, coming and going.
@@ -1113,9 +1118,11 @@ A theme whose stage is the inside of a building: the sky, the sun, the moon and 
 
 **`themeWindow`** is 1 outdoors, left of the wall; 0 in the wall, the room and everything in it; and 1 (or less, for glass that dims the view) in a window's panes. The clouds, the events in front and the rain are drawn over everything where it is above 0, so it must be 0 on a window's frame and bars and on anything that stands in front of a window. Put windows high in the walls, above the heads of the people inside, and none of them ever stands in front of one.
 
-**The sun** rides its arc from 0.56 to 0.95 of the window's width, so every afternoon it passes behind your room, the sooner the wider the stage. That is right (the building stands in front of it), but say what happens: let it set behind the roof, or show it through a high window or a glass front where the arc passes.
+**The sun** rides its arc from 0.56 to 0.95 of the window's width, so every afternoon it passes behind your room, the sooner the wider the stage. That is right (the building stands in front of it), and its halo cut off straight at the wall is what a solid wall in front of the sun looks like. If you want more, let it set behind a roofline, or show it through a high window or a glass front where the arc passes.
 
 **Events** in the open (the engine's planes and birds, your own `"front"` ones) fly behind the room and show again through its windows. One of yours that happens inside is drawn from `resident` (§12).
+
+**In front of a character.** `resident` draws over `scenery`, so a counter, a desk or a railing drawn in `scenery` stands behind him, and he stands on top of it. Draw what stands in front of a character in `resident`, after him: `sky = clawd(sky, p, u, k, at); sky = counter(sky, p, u, k, r);`. `scenery` holds only what stands behind him.
 
 **Text** runs over the outdoors, so keep it calm (§9). Look at it with `--prose`, by day and by night.
 
@@ -1219,7 +1226,7 @@ float themeWindow(vec2 p, float u) {
 
 ### The tools
 
-Run them from the repository's root, one at a time: they bundle the engine as they start, and every preview drives headless Chrome with one profile, so a second one started while another draws fails.
+Run them from the repository's root, one at a time: they bundle the engine into `.preview/` as they start, and every preview drives headless Chrome with one profile, so a second one started while another draws fails, and rewrites the bundle under it. If a run fails with `Command failed: … Google Chrome` (Chrome exiting with status 2 or 21) and no `FAIL`, Chrome was busy: wait and run it again. Two people or agents in one checkout should not preview at the same time, since they share `.preview/`. A sheet clears its folder as it starts, so a sheet run again draws every frame again.
 
 - `tools/theme/run.sh lint themes/<name>` reads the manifest as the engine would, lints the GLSL (§3) and weighs it. It prints `<name>: GLSL … of 80000 characters, the long night's shader … of 224000`, the stage's width, each problem, and `clean` or how many there are to put right. A manifest that does not pass stops it with what is wrong.
 - `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt>` compiles the whole shader in headless Chrome's WebGL and draws one frame at 1512 × 982 over a stand-in terminal, printing the PNG's path (`.preview/shader.png`, or `--out <name>` for `.preview/<name>.png`). A shader that does not compile prints `FAIL` and the compiler's errors, and draws nothing. Always pass `--stage` with your `stagePt`: without it `STAGE_PX` is 0 and the stand-in text runs to the window's right edge. Its flags:
@@ -1233,9 +1240,10 @@ Run them from the repository's root, one at a time: they bundle the engine as th
   - `--event <kind>`: one of your events or previews played, or one of the engine's.
   - `--aurora`, `--iss`, `--demo`, `--light`, `--prose` (paragraphs of text below the window's top third), `--diff` (Claude Code's coloured fields).
   - `--zoom x,y,w,h`: that part of the frame three times as large, beside it as `…-zoom.png`.
+  - `--stage <px>` is the stage in device pixels. The sheets and a plain run are at a scale of 1, a point a pixel, so there it is your `stagePt`.
   - `--width 3024 --height 1964 --stage <twice your stagePt>`: a Retina screen.
   - `--bench 200`: what it costs (§10).
-- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<name>/`: your theme at your stage's width in 37 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes several minutes. The scenes:
+- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<folder>/`, named after the folder you give it: your theme at your stage's width in 37 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes several minutes. The scenes:
 
 | Frames | Scene |
 |---|---|
@@ -1251,9 +1259,11 @@ Run them from the repository's root, one at a time: they bundle the engine as th
 | 35, 36, 37 | The market open with prices up; open and down, with a command and two agents; closed, at night |
 | 38 on | Each of your events and previews, three frames each |
 
-The stand-in terminal is seven lines of text at the top left, a dark status bar near the bottom and a line of green under it. The status bar runs across the stage, which Ghostty's would not: it is the stand-in's, not yours.
+The stand-in terminal is seven lines of text at the top left, a dark status bar near the bottom and a line of green under it. The status bar runs across the stage, and so do Claude Code's coloured rows (frame 28) and Clawd's band (frame 31), which Ghostty's would not: in Ghostty they are the terminal's cells and stop where the stage begins. They are the stand-in's, not yours; leave no room for them.
 
-**Reading an error.** The compiler names a line of the whole shader, which the preview leaves in `.preview/sky.glsl`, your text near its end: the line it names, less 12, is that file's line. The lint and the compiler check different things: run both.
+A played event ignores its `when`, in the sheet (frames 38 on draw each of yours by day and by night) as in `/solar event`, so the person can see a day-only event at night: make it look right there too, or at least not wrong.
+
+**Reading an error.** The compiler names a line of the whole shader, which the preview leaves in `.preview/sky.glsl`, your text near its end: the line it names, less 12, is that file's line. To find your own file's line, look up in `.preview/sky.glsl` the line where your `theme.glsl`'s first line sits (`grep -n` for it): your line is that file's line, less that one, plus 1. The lint and the compiler check different things: run both.
 
 ### What goes wrong
 
@@ -1302,7 +1312,7 @@ A theme is done when every line below holds. The first six are hard: one that fa
 
 ## 15. The template
 
-Two files that lint clean and compile as they are: the stage's geometry, the waiting light as a lamp on a post, the ground, and Clawd standing on it. `node tools/theme/guide.mjs template themes/<name>` writes them; then give the manifest your theme's name, which must be the folder's, and its words. Change everything else as your world needs.
+Two files that lint clean and compile as they are: the stage's geometry, the waiting light as a lamp on a post, the ground, and Clawd standing on it. `node tools/theme/guide.mjs template themes/<name>` writes them; its manifest has the folder's name, which must stay the folder's (the lint says so if it is not); give it your title and words. Change everything else as your world needs.
 
 `manifest.json`:
 
