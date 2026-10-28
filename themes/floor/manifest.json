@@ -1,0 +1,53 @@
+{
+  "engine": 1,
+  "name": "floor",
+  "title": "The trading floor",
+  "description": "The floor of the New York Stock Exchange seen from above, as in Stardew Valley, in the margin at the right: a gilded ceiling, arched windows, the big flag and two NYSE cubes over trading posts that show their stocks' real prices, trader Clawds in coats of every colour milling and walking between them from before the opening bell to after the closing one, and a coin desk that never closes. The resident keeps his pulpit at the front under a green banker's lamp; outside the west wall, under the text's last columns, Clawds walk the sidewalk past Washington and in at the door.",
+  "author": "Solar Clawd",
+  "version": "0.2.0",
+  "license": "GPL-3.0",
+  "stage": "wanted",
+  "stagePt": 400,
+  "waits": "The halt lamp on the back wall under the middle window: its round lamp glowing orange with HALT on the sign under it while Claude asks, white with FILLED once it is done, and once a question has waited a larger, quicker glow and a lamp lit either side of the sign as well; the resident at his pulpit points up at it.",
+  "context": "resident",
+  "market": true,
+  "events": [
+    {
+      "kind": "chestThump",
+      "word": "chest thump",
+      "slotMinutes": 120,
+      "chance": 0.5,
+      "minutes": 1,
+      "layer": "front",
+      "when": {},
+      "salt": 31
+    },
+    {
+      "kind": "bullRun",
+      "word": "bull run",
+      "slotMinutes": 180,
+      "chance": 0.5,
+      "minutes": 1,
+      "layer": "front",
+      "when": {},
+      "salt": 47
+    }
+  ],
+  "previews": [
+    {
+      "kind": "bell",
+      "word": "opening bell"
+    },
+    {
+      "kind": "jenga",
+      "word": "jenga"
+    }
+  ],
+  "aliases": {
+    "closing bell": "bell",
+    "klockan": "bell",
+    "the wolf": "chestThump",
+    "tjuren": "bullRun",
+    "big short": "jenga"
+  }
+}
