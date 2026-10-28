@@ -66,6 +66,8 @@ That protection exists so that code the engine runs is not changed with nobody r
 
 The sky is an engine and a theme. The engine (`hooks/shader.ts` and `hooks/glsl/`) draws what every sky has: the sun, moon and stars, the clouds and the weather, the events that come and go, and it knows when Claude waits and how full the context window is. A theme draws a world under it. fyr, the one built in, is the lighthouse, its sea and its keeper ([`hooks/themes/fyr/README.md`](hooks/themes/fyr/README.md)).
 
+To write a theme, read [`docs/THEME-GUIDE.md`](docs/THEME-GUIDE.md): it is all a theme's author needs, from the world a theme draws in and everything it can read to worked examples, a template and the checklist a theme is judged by, and a test holds it to the code. Themes written from it live in [`themes/`](themes/README.md).
+
 A theme is a manifest and some GLSL. The manifest (`ThemeManifest` in `hooks/themes/theme.ts`) names the theme and the engine contract it is written for (`"engine": 1`), says what Claude waiting looks like in it, whether it shows the context window itself or leaves the engine's wastebasket in, and lists its own events: when they may come (the sun, the wind, the clouds, rain, the months), how often and for how long. Together they may keep the sky moving no more than 8 % of the time. The GLSL defines the four functions the engine declares and calls, and whatever they need:
 
 ```glsl
@@ -81,6 +83,7 @@ The engine checks a theme's GLSL before it draws it. No `while` or `do`; `for` l
 
 - `tools/theme/run.sh lint <name|folder>` checks a theme and says what it weighs.
 - `tools/theme/run.sh pack fyr <folder>` writes fyr as a `manifest.json` and a `theme.glsl`, and reads it back.
+- `node tools/theme/guide.mjs template themes/<name>` writes the guide's template as a theme's folder. After a change to the guide, `node tools/theme/guide.mjs` copies it to `hooks/themes/guide.ts`, which its test reads, and `--check` says whether the copy is the guide as it is.
 - `tools/preview/run.sh shader --theme <name|folder|none>` draws the sky with a theme, or with `none` the engine alone; with `--bench 200` it prints what the theme costs a frame (its frame less the engine's alone), and that against fyr's.
 - `tools/preview/sheet.sh theme <name|folder>` draws a theme in the parity scenes, and each of its own events at three moments, as one contact sheet in `.preview/theme-<name>/contact.png`.
 - `tools/preview/parity.sh record|check <dir>` compares the sky before and after a change to the engine, frame by frame, and `node tools/theme/imports.mjs` checks that no engine file imports a theme's folder or the band's character.
