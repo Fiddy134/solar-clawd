@@ -118,10 +118,15 @@ bool eventUp(int kind, out float seed, out float t) {
   return false;
 }
 
-// The symbol of quote r: the two coins first, as they trade all night, then
-// the index and its seven.
-int symOf(int r) {
-  return r == 0 ? sky_BTC : r == 1 ? sky_ETH : r == 2 ? sky_NDX : r == 3 ? sky_AAPL : r == 4 ? sky_MSFT : r == 5 ? sky_NVDA : r == 6 ? sky_GOOGL : r == 7 ? sky_AMZN : r == 8 ? sky_META : sky_TSLA;
+
+// Quote r's price and its day, each picked from the arrays by a constant
+// index: the arrays are constants, so each pick is a literal, where an index
+// worked out at run time would make the renderer build the whole array.
+float priceOf(int r) {
+  return r == 0 ? sky_QUOTE_PRICE[sky_BTC] : r == 1 ? sky_QUOTE_PRICE[sky_ETH] : r == 2 ? sky_QUOTE_PRICE[sky_NDX] : r == 3 ? sky_QUOTE_PRICE[sky_AAPL] : r == 4 ? sky_QUOTE_PRICE[sky_MSFT] : r == 5 ? sky_QUOTE_PRICE[sky_NVDA] : r == 6 ? sky_QUOTE_PRICE[sky_GOOGL] : r == 7 ? sky_QUOTE_PRICE[sky_AMZN] : r == 8 ? sky_QUOTE_PRICE[sky_META] : sky_QUOTE_PRICE[sky_TSLA];
+}
+float changeOf(int r) {
+  return r == 0 ? sky_QUOTE_CHANGE[sky_BTC] : r == 1 ? sky_QUOTE_CHANGE[sky_ETH] : r == 2 ? sky_QUOTE_CHANGE[sky_NDX] : r == 3 ? sky_QUOTE_CHANGE[sky_AAPL] : r == 4 ? sky_QUOTE_CHANGE[sky_MSFT] : r == 5 ? sky_QUOTE_CHANGE[sky_NVDA] : r == 6 ? sky_QUOTE_CHANGE[sky_GOOGL] : r == 7 ? sky_QUOTE_CHANGE[sky_AMZN] : r == 8 ? sky_QUOTE_CHANGE[sky_META] : sky_QUOTE_CHANGE[sky_TSLA];
 }
 
 // Quote r's name, five letters packed six bits a letter, the first in the
@@ -140,9 +145,8 @@ struct Num { float v; int w; int d; int c; };
 // digit of a number is left to the caller, as -1 with the number in n, so
 // that one sky_numberCode prints every number of a function.
 int quoteCell(int r, int col, bool isTape, inout Num n) {
-  int sym = symOf(r);
-  float price = sky_QUOTE_PRICE[sym];
-  float chg = sky_QUOTE_CHANGE[sym];
+  float price = priceOf(r);
+  float chg = changeOf(r);
   int decimals = price >= 10000.0 ? 0 : price >= 1000.0 ? 1 : price >= 100.0 ? 2 : 3;
   if (!isTape) {
     if (price <= 0.0) return col >= 2 && col <= 4 ? sky_GLYPH_MINUS : sky_GLYPH_SPACE;
@@ -363,6 +367,23 @@ vec3 bigFlag(vec3 sky, vec2 p, float u, float k, Hall h, float nt, float lights)
   return x < 0.06 * u || x > 5.54 * u ? mix(c, keyInk(k), 0.6) : c;
 }
 
+// New York's clock on the left pier, its hands at the hour there.
+vec3 nyClock(vec3 sky, vec2 p, float u, float k, vec2 at) {
+  vec2 q = p - at;
+  float r = 1.2 * u;
+  float d = length(q) - r;
+  if (d > 0.25 * u) return sky;
+  float ny = sky_NEW_YORK_HOUR;
+  sky = ink(sky, lift(CREAM, k), d, 1.0);
+  sky = ink(sky, tone(BRASS, k), abs(d) - 0.12 * u, 1.0);
+  float tick = abs(fract(atan(q.x, -q.y) / (2.0 * PI) * 12.0 + 0.5) - 0.5);
+  if (length(q) > 0.78 * r && length(q) < 0.92 * r && tick < 0.07) sky = mix(sky, keyInk(k), 0.9);
+  float hourA = 2.0 * PI * mod(ny, 12.0) / 12.0;
+  float minuteA = 2.0 * PI * fract(ny);
+  float hands = min(segment(q, vec2(0.0), 0.5 * r * vec2(sin(hourA), -cos(hourA))) - 0.09 * u, segment(q, vec2(0.0), 0.8 * r * vec2(sin(minuteA), -cos(minuteA))) - 0.06 * u);
+  return ink(sky, keyInk(k), hands, 1.0);
+}
+
 // The brass bell on its bracket on the right pier, swinging and ringing out
 // while the market opens or closes.
 vec3 bell(vec3 sky, vec2 p, float u, float k, vec2 at, bool rings) {
@@ -486,10 +507,9 @@ vec3 postScreen(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool) 
   if (face == 0) return sky;
   if (face == 2) return box(q - vec2(-o.hw + u, -o.fh - 0.45 * u), vec2(0.85, 0.44) * u) > -0.06 * u ? keyInk(k) : tone(BRASS, k);
   bool isDesk = o.which == 7;
-  int sym = symOf(postQuote(o.which));
-  float chg = sky_QUOTE_CHANGE[sym];
+  float chg = changeOf(postQuote(o.which));
   bool isOn = isDesk || m.staffed || (o.which == 3 && m.late);
-  float heat = isOn && sky_QUOTE_PRICE[sym] > 0.0 ? clamp(abs(chg) / 3.0, 0.25, 0.7) : 0.0;
+  float heat = isOn && priceOf(postQuote(o.which)) > 0.0 ? clamp(abs(chg) / 3.0, 0.25, 0.7) : 0.0;
   vec3 col = mix(tone(INK_INDIGO, k) * 0.5, tone(chg < 0.0 ? RED : INK_GREEN, k) * 0.7, heat);
   if (tool == sky_TOOL_OTHER && !isDesk) {
     bool isBar = fract((q.x - iTime * 1.5 * u) / (0.9 * u)) < 0.45 && abs(q.y + 0.5 * o.fh) < 0.25 * o.fh;
@@ -508,9 +528,10 @@ vec3 postScreen(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool) 
 // box seen from above and in front. Drawn after the people, so that it
 // covers whoever stands behind it; nobody stands in front of it within its
 // own height. On its top, seen from above, a counter round a dark well, its
-// number plate and a coffee on it; monitors stand on its back edge. Its front
-// is dark round its screens, a brass kick at its foot. The desk is lower,
-// with two laptops. Its screens and its plate are the floor's (postFace).
+// number plate and a coffee steaming on it; monitors stand on its back
+// edge. Its front is dark round its screens, a brass kick at its foot. The
+// desk is lower, with two laptops. Its screens and its plate are the
+// floor's (postFace).
 vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, float nt) {
   if (p.x < h.inner || p.y < h.floorY + 4.2 * u || p.y > h.floorY + 24.4 * u) return sky;
   Post o = postAt(p, h);
@@ -519,7 +540,7 @@ vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, float nt) {
   float fh = o.fh;
   vec2 q = vec2(p.x - o.x, p.y - o.foot);
   if (abs(q.x) > hw + 0.3 * u || q.y > 0.3 * u || q.y < -fh - o.td - 0.7 * u || postFace(q, o, u) != 0) return sky;
-  float chg = sky_QUOTE_CHANGE[symOf(postQuote(o.which))];
+  float chg = changeOf(postQuote(o.which));
   bool isOn = isDesk || m.staffed || (o.which == 3 && m.late);
   uint hs = hashi(o.which * 41 + 7);
   float top = -fh - o.td;
@@ -552,7 +573,10 @@ vec3 post(vec3 sky, vec2 p, float u, float k, Hall h, Market m, float nt) {
     col = tone(BRASS, k) * 0.8;
   }
   if (abs(q.x) > hw - 0.06 * u || abs(q.y + fh) < 0.06 * u) col = keyInk(k);
-  return abs(q.x) < hw ? col : sky;
+  sky = abs(q.x) < hw ? col : sky;
+  // Steam off the coffee, while the floor is in.
+  vec2 cup = vec2(o.x + (float(hs & 255u) / 255.0 - 0.5) * 2.4 * u, o.foot - fh - 0.4 * u);
+  return isOn && !isDesk ? mix(sky, lift(CREAM, k), 0.7 * steam(p, cup, 0.9 * u, 0.22 * u, 0.8, o.which)) : sky;
 }
 
 // Every letter of the wall and the posts, one sky_glyphWide for them all:
@@ -593,7 +617,7 @@ vec3 wallWords(vec3 sky, vec2 p, float u, float k, Hall h, Market m, int tool) {
     int i = int(floor((p.x - x0) / (6.0 * g)));
     l.at = vec2(x0 + 6.0 * g * float(i), cubeTop + 6.0 * g * float(line));
     l.code = i < 0 || i >= len ? sky_GLYPH_SPACE : line == 0 ? codeIn(WORD_NYSE, i) : line == 1 ? int((nameOf(r) >> uint(6 * i)) & 63u) : quoteCell(r, i, false, n);
-    float chg = sky_QUOTE_CHANGE[symOf(r)];
+    float chg = changeOf(r);
     l.color = lift(line == 0 ? CREAM : line == 1 ? INK_YELLOW : mix(chg < 0.0 ? RED : INK_GREEN, CREAM, 0.3), k);
   } else if (WAITING != 0 && abs(p.y - 22.2 * u) < 2.5 * gs) {
     int len = WAITING == 2 ? 6 : 4;
@@ -668,6 +692,7 @@ vec3 scenery(vec3 sky, vec2 p, float u, float k) {
   } else {
     sky = backWall(sky, p, u, k, h, nt, lights);
     sky = hallLamps(sky, p, u, k, h, nt, lights);
+    sky = nyClock(sky, p, u, k, vec2(h.inner + h.width / 3.0, 16.2 * u));
     sky = bell(sky, p, u, k, vec2(h.inner + 2.0 * h.width / 3.0, 15.4 * u), m.bell > 0.5);
     sky = bigFlag(sky, p, u, k, h, nt, lights);
     sky = cubes(sky, p, u, k, h, tool == sky_TOOL_WEB);
