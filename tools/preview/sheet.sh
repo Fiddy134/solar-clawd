@@ -13,7 +13,9 @@
 # the parity scenes at the parity's size, its own events and previews each
 # at three moments, every frame small in contact.png.
 # BUNDLE=.preview/b/before.bundle.mjs draws a sheet with an earlier build
-# instead of this tree's.
+# instead of this tree's. KEEP=1 keeps the folder and the theme sheet's
+# frames already drawn there, and draws only those missing, so a sheet that
+# stopped halfway goes on where it stopped.
 set -e
 root=$(cd "$(dirname "$0")/../.." && pwd)
 sheet=$1
@@ -24,7 +26,7 @@ if { [ "$sheet" != q2 ] && [ "$sheet" != fisk ] && [ "$sheet" != theme ]; } || [
 fi
 name=$sheet-$(basename "$variant")
 dir=$root/.preview/$name
-rm -rf "$dir"
+[ -n "$KEEP" ] || rm -rf "$dir"
 mkdir -p "$dir"
 bundle=${BUNDLE:-$root/.preview/shader.bundle.mjs}
 case $bundle in /*) ;; *) bundle=$root/$bundle ;; esac
@@ -55,10 +57,16 @@ still() {
   echo "$scene"
 }
 
-# render <flags>: one frame, tried a second time when headless Chrome,
-# busy with another render on the machine, gives up on the first.
+# render <flags>: one frame, tried up to four times, half a minute apart,
+# when headless Chrome, busy with another render on the machine, gives up.
+# A shader that does not compile fails every time, and its errors show on
+# the last.
 render() {
-  SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null 2>&1 || SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null
+  for try in 1 2 3; do
+    SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null 2>&1 && return 0
+    sleep 30
+  done
+  SOLAR_ROOT="$root" node "$bundle" "$@" >/dev/null
 }
 
 # retina <scene> <flags>: one frame at a Retina window's size, the strip
@@ -103,6 +111,10 @@ if [ "$sheet" = theme ]; then
     scene=$1
     time=$2
     shift 2
+    if [ -n "$KEEP" ] && [ -f "$dir/$scene.png" ]; then
+      echo "$scene (kept)"
+      return 0
+    fi
     # shellcheck disable=SC2086
     render "$@" $S --time "$time" --out "$name/$scene"
     echo "$scene"

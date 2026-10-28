@@ -21,7 +21,7 @@ Work like this, from the repository's root:
 1. Read the guide through once. Themes go wrong in §2 (the world), §3 (the contract), §8 (time) and §11 (the waiting light).
 2. Make `themes/<name>/` and put the template's two files in it (§15): `node tools/theme/guide.mjs template themes/<name>` writes them, with the folder's name in the manifest.
 3. Write your world into them, and after every change lint it and draw a frame (step 4): `tools/theme/run.sh lint themes/<name>`. The lint does not check types; only the compiler does.
-4. Look at single frames as you go: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00` prints the path of a PNG; read it.
+4. Look at single frames as you go: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00` prints the path of a PNG; read it. As soon as the stage's main pieces stand, roughly drawn, bench it once (§10, with `--bench 100` and no `--rounds`), and again after each large piece: a theme benched only when it is finished can come out over budget and need rewriting.
 5. When it stands, draw the whole sheet with `tools/preview/sheet.sh theme themes/<name>`, look at every frame against the checklist (§14), and measure what it costs (§10).
 6. Put right what the lint, the compiler and the sheet show, until the checklist holds.
 
@@ -95,6 +95,17 @@ What follows from the order:
 - What you draw covers the sky, the sun, the moon, the stars and the events behind. A pixel you leave as `sky` shows them; a wall drawn at less than full strength lets the sun show through it.
 - The clouds, the events in front and the weather come after you, over whatever you drew wherever `themeWindow` is above 0: your props and your characters too. Make it 0 wherever something must stay in front of them.
 - Nothing you draw covers the terminal's text, which is laid over last.
+
+**Where the engine stands its own things.** Most of the engine's events cross the sky wherever their seed sends them, but a few stand at fixed places on the ground, all of them in the front pass, so they show only where `themeWindow` is above 0:
+
+| What | When | Where |
+|---|---|---|
+| The flag | Sweden's national day, 6 June | its pole on the horizon at x = 0.72 W, 5 `u` tall, the cloth 2.6 `u` to the right of it |
+| The maypole | Midsummer's Eve (the Friday from 19 to 25 June) | on the horizon at x = 0.72 W, 5.5 `u` tall, 1.8 `u` either side |
+| The Lucia train | 13 December, 05:00 to 08:00 while it is dark | walking along the horizon across the whole window |
+| The wastebasket | always, for `"context": "engine"` | the bottom right corner (step 13 above) |
+
+At a stage of 440 points in the sheets' window of 1512, 0.72 W is 17 pixels inside the stage, so a wall or a glass front there hides most of the flag and the maypole. Leave that place open to the sky (`themeWindow` 1, a window, an open door), or let your world fly its own flag on those days with `FLAG_DAY`, as a roof or a mast of yours can.
 
 ## 3. The contract
 
@@ -437,11 +448,17 @@ The market's prices are fetched only for a theme whose manifest says `"market": 
 
 **Two clocks.** `LOCAL_HOUR`, `CLAWD_ACTIVITY` and `night()` are the person's day where they sit; `sky_NEW_YORK_HOUR` and `sky_MARKET_OPEN` are the exchange's. Light, sleep and the people of your place follow the first; anything that follows the market (a trading floor filling, a bell, a board's prices) follows the second. They are six hours apart from Sweden, so a market theme's daytime frames in the sheet are before the opening bell (§13 lists each frame's New York time): make the closed market a finished state of your world, not an empty one.
 
+What the market's signals know, and what they do not:
+
+- `sky_MARKET_OPEN` is the only knowledge of trading days there is. There is no New York weekday, no "trading day today" and no session (before the open, after the close): `WEEKDAY` is the person's day, not New York's, and working New York's out from `WEEKDAY` and the gap between `LOCAL_HOUR` and `sky_NEW_YORK_HOUR` holds only in some time zones and still cannot see a holiday. Key what follows the market to `sky_MARKET_OPEN` alone: the floor full while it is 1, and a closed floor otherwise that is the same at 08:00 on a Tuesday as on a Saturday or a holiday.
+- A bell at the open or the close is a state, not a moment you can time: ring the opening bell while `sky_MARKET_OPEN` is 1 and `sky_NEW_YORK_HOUR` is below 9.6, and the closing bell while it is still 1 and the hour is 15.9 or more. A bell after 16:00 would ring on holidays too; this closing bell does not ring on a day that closes early, which is the lesser fault (§8 says how to make such a state a preview).
+- There are no highs (of the day, the year or all time), no history, no volume and no other symbols than the ten: a price, its change today, and whether the prices are fresh. "Bitcoin at a new high" cannot be drawn; "bitcoin up 5 % today" can.
+
 Beside the engine's signals, Ghostty's own `iTime` (seconds, §8) and `iResolution` (the window in pixels) are yours to read. Reach the cursor through `cursorAt()`, `glance()` and `shy()` (§5), and nothing else of Ghostty's.
 
 The tab's mark changes at once and its states are short (a tenth just filled shows for 2.5 seconds), so show each state as a state, not as a story that needs its beginning. Each of the four functions reads a uniform and does a few sums: cheap, but read each once at the top of a function and pass the value on, rather than in every helper.
 
-**What Claude is doing shows at the scale of your world.** A person glancing at a window of 1512 × 982 must tell the kinds apart without zooming, so give each kind your theme answers a change that reaches beyond one character's hands: a light that comes on, a line of a board, a machine that runs, a group that turns or moves. A prop of twenty pixels in Clawd's hands is a detail on top, not the answer. `sky_TOOL_OTHER` needs a state of its own too, a plain "busy" that differs from none. For instance, in a workshop: a command starts the big lathe and its lamp, an edit sends shavings off the bench and an apprentice sweeping across the floor, a read lights the lamp over the plans on the wall, the web turns the radio's dial and lights its window, and anything else sets the kettle steaming on the stove; subagents are more apprentices at the benches. A theme whose manifest says `"context": "resident"` shows the context window itself, for instance as a row of things, one for each full tenth:
+**What Claude is doing shows at the scale of your world.** A person glancing at a window of 1512 × 982 must tell the kinds apart without zooming, so give each kind your theme answers a change that reaches beyond one character's hands: a light that comes on, a line of a board, a machine that runs, a group that turns or moves. A prop of twenty pixels in Clawd's hands is a detail on top, not the answer. `sky_TOOL_OTHER` needs a state of its own too, a plain "busy" that differs from none. Make the kinds about equally plain: the judge looks at each in the whole frame, and the faintest one (a small glow low in a corner, a few lights a shade brighter) is the one that fails. For instance, in a workshop: a command starts the big lathe and its lamp, an edit sends shavings off the bench and an apprentice sweeping across the floor, a read lights the lamp over the plans on the wall, the web turns the radio's dial and lights its window, and anything else sets the kettle steaming on the stove; subagents are more apprentices at the benches. A theme whose manifest says `"context": "resident"` shows the context window itself, for instance as a row of things, one for each full tenth:
 
 ```glsl
 // The context window as a row of up to ten jars on a shelf at `at`, one
@@ -501,6 +518,7 @@ vec3 grey(vec3 c);
 vec3 vivid(vec3 c, float k);                                      // a colour pushed away from its grey by k
 vec3 tone(vec3 c, float k);                                       // an ink dimmed as the sky is and saturated as the print is: for large areas
 vec3 lift(vec3 c, float k);                                       // half dimmed, so that a small thing stays visible on a dimmed sky
+vec3 sky_under(vec3 c, vec3 sky);                                 // c no lighter than the sky behind it, its hue kept: for what stands behind the text (§9)
 vec3 nightInk(vec3 c, float k);                                   // a character's ink, under the indigo plate at night as Clawd in the band is
 vec3 ink(vec3 sky, vec3 color, float d, float alpha);             // lays a colour where the distance d is below 0, its edge antialiased
 float screen(vec2 at, float tone, float pitch, float angle);      // how much of a pixel a halftone dot covers, for a tone from 0 to 1
@@ -519,7 +537,19 @@ float limb(vec2 p, vec2 a, vec2 b, float ra, float rb);           // a capsule f
 float smin(float a, float b, float r);                            // two shapes' union, rounded where they meet, as a cartoon's are
 float box(vec2 q, vec2 b);                                        // a box round 0, b half its size
 float widthShown(float turn, float least);                        // how much of its width a thing tumbling on the air shows
-vec2 tumble(vec2 q, float spin, float flip);                      // q in the frame of a thing spun by `spin` and turned over by `flip`
+vec2 tumble(vec2 q, float spin, float flip);                      // q in the frame of a thing spun by `spin` and turned over by `flip`, its y divided by flip
+```
+
+**Turning a shape.** `tumble(q, angle, 1.0)` is a plain rotation: `q` (a pixel less the shape's middle) in the frame of a shape turned by `angle` radians, clockwise on the screen since y is down. Measure your shape in that frame as you would unturned. With `flip` other than 1 (a leaf or a slip of paper turning over, `flip` from `widthShown`) the across axis is divided by `flip`, so a distance measured across the shape is up to `1 / abs(flip)` times the real one: multiply it by `abs(flip)` before inking, or the shape's edge sharpens and its outline thins as it turns.
+
+```glsl
+// A slip of paper `size` (half its length and width) at `at`, spinning
+// and turning over as it falls.
+vec3 slip(vec3 sky, vec2 p, vec2 at, vec2 size, float spin, float turn, float k) {
+  if (length(p - at) > length(size) + 1.0) return sky;
+  float flip = widthShown(turn, 0.3);
+  return ink(sky, lift(CREAM, k), box(tumble(p - at, spin, flip), size) * abs(flip), 1.0);
+}
 ```
 
 Fire and smoke:
@@ -592,7 +622,9 @@ const int sky_GLYPH_UP = 48;
 const int sky_GLYPH_DOWN = 49;
 ```
 
-The codes: `0` to `9` are 0 to 9, `A` to `Z` are 10 to 35 (as in base 36: `H` is 17, `O` 24), then space 36, `.` 37, `,` 38, `:` 39, `-` 40, `+` 41, `%` 42, `/` 43, `$` 44, `!` 45, `?` 46, `'` 47, `▲` 48 and `▼` 49. There are no lower-case letters and no `#`. A number is drawn right-aligned in `width` columns, with `decimals` (0 to 4) after a point that takes a column of its own, a minus before its first digit, and its leftmost digits cut where it does not fit; in `sky_numberCode`, column 0 is the leftmost. In a cell of 3 × 5, `M`, `N` and `W` are close to `H` and `U` at a small size: look at a board's words at the sheets' size, and choose a larger cell or other words where they do not read.
+The codes: `0` to `9` are 0 to 9, `A` to `Z` are 10 to 35 (as in base 36: `H` is 17, `O` 24), then space 36, `.` 37, `,` 38, `:` 39, `-` 40, `+` 41, `%` 42, `/` 43, `$` 44, `!` 45, `?` 46, `'` 47, `▲` 48 and `▼` 49. There are no lower-case letters and no `#`. A number is drawn right-aligned in `width` columns, with `decimals` (0 to 4) after a point that takes a column of its own, a minus before its first digit, and its leftmost digits cut where it does not fit; in `sky_numberCode`, column 0 is the leftmost.
+
+**`M`, `N` and `W` do not read.** In this font `M` is an `H` with its bar raised, `N` a `Π` and `W` an `H` with its bar low, and that holds at every size, since a larger cell scales the same 3 × 5 bitmap. Where the words are yours, choose words without them (LAST CALL rather than NOW BOARDING). Names you cannot change (the tickers NDX, MSFT, NVDA, AMZN and META, a flight's code) read only from their context: put them where the context says what they are (a board of tickers, a price beside each), and do not let a word with them carry a meaning nothing else carries, such as the waiting light's.
 
 **One glyph a function.** On the bench (§10) each place in your text that calls `sky_glyph`, `sky_number` or `sky_line16` costs about a millisecond a frame, whether or not any pixel reaches it, so twenty signs each with a call of their own cost more than the rest of a theme. Work out first which one character `p` is over, its code, its place and its ink, and call `sky_glyph` once, at the end of the function that draws your text: one call for a whole board, a sign or a tape, not one for each line or sign. Do not copy the font into your theme to make it cheaper: your copy would not follow the engine's, and on the bench a copy chosen by `?:` cost more than `sky_glyph` itself.
 
@@ -698,6 +730,8 @@ OOOOOO
 **His size.** At the template's cell of `max(1.0, floor(0.25 * u))` he is 24 × 16 pixels in the sheets, the least that reads, and right beside a lamp post on open ground. Beside larger props size him from them, as fyr sizes its keeper from the lighthouse, so that he stands as tall as a person would among them: indoors behind a counter or at a desk that is a cell of about `0.35 * u` to `0.5 * u` (5 to 8 pixels in the sheets). Look at him in frame 01 at its own size: if you have to search for him, he is too small.
 
 **Among other Clawds.** A world may be full of Clawds (travellers, traders, cooks), and that is fine, but the resident is still the one the eye finds first. Give him what nobody else has: a place nobody else takes (front and middle, framed by a prop of his own, under a lamp of his own), a cell a size larger than the crowd's, and plain coral where the others wear hats and jumpers. Keep other coral bodies at least 2 `u` away from him, and keep him off the bottom rows where the stand-in status bar runs in the sheets (§13). The test is frame 01 at its own size: someone who has never seen the theme points at him within five seconds.
+
+**Room for what the paragraph names first.** Before you size anything, read your paragraph for the thing it names first ("a packed trading floor", "a kitchen in full service") and give that the most room on the stage; boards, signs and props take what is left. A crowd that is the point of the theme needs its figures at a cell of at least `floor(0.35 * u)` (5 pixels in the sheets) and its rows at least a quarter of the stage's height: the 4-pixel cell above is the least for one figure standing alone, and a crowd of them reads as specks. A board that takes half the stage's height over a strip of tiny figures says "a board", not "a crowd".
 
 ## 7. Worked examples
 
@@ -1018,10 +1052,10 @@ float momentStart(float slot, float period, float lasts, float chance, int salt)
 // that is not one of them. While /solar event
 // plays it (THEME_FORCE), one every minute from the minute's start, so a
 // 90 s preview shows a whole one; while another preview plays, none, so
-// it keeps out of that one's way.
+// it keeps out of that one's way; in a demo's time-lapse, none.
 float momentAge(float time, float period, float lasts, float chance, int salt, int preview) {
   if (preview > 0 && THEME_FORCE == preview) return mod(time, 60.0) < lasts ? mod(time, 60.0) : -1.0;
-  if (THEME_FORCE != 0) return -1.0;
+  if (THEME_FORCE != 0 || DEMO_COUNT > 0) return -1.0;
   float slot = floor(time / period);
   float start = momentStart(slot, period, lasts, chance, salt);
   return start >= 0.0 && start <= time && time < start + lasts ? time - start : -1.0;
@@ -1042,6 +1076,17 @@ float vanAge(float parade) { return parade >= 0.0 ? -1.0 : momentAge(iTime, 7200
 
 **Previews.** A preview is a moment your theme schedules itself, listed in the manifest's `previews` so that `/solar event <word>` can play it: for 90 seconds `THEME_FORCE` is its place in the list, counted from 1. While it is, make your schedule play the moment at once and often (every minute from the minute's start, as above), and keep the other previews and rare things out of its way. The sheet draws each preview at `--time` 24.8 by day and at 88 and 126 by night: a moment of 30 seconds or more that starts every minute shows in all three.
 
+A preview may also be a state your world shows from a constant rather than a moment scheduled from `iTime`: a bell at the market's open, a tower that falls while the index is down 2 %. While `THEME_FORCE` is its place, show that state for the first 30 seconds of every minute, so that all three of the sheet's times catch it; otherwise the constant decides.
+
+```glsl
+// Whether the opening bell rings: at the open, or while /solar event
+// plays it (the first preview) for half of every minute.
+bool bellRings() {
+  if (THEME_FORCE == 1) return mod(iTime, 60.0) < 30.0;
+  return THEME_FORCE == 0 && sky_MARKET_OPEN > 0.5 && sky_NEW_YORK_HOUR < 9.6;
+}
+```
+
 **Events** from your manifest are scheduled by the engine (§12): their `t` runs from 0 to 1 through their length and starts over, and a played event lasts 90 seconds, so `t` crosses its whole range in 90 seconds then. Like everything else, every value of `t` must be a moment.
 
 ## 9. Light
@@ -1054,7 +1099,9 @@ float vanAge(float parade) { return parade >= 0.0 ? -1.0 : momentAge(iTime, 7200
 
 **Interiors.** A room is lit by its own lamps, not by the sky. Do not darken it with `night()` as you do the outdoors: keep it lit, and dark (indigo, never black) only when its lamps are off. But by night it is lit by its lamps alone, not by daylight as well, so it does not keep its day colour: let its walls and floor go about 0.3 toward indigo and a little warmer, `mix(wall, mix(mix(wall, INK_ORANGE, 0.1), INK_INDIGO, 0.3), night())`, while the lamps, screens, boards and the waiting light keep their full light. The room then glows from its lights rather than standing as a block of day colour against the night sky. A character inside is lit by the room too: draw him with `lift`, not `nightInk`, or with a weaker plate if the room is dim. Through its windows the real sky shows. The idiom after §12 puts it together.
 
-**The brightness check.** The terminal's light text stays readable because the sky is never lighter than `LUMINANCE` and the engine darkens a thin rim round each glyph. Everything you draw left of the stage is behind text, and a real session fills that side from top to bottom: keep it no lighter than the sky beside it, in calm, plain tones, with no large light areas and no fine bright pattern; `CREAM` and white only in small marks. Look at it with text over it: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --prose` fills the window below its top third with paragraphs of text, and the first two (light and grey) must read as easily over your world as over the bare sky; do it again at `--at 2026-10-24T22:00`. On the stage, where no text goes, you may be as light as the inks allow, but the waiting light must still stand out (§11).
+A room whose lamps follow another clock than the person's (a hall that closes with the market, a shop shut for the weekend) still takes daylight through its windows and its open front: by day keep its walls and floor near their day colour, and let only its lamps, screens and boards go out, so that a closed hall by day is a quiet room, not a dark block under a bright sky. And make a closed night differ from an open one by something lit (a cleaner's lamp, a screen left on, a desk that never closes), or every night frame of the sheet looks the same.
+
+**The brightness check.** The terminal's light text stays readable because the sky is never lighter than `LUMINANCE` and the engine darkens a thin rim round each glyph. Everything you draw left of the stage is behind text, and a real session fills that side from top to bottom: keep it no lighter than the sky beside it, in calm, plain tones, with no large light areas and no fine bright pattern; `CREAM` and white only in small marks. `sky_under(color, sky)` brings a colour down to the sky's lightness where it is lighter, keeping its hue: pass what stands outside through it (`sky_under(tone(c, k) * dark, sky)`) and it can never outshine the sky behind the text. Look at it with text over it: `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --prose` fills the window below its top third with paragraphs of text, and the first two (light and grey) must read as easily over your world as over the bare sky; do it again at `--at 2026-10-24T22:00`. On the stage, where no text goes, you may be as light as the inks allow, but the waiting light must still stand out (§11).
 
 ## 10. Cost
 
@@ -1071,6 +1118,7 @@ A theme's cost counts in two places, and they do not agree on everything. In Gho
 | The same four, after a `return sky;` that every pixel takes | 3 ms |
 | Five `sky_glyph` calls, reached or not | 5 ms |
 | One `sky_glyph` call | under 1 ms |
+| Ten more calls of `screen`, `lift`, `ink` or `keyPlate`, each written out | 2 to 11 ms, as much as the noise between rounds |
 
 A theme of 67,000 characters cost 63 ms a frame on the bench, and 67 ms with all three of its functions returning `sky` in their first line. So, for the bench and for the GPU both:
 
@@ -1079,8 +1127,8 @@ A theme of 67,000 characters cost 63 ms a frame on the bench, and 67 ms with all
 - **Never loop over instances.** Windows in a wall, tiles on a floor, seats in a row, a crowd: one cell, one hash, one call. If a thing can reach over its cell's edge, make the cell bigger than the thing, or look at one neighbour as well, with the same call (pick the neighbour, then draw).
 - **Loops are short and inside the box.** The lint caps a loop at 97 turns and nesting at two, but a loop of 8 run for every pixel is eight times the work. Loop only where the box test has let `p` in, and over the few things that can reach `p`.
 - **One glyph a function** (§5): choose the character first, print it once.
-- **Share the work.** Work a thing's state out once per call (a struct, as fyr's `Lighthouse` and `Keeper` are), inks and `night()` once per function, one hash per thing with its numbers taken from its bits rather than a `rand()` for each, and pass them on, rather than asking for them again in every helper.
-- **`fbm`, `fire` and `smoke` loop** (four, nine and four turns): keep them inside small boxes.
+- **Share the work.** Work a thing's state out once per call (a struct, as fyr's `Lighthouse` and `Keeper` are), inks and `night()` once per function, one hash per thing with its numbers taken from its bits rather than a `rand()` for each, and pass them on, rather than asking for them again in every helper. The small helpers (`screen`, `lift`, `tone`, `ink`, `keyPlate`) are call sites too, but cheap ones, under a millisecond each: they are not where a theme's cost is, though a function that lays many inks can lay them raw into a `vec4` (its colour and how much of `p` it covers) and lift and print it once at the end.
+- **`fbm`, `fire`, `smoke` and `sky_numberCode` loop** (four, nine, four and nine turns): keep them inside small boxes. `steam`, `flame`, `lamp` and the other helpers do not loop.
 - **Write less.** On the bench a theme's cost follows how much code is compiled in, counting each call of a function as a copy of it, more than how much of it any pixel runs. When a theme costs too much, look first for the same drawing called in many places.
 
 Windows in a wall, each lit by its own hash, more of them at night:
@@ -1133,7 +1181,9 @@ vec3 crowd(vec3 sky, vec2 p, float u, float k, float x0, float x1, float ground)
 
 Rows further back stand higher and may be smaller; give each row its own salt so that they do not line up.
 
-**The bench.** `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --bench 200 --rounds 3` draws 200 frames with your theme, then with no theme (`none`) and with fyr, each with the same flags (an `--event` or `--waiting` you pass is in all three), and prints what each costs. Your theme's cost is its frame less `none`'s; fyr's is fyr's frame less `none`'s; the ratio is the first over the second. With `--rounds 3` it throws away a first round (a shader the browser has not compiled before can read high the first time), then measures your theme, `none` and fyr by turns three times, leaves out a round whose `none` was more than 15 % slower than the quietest, and prints each round and `ratio to fyr = …`, the middle of the rest. That must be 1.25 or less, for the command as written above. It runs on the CPU, takes five minutes or more, and every other preview on the machine (another checkout's sheet too) slows it unevenly: it says so when it sees another headless Chrome at work, and a bench taken then is noise, so wait and run it again. On a quiet machine `none` takes about 109 ms a frame in the sheets' size and fyr, at a stage of 440, about 45 ms more; a round far from those, or a ratio below 0, is noise. Bench the busiest scene your theme has as well (your crowd at its fullest, your events up with `--event`). Without `--rounds` it measures once, which is enough while you work.
+**The bench.** `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt> --at 2026-10-26T13:00 --bench 200 --rounds 3` draws 200 frames with your theme, then with no theme (`none`) and with fyr, each with the same flags (an `--event` or `--waiting` you pass is in all three), and prints what each costs. Your theme's cost is its frame less `none`'s; fyr's is fyr's frame less `none`'s; the ratio is the first over the second. With `--rounds 3` it throws away a first round (a shader the browser has not compiled before can read high the first time), then measures your theme, `none` and fyr by turns three times, leaves out a round whose `none` was more than 15 % slower than the quietest, and prints each round and `ratio to fyr = …`, the middle of the rest. That must be 1.25 or less, for the command as written above. It runs on the CPU, takes five minutes or more, and every other preview on the machine (another checkout's sheet too) slows it unevenly: it says so when it sees another headless Chrome at work, and a bench taken then is noise, so wait and run it again. On a quiet machine `none` takes about 109 ms a frame in the sheets' size and fyr, at a stage of 440, about 45 ms more; a round far from those, or a ratio below 0, is noise. Without `--rounds` it measures once, which is enough while you work.
+
+Bench the busiest scene your theme has as well, your crowd at its fullest (`--agents 7`, `--tool edit`, `--market up`), with the same command. Your events are another matter: with `--event` the ratio is not a measure, and the bench says so. Wherever `themeWindow` is above 0 the engine draws the clouds, the events in front and the weather after your functions, so an event up costs an engine pass everywhere for `none`, which has no walls, and only outside your walls for your theme; theme less `none` then leaves part of that pass out, and the ratio can come out low or below 0. Bench an event by drawing your theme alone with and without it, `--bench 100 --bench-alone` once each with the same flags, and see that the difference is no more than an engine event's (the engine's `--event balloon` the same way); keep the ratio for the scene without events.
 
 ## 11. The waiting light
 
@@ -1148,7 +1198,9 @@ The waits of every session are shown in every tab, the most pressing one, and th
 
 Good: one light, in a place on the stage that never changes, large enough to see at a glance (a lamp of a unit or more across, a beam, a lit sign), orange and white that nothing else in your world is mistaken for, with urgent plainly more in a still frame too (a larger glow, a second light). fyr lights its lantern and turns its beam; the template lights a lamp on a post.
 
-Bad: a light a few pixels across; an orange that your world is full of anyway; a blink that is off half the time, so that a still may show nothing; a light only one character carries about, so that it is behind something or off the stage; asking and done told apart only by speed; a light that also comes on for other reasons; words that spell the wait out (CALLING, LAST CALL) and blink or invert into dark letters on orange part of the time, so that a still catches them unreadable. A blink may change how strong the light is, never whether it reads: every still shows it lit and its words legible.
+Bad: a light a few pixels across; an orange that your world is full of anyway; a blink that is off half the time, so that a still may show nothing; a light only one character carries about, so that it is behind something or off the stage; asking and done told apart only by speed; a light that also comes on for other reasons; words that spell the wait out and blink or invert into dark letters on orange part of the time, so that a still catches them unreadable. A blink may change how strong the light is, never whether it reads: every still shows it lit and its words legible.
+
+Words are welcome (LAST CALL, HALT, FILLED), without an `M`, `N` or `W` (§5), so long as they stay legible in every still and take the light's own colour: orange words while asking, white while done, never the cream or yellow the rest of a board is written in, or the words say nothing the lamp does not. And keep the glow off your other signs: a white glow over a yellow sign beside it washes both out, so give the light room.
 
 Characters may answer the light too (fyr's keeper climbs to the lantern while it is lit), but the light comes first and must read on its own.
 
@@ -1160,8 +1212,10 @@ Your manifest's `events` are scheduled by the engine: in each slot of `slotMinut
 - Draw each in the pass its `layer` says. `"front"` is drawn after the clouds, and only where `themeWindow` is above 0: an event in the open. `"behind"` is drawn before the clouds and before your `scenery`, so your ground covers it: something far off in the sky.
 - Previews are not events: your theme schedules them itself from `iTime` and the engine only says, through `THEME_FORCE`, when one is being played (§8). Use them for the rare moments of your characters' lives that need the whole stage, as fyr's UFO does.
 - Every value of `t` and every `seed` must draw a moment worth seeing. An event starts and ends with a reload, at whatever `t` the clock gives then, so it appears and goes all at once: do not count on its beginning being seen, and make every `t` a fine moment to appear at.
+- An event, and a preview, changes the frame at the world's scale, as a tool's kind does (§4): something seen in the whole frame at a glance without being pointed to, not a gesture of one character or a prop moved a little. A fist raised, a statue shifted along the street or a few blocks fallen beside a desk are details; a crowd that turns and cheers, a statue charging through the street with people scattering, a tower crashing in a cloud of dust are moments.
+- The sheet draws every event and preview on a Saturday, at 15:35 and at 22:00 (§13): a market is closed, a weekday's crowd is not there. An event that needs a full floor brings its own crowd or its own light with it.
 
-An event inside a room, where `themeWindow` is 0, would show in neither pass. Draw it from `resident` instead, which may ask whether one of your events is up, and have `themeEvent` return `sky` for it, so that it is drawn once:
+An event inside a room, where `themeWindow` is 0, would show in neither pass. Nor would one that moves or changes something your `scenery` or `resident` already draws (a statue on the street, a door, the resident himself), without drawing that thing twice. Draw such an event from the function that draws the thing, which may ask whether one of your events is up, and have `themeEvent` return `sky` for it, so that it is drawn once; its `layer` in the manifest then only names the pass `themeEvent` would have used:
 
 ```glsl
 // Whether this theme's event `kind` (its place in the manifest's events,
@@ -1184,9 +1238,9 @@ A theme whose stage is the inside of a building: the sky, the sun, the moon and 
 
 **What you look at** is a cutaway: the stage strip is the inside of the building, and its left edge is the outer wall cut through, so the door in it is a gap you see the lit room through. The sketch's building is tall, its wall and room the whole height of the window. A low one has a roofline under the window's top with the sky above it: there `scenery` leaves `sky` and `themeWindow` is 1, and a hanging lamp's cord starts at the ceiling, not at y = 0.
 
-**Where things are.** The stage strip is the room. Its left edge is the building's outer wall with the entrance in it, and the floor inside is at the horizon's line, where the ground outside meets it, so that you can see someone walk in. Left of the wall the outdoors goes on behind the terminal's text: the sky as the engine draws it, and low on the horizon whatever stands outside, never more than a few units high, hazed into the sky and darker by night, in plain tones, with the ground at its foot fading out. Above it the sky is the text's.
+**Where things are.** The stage strip is the room. Its left edge is the building's outer wall with the entrance in it, and the floor inside is at the horizon's line, where the ground outside meets it, so that you can see someone walk in. Left of the wall the outdoors goes on behind the terminal's text: the sky as the engine draws it, and low on the horizon whatever stands outside, never more than a few units high, hazed into the sky and darker by night, in plain tones, with the ground at its foot fading out. Above it the sky is the text's. A room that is upstairs (a gate above the apron, an office over the street) keeps its floor on the horizon all the same, with what lies under it (the apron, the hall, the street's own floor) in the part below: the floor on the horizon is what lets someone be seen walking in.
 
-**The entrance** is the one thing that has to read at a glance: a wall, a frame or a front of glass at the strip's left edge, a door or an opening in it on the floor line, its frame in the key plate. At night light from inside spills out of it onto the ground; by day it may stand open. Characters may stand in it, coming and going.
+**The entrance** is the one thing that has to read at a glance: a wall, a frame or a front of glass at the strip's left edge, a door or an opening in it on the floor line, its frame in the key plate. At night light from inside spills out of it onto the ground; by day it may stand open. Characters may stand in it, coming and going. A glass front reads as glass only when it is wide enough to show its mullions and what stands behind it, three units or more: a strip of a unit or two reads as the building's edge.
 
 **Below the floor.** With the floor on the horizon, about 38 % of the stage's height lies under it, and it is part of the picture, not left over. Fill it with what is under such a building, in the same cutaway: a basement or a lower floor (a cellar, a baggage hall, a vault, pipes and boilers), or the floor's own thickness and the foundations, their edges in the key plate, with the earth under them in halftone. A plain smooth gradient there reads as another picture pasted under yours (§6). The sketch below carries the floor down in halftone, the least that will do.
 
@@ -1202,7 +1256,7 @@ A theme whose stage is the inside of a building: the sky, the sun, the moon and 
 
 **Text** runs over the outdoors, so keep it calm (§9). Look at it with `--prose`, by day and by night.
 
-**The stage's width.** A room wants a wider stage than an island: 320 to 480 points. The terminal loses what the room gains, so take what the room needs to read, and look at the whole frame.
+**The stage's width.** A room wants a wider stage than an island: 320 to 480 points. The terminal loses what the room gains, so take what the room needs to read, and look at the whole frame. Share it out by what your paragraph names first (§6), and only then fit the boards and signs to what is left.
 
 A sketch of it all, without the waiting light (§11) or anyone inside, which `resident` adds:
 
@@ -1239,11 +1293,12 @@ bool isPane(vec2 p, Room r, float u) {
 // Outside, left of the wall, behind the terminal's text: a low line of
 // something on the horizon, hazed into the sky and darker by night, never
 // more than 5 u high, and the ground at its foot fading into the sky's
-// own colour. Plain tones, no fine pattern, so that text reads over it.
+// own colour. Plain tones, no fine pattern, and never lighter than the
+// sky behind it, so that text reads over it.
 vec3 outdoors(vec3 sky, vec2 p, float u, float k, Room r) {
   if (p.x > r.left || p.y < r.floor - 5.0 * u || p.y > r.floor + 4.0 * u) return sky;
   float dark = 1.0 - 0.6 * night();
-  vec3 far = mix(tone(mix(INK_INDIGO, INK_BLUE, 0.3), k) * dark, sky, 0.45);
+  vec3 far = sky_under(mix(tone(mix(INK_INDIGO, INK_BLUE, 0.3), k) * dark, sky, 0.45), sky);
   float top = r.floor - (1.5 + 3.5 * noise(p.x / (5.0 * u), 7)) * u;
   if (p.y > top && p.y < r.floor) return mix(sky, far, 0.9);
   vec3 ground = mix(tone(INK_INDIGO, k) * 0.55 * dark, sky, 0.4);
@@ -1304,7 +1359,7 @@ float themeWindow(vec2 p, float u) {
 
 ### The tools
 
-Run them from the repository's root, one at a time: they bundle the engine into `.preview/` as they start, and every preview drives headless Chrome with one profile, so a second one started while another draws fails, and rewrites the bundle under it. If a run fails with `Command failed: … Google Chrome` (Chrome exiting with status 2 or 21) and no `FAIL`, Chrome was busy: wait and run it again. Two people or agents in one checkout should not preview at the same time, since they share `.preview/`. Previews in other checkouts (another worktree) do not share the folder but do share the machine: they slow every frame, and a bench taken while one draws is noise (§10). A sheet clears its folder as it starts, so a sheet run again draws every frame again.
+Run them from the repository's root, one at a time: they bundle the engine into `.preview/` as they start, and every preview drives headless Chrome with one profile, so a second one started while another draws fails, and rewrites the bundle under it. If a run fails with `Command failed: … Google Chrome` (Chrome exiting with status 2 or 21) and no `FAIL`, Chrome was busy: wait and run it again. Two people or agents in one checkout should not preview at the same time, since they share `.preview/`. Previews in other checkouts (another worktree) do not share the folder but do share the machine: they slow every frame, and a bench taken while one draws is noise (§10). A sheet clears its folder as it starts, so a sheet run again draws every frame again; `KEEP=1 tools/preview/sheet.sh theme themes/<name>` keeps the folder and draws only the frames missing from it, for a sheet that stopped halfway (after a change to your theme, draw the whole sheet again instead).
 
 - `tools/theme/run.sh lint themes/<name>` reads the manifest as the engine would, lints the GLSL (§3) and weighs it. It prints `<name>: GLSL … of 80000 characters, the long night's shader … of 224000`, the stage's width, each problem, and `clean` or how many there are to put right. A manifest that does not pass stops it with what is wrong.
 - `tools/preview/run.sh shader --theme themes/<name> --stage <stagePt>` compiles the whole shader in headless Chrome's WebGL and draws one frame at 1512 × 982 over a stand-in terminal, printing the PNG's path (`.preview/shader.png`, or `--out <name>` for `.preview/<name>.png`). A shader that does not compile prints `FAIL` and the compiler's errors, and draws nothing. Always pass `--stage` with your `stagePt`: without it `STAGE_PX` is 0 and the stand-in text runs to the window's right edge. Its flags:
@@ -1321,7 +1376,7 @@ Run them from the repository's root, one at a time: they bundle the engine into 
   - `--stage <px>` is the stage in device pixels. The sheets and a plain run are at a scale of 1, a point a pixel, so there it is your `stagePt`.
   - `--width 3024 --height 1964 --stage <twice your stagePt>`: a Retina screen.
   - `--bench 200`: what it costs (§10); with `--rounds 3`, a warm-up round thrown away and three rounds of your theme, `none` and fyr by turns, the ratio the middle one.
-- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<folder>/`, named after the folder you give it: your theme at your stage's width in 37 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes about a quarter of an hour, more with events: run it in the background and read its output when it ends. The scenes, with the time in Stockholm (where the preview stands) and in New York (where the market is):
+- `tools/preview/sheet.sh theme themes/<name>` draws the sheet in `.preview/theme-<folder>/`, named after the folder you give it: your theme at your stage's width in 37 scenes, then each of your events and previews at three moments (by day at `--time` 24.8, by night at 88 and 126), and every frame small in `contact.png`. It takes about a quarter of an hour on a quiet machine, more with events, and 30 to 45 minutes while another checkout previews: run it in the background and read its output when it ends. A frame that fails because Chrome was busy is tried four times, half a minute apart, before the sheet stops; if it stops with `Command failed: … Google Chrome` and no `FAIL`, wait for the other preview to end and go on with `KEEP=1`. The scenes, with the time in Stockholm (where the preview stands) and in New York (where the market is):
 
 | Frames | Scene | New York, the market |
 |---|---|---|
@@ -1334,7 +1389,7 @@ Run them from the repository's root, one at a time: they bundle the engine into 
 | 19 to 25 | A comet and the Clawd constellation; a rainbow; a balloon, a plane and birds; Christmas Eve (16:00); Sweden's national day; New Year's Eve; confetti after long work | closed, but for Christmas Eve at 10:00, open |
 | 26 to 31 | A demo; Linux's coordinates; Claude Code's coloured fields; the lighter sky; a tab without Claude (the terminal alone, no sky at all); the band | closed |
 | 32 to 34 | A command running by day; an edit with three subagents; a read at night with one | closed |
-| 35, 36, 37 | Wednesday: the market open with prices up (16:30); open and down, with a command and two agents (16:30); closed, at night (23:00) | 11:30, open; 11:30, open; 18:00, closed |
+| 35, 36, 37 | Wednesday: the market open with prices up (16:30); open and down, with a command and two agents (16:30); closed, at night (23:00). For a theme whose manifest does not say `"market": true` they are ordinary frames, and nothing in them is judged as the market's | 11:30, open; 11:30, open; 18:00, closed |
 | 38 on | Each of your events and previews, three frames each: Saturday 15:35, and Saturday 22:00 twice | Saturday, closed |
 
 The stand-in terminal is seven lines of text at the top left, a dark status bar near the bottom and a line of green under it. The status bar runs across the stage, 22 pixels tall at y = 862 to 884 in the sheets' 1512 × 982 (twice that, as high up, in a Retina frame), and so do Claude Code's coloured rows (frame 28) and Clawd's band (frame 31), which Ghostty's would not: in Ghostty they are the terminal's cells and stop where the stage begins. They are the stand-in's, not yours; leave no room for them, but do not put the only sight of something that matters there either (Clawd, the waiting light, a state that shows nowhere else), since whoever judges your sheet cannot see under the bar. Look at what stands there with `--zoom` or a Retina frame.
@@ -1345,7 +1400,7 @@ A played event ignores its `when`, in the sheet (frames 38 on draw each of yours
 
 ### What goes wrong
 
-The preview compiles GLSL ES 3.00, stricter than the GLSL 4.30 Ghostty compiles, so what compiles in the preview compiles in Ghostty, apart from the three words in §3. What does not compile:
+The preview compiles GLSL ES 3.00 in WebGL, and nothing in the kit compiles GLSL 4.30, which Ghostty does. ES 3.00 is the stricter of the two in nearly everything, so what compiles in the preview compiles in Ghostty, apart from the three words in §3; nothing else that 4.30 refuses and ES 3.00 allows is known so far, though plain variables at the top of your text (§3) have been compiled only in WebGL. Avoid the three words, and do not count on more than that being checked. What does not compile:
 
 - **Ints and floats do not mix.** `float x = 1;`, `2 * u`, `pow(x, 2)`, `x > 0` with a float `x`, `smoothstep(0, 1, x)`, and `b ? 1 : 0.5` all fail. Write `1.0`, `2.0 * u`, `float(i)`, `int(x)`.
 - **A `uint` needs its `u`.** `uint x = 5;` fails; `5u` and `0x11110u` do not. A sprite's rows and anything you `>>` or `&` are `uint`.
@@ -1381,9 +1436,9 @@ A theme is done when every line below holds. The first six are hard: one that fa
 4. **It keeps the text readable.** Nothing left of the stage is lighter than the sky beside it, and the light and grey paragraphs of `--prose` read over your world by day and by night (§9).
 5. **Its waiting light reads.** In frames 05, 06 and 07, and in any still, someone who knows the theme sees at a glance that Claude is asking (orange), done (white), or asking urgently (more), and in frames 01 to 04 that nothing waits (§11).
 6. **It defines nothing of the engine's**, which the lint sees to, and draws nothing outside its own business: not the sky, not the text.
-7. **Clawd lives there, recognisably,** in the band's shape and coral (§6): in frame 01 at its own size, someone who has never seen the theme points at him within five seconds, however many other Clawds stand there. And the theme reads in five seconds as the paragraph it was written from, at 1512 × 982.
+7. **Clawd lives there, recognisably,** in the band's shape and coral (§6): in frame 01 at its own size, someone who has never seen the theme points at him within five seconds, however many other Clawds stand there. And the theme reads in five seconds as the paragraph it was written from, at 1512 × 982, with the most room given to what the paragraph names first (§6).
 8. **Its places read.** Where the theme has an outdoors and an indoors, both show in every frame, with the entrance between them clear in five seconds (the idiom after §12).
-9. **It answers what it reads.** What it takes from the engine shows in the frames made for it: what Claude is doing (32 to 34, each kind your theme answers told apart at a glance in the whole frame, not only in a zoom, §4), the context window (15 to 18, or the engine's wastebasket there for a theme that leaves it to the engine), the market for a theme that shows it (35 to 37), and its own events and previews (38 on).
+9. **It answers what it reads.** What it takes from the engine shows in the frames made for it: what Claude is doing (32 to 34, each kind your theme answers told apart at a glance in the whole frame, not only in a zoom, §4), the context window (15 to 18, or the engine's wastebasket there for a theme that leaves it to the engine), the market for a theme that shows it (35 to 37), and its own events and previews (38 on), each noticed in its day frame by someone not told where to look (§12).
 10. **It is printed.** The house style (§6): the inks, halftone tones, the key plate, no black, the night an indigo plate, the far hazy.
 11. **Every moment is a still.** Ten frames at random `--time` values look like moments, not like glitches (§8).
 12. **Day, night and weather agree.** Day and night, dusk, rain and snow (frames 01, 05, 08, 10, 12, 13) look like the same place at another time; nothing indoors gets wet.

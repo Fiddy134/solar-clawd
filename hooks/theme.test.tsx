@@ -199,6 +199,7 @@ test('the contract is what contract 1 says it is', () => {
     'vec3 tone(vec3 c, float k)',
     'vec3 ink(vec3 sky, vec3 color, float d, float alpha)',
     'vec3 lift(vec3 c, float k)',
+    'vec3 sky_under(vec3 c, vec3 sky)',
     'float seeded(float seed, int salt)',
     'float segment(vec2 p, vec2 a, vec2 b)',
     'float limb(vec2 p, vec2 a, vec2 b, float ra, float rb)',

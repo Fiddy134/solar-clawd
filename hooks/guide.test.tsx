@@ -168,3 +168,21 @@ test("the reserved names are the engine's, Clawd is the band's, and the codes on
   expect(font).not.toBeNull()
   expect(`${font![1]}'${font![2]}`).toBe(GLYPHS.map(([ch]) => ch).join(''))
 })
+
+test("the engine's props stand where the guide says, in the front pass", () => {
+  // Each function's own lines: its foot on the horizon at 0.72 W, and its
+  // height in u as the guide's table gives it.
+  const body = (name: string) => new RegExp(`^vec3 ${name}\\([^)]*\\) \\{\\n([\\s\\S]*?)\\n\\}`, 'm').exec(EVENTS_GLSL)?.[1] ?? ''
+  for (const [name, tall] of [['flag', '5.0'], ['maypole', '5.5']] as const) {
+    expect(body(name)).toContain('float foot = 0.62 * iResolution.y;')
+    expect(body(name)).toContain('float x = 0.72 * iResolution.x;')
+    expect(body(name)).toContain(`float h = ${tall} * u;`)
+  }
+  expect(body('flag')).toContain('float w = 2.6 * u;')
+  expect(THEME_GUIDE).toContain('| The flag | Sweden\'s national day, 6 June | its pole on the horizon at x = 0.72 W, 5 `u` tall, the cloth 2.6 `u` to the right of it |')
+  expect(THEME_GUIDE).toContain('| The maypole | Midsummer\'s Eve (the Friday from 19 to 25 June) | on the horizon at x = 0.72 W, 5.5 `u` tall, 1.8 `u` either side |')
+  // Drawn in the pass after the theme's, where themeWindow lets it.
+  const front = EVENTS_GLSL.slice(EVENTS_GLSL.indexOf('if (kind == 2) sky = balloon('))
+  expect(front).toContain('if (kind == 15) sky = flag(sky, p, u);')
+  expect(front).toContain('if (kind == 16) sky = maypole(sky, p, u, k);')
+})

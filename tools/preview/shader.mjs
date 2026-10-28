@@ -315,6 +315,13 @@ writeFileSync(html, page)
 
 const webgl = o.gpu ? 'gpu' : true
 if (o.bench && !o['bench-alone']) warnIfBusy()
+// An event up costs an engine pass wherever a theme's themeWindow is above
+// 0: everywhere for none, less for a theme with walls. The difference of
+// theme and none then leaves part of that pass out, and the ratio is not a
+// measure of the theme.
+if (o.bench && !o['bench-alone'] && o.event) {
+  console.log("warning: with --event the ratio to fyr is not a measure; bench your theme with and without --event, each with --bench-alone, and keep the ratio for the scene without events")
+}
 const dom = dumpDom(html, webgl)
 const renderer = /<pre id="renderer"[^>]*>([\s\S]*?)<\/pre>/.exec(dom)?.[1]
 console.log('renderer:', renderer ? renderer.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&') : 'unknown')

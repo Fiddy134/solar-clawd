@@ -143,6 +143,15 @@ vec3 ink(vec3 sky, vec3 color, float d, float alpha) {
 // Half dimmed, as the sun is: small things stay visible on a dimmed sky.
 vec3 lift(vec3 c, float k) { return mix(tone(c, k), c, 0.5); }
 
+// A colour no lighter than the sky behind it, its hue kept: for what
+// stands outside behind the terminal's text, which must never outshine
+// the sky there.
+vec3 sky_under(vec3 c, vec3 sky) {
+  float a = luminance(c);
+  float b = luminance(sky);
+  return a > b ? c * (b / a) : c;
+}
+
 // A random number for an event's seed and a salt.
 float seeded(float seed, int salt) { return rand(int(seed) * 7919 + salt * 104729 + 3); }
 
