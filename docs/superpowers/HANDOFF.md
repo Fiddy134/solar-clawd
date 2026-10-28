@@ -108,13 +108,12 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 ## Nästa steg
 
-1. **Ghostty 1.4.0 och takten, nu, innan något tungt kör.** Läs `docs/ghostty-research.md`, avsnittet "Ghostty 1.4.0". På 1.4 behövs ingen `/solar vsync off`. Provet:
-   - **(a) Tickar himlen** med `/solar full`? Står den still behöver tickarna växla mellan två markeringar ett steg isär. Rätta det före allt annat.
-   - **(b)** Gamla flikar, ⌘Q och öppna igen.
-   - **(c)** `tools/measure/gpu.sh live full-natt-fokus` och `full-natt-ofokus` från Terminal.app. Raderna in som avsnittet "1.4.0" i `docs/gpu-measurements.md`: passthrough, `day-clear`, `night-lit`, fokuserad och ofokuserad. Golvet på ~40 % borde till stor del försvinna.
-   - **(d)** Claudes CPU med `top -pid <pid> -l 7 -s 10 -stats pid,cpu`, med himlen synlig och dold.
-
-   Därefter går utfallet in i planen för takten, och push sker på Vincents ja.
+1. **Ghostty 1.4.0 och takten: klart 2026-10-28, se slutet av takt-planen.**
+   - (a) Himlen tickar på 1.4 med vsync på; ingen vsync-rad behövs.
+   - (c) GPU-raderna står i `docs/gpu-measurements.md` ("Ghostty 1.4.0"): 24 i sekunden drar 84 % mindre än `true` på dagen och natten, golvet 77 % mindre; golvet under `true` ligger kvar på ~37 %.
+   - (d) Kedjan inne i Claude Code kostade ~9 % av en kärna live. **Hjälparen** (en `zsh` bredvid Claude Code, `startTicks` i `hooks/ghostty.ts`) ersätter den: 0.8.1 på `main` (`80d5f46`), Claude Code 15,2 → 9,9 %, hjälparen själv 1,1 %. Vincent godtog det.
+   - **Kvar till en senare runda:** Claude Code med himlen synlig men stilla (`spar`, Ghostty bakom) som rättvis baslinje, (b) ⌘Q och gamla flikar.
+   - **Push** av 0.8.0 och 0.8.1 väntar på Vincents ja.
 2. **Bygga `floor` v3 och `terminal` v3** efter designerna, på grenar från `teman`:
    - **Motorn först:** bredare M, N och W i en egen funktion, och det författarna behöver ur luckorna.
    - **Sedan per tema:** en författare som utgår från `tema-*-r2` och får guiden, designen och skissen, en domare som jämför mot skissen och Vincents ord, och en rättningsrunda.
