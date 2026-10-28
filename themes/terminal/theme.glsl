@@ -299,8 +299,7 @@ int paneAt(vec2 p, float u, Gate g) {
 
 // What shows through the glass wall: the sky, and from the apron's far edge
 // down the apron, with the plane parked nose in at gate B4 (Clawd's coral
-// on its fin), its yellow lead-in line, and the marshal in front of the
-// plane with his two wands, lit by night. Far, so hazed into the sky and darker by night, the plane's
+// on its fin), and its yellow lead-in line. Far, so hazed into the sky and darker by night, the plane's
 // cockpit and lights lit.
 vec3 apronView(vec3 sky, vec2 p, float u, float k, Gate g, float n) {
   float S = g.width / u;
@@ -329,24 +328,13 @@ vec3 apronView(vec3 sky, vec2 p, float u, float k, Gate g, float n) {
     d = plane;
     haze = 0.18;
   }
-  // The marshal in front of the plane in his yellow vest.
-  vec2 mq = a - vec2(cx, 6.1);
-  float man = box(mq, vec2(0.32, 0.45));
-  if (man < d) {
-    c = mq.y < -0.1 ? CORAL : INK_YELLOW;
-    d = man;
-    haze = 0.1;
-  }
   vec3 o = ink(sky, mix(tone(c, k) * (1.0 - 0.55 * n), sky, max(haze, 0.0)), d * u, 1.0);
-  // What is lit: the cockpit's windows and the plane's lights by night, and
-  // the marshal's wands, glowing by night.
+  // What is lit by night: the cockpit's windows and the plane's lights.
   if (n > 0.3) {
     if (body < 0.0 && abs(q.y + 0.55) < 0.17 && abs(q.x) < 1.3 && fract(q.x / 0.62 + 0.5) < 0.72) o = lift(INK_YELLOW, k);
     o = ink(o, q.x < 0.0 ? RED_INK : INK_GREEN, (length(m - vec2(9.4, -0.5)) - 0.16) * u, 1.0);
   }
-  float wave = 0.7 + 0.6 * sin(time * 2.5);
-  float wand = segment(vec2(abs(mq.x) - 0.35, mq.y + 0.35), vec2(0.0), vec2(0.6 * cos(wave), -0.6 * sin(wave))) - 0.07;
-  return ink(o, n > 0.3 ? lift(RED_INK, k) : tone(INK_ORANGE, k), wand * u, 1.0);
+  return o;
 }
 
 // One seat of a row, seen from above and the front: `x0` the row's left end
@@ -786,7 +774,7 @@ vec3 letters(vec3 sky, vec2 p, float u, float k, Gate g, float n, int agents, bo
       remark = WAITING == 1 ? (isUrgent ? 12 : 11) : WAITING == 2 ? 13 : 10;
       ink2 = WAITING == 1 ? INK_ORANGE : WAITING == 2 ? WARM_WHITE : INK_GREEN;
     } else if (row == 2) {
-      bool isCancelled = fract(floor((iTime + 23.0) / 600.0) * 0.618) < 0.3;
+      bool isCancelled = fract(floor((iTime + 23.0) / 600.0) * 0.618 + 0.5) < 0.3;
       name = 2;
       remark = isCancelled ? 15 : 14;
       ink2 = isCancelled ? RED_INK : INK_YELLOW;
@@ -946,7 +934,6 @@ vec3 figure(vec3 sky, vec2 p, Fig f, float k) {
     vec3 sheet = f.thing == 3 ? (v.y < 2.6 ? mix(INK_BLUE, CREAM, 0.75) : STEEL) : tv.x < 0.15 ? mix(CREAM, INK_INDIGO, 0.25) : CREAM;
     return mix(sky, f.thing == 3 && v.y < 2.6 ? sheet : lift(sheet, k), 0.97);
     }
-    if (f.thing == 3 && kind == 0 && tv.y < 2.0 && tv.x < 3.6) sky = mix(sky, mix(INK_BLUE, CREAM, 0.6), 0.35);
   }
   if (kind == 2) return mix(sky, keyInk(k), 0.97);
   if (kind != 0) return mix(sky, lift(kind == 1 ? CORAL : kind == 4 ? f.jumper : kind == 5 ? f.hatInk : CORAL_DEEP, k), 0.97);
@@ -1111,13 +1098,6 @@ Fig whoAt(vec2 p, float u, Gate g, Viktor v, int tool, int agents, float n, bool
       pose = agents > 0 && fract(time / 3.0 + 0.5 * float(i)) < 0.3 ? 2 : 3;
       jumper = mix(INK_BLUE, INK_INDIGO, 0.4);
       h = 1u << 12 | 1u << 31;
-    } else if (q.x > 9.0 && isDay) {
-      int i = q.x < 10.6 ? 0 : 1;
-      f = vec2(9.9 + 1.4 * float(i), 0.95);
-      found = true;
-      cell = max(1.0, floor(0.25 * u));
-      h = uint(i) * 3u + 77u;
-      eyes = 3;
     }
   } else if (!(q.x < 9.0 && q.y < 10.0)) {
     vec4 w = crowdAt(q, n, S);
