@@ -42,3 +42,26 @@ Choices against the research:
 ## Last
 
 Version 0.9.0, a README section on the new signals and what the price fetch contacts, the full test run, `tsc`, and fyr's parity.
+
+## Outcome
+
+All four tasks built on `teman`, one commit each, nothing merged or pushed.
+
+- **Tests:** 146 before, 178 now, all passing; `tsc` clean; `node tools/theme/imports.mjs` clean. Tests changed where the change is declared: the signal list and the context mark's names (`theme.test.tsx`), COMMON's signatures (the font), and the tab test's red bound in `band.test.tsx` (31.5 for 3.5).
+- **Parity:** 53 of 53 identical against `.worktrees/takt/.preview/parity-takt`, once after tasks 1 and 2 and again at the end. Fyr drawn with the fullest activity mark (`--tool other --agents 7` over `--fish 9,grill`) is byte-identical to the frame without it.
+- **Size:** fyr's long night went from 184,004 to 189,306 characters of 224,000: about 1.5 KB for the market's and the mark's names, 3,812 for the font.
+- **Bench** (SwiftShader, 1512×982, 200 frames): the `glyph-board` fixture, a 40-character board and a tape of four numbers on a 400-point stage, costs 7.65 ms a frame over `--theme none` (114.73 ms), 0.18 of fyr's 41.92.
+
+Where research and the build parted:
+
+- `refreshMarket` stamps a snapshot when its answers are in, not when the fetch began, so a scene boundary cannot fall between the stamp and the write.
+- New York's hours are `hooks/newyork.ts`, apart from `market.ts`, and the symbols' order lives in `shader.ts`, which keeps the modules free of a cycle.
+- The hold keeps a shown kind 1.5 s after it changes in either direction, so a quick read still shows, and a held-back change is marked by one `$.clock.after`.
+- `AskUserQuestion` leaves the kind as it is (the research had it as `other`): `WAITING` already shows it.
+- A subagent that is silent ten minutes is dropped only when the engine does not list it as at work.
+- On `/solar ghostty`, when the config has no padding line of the mod's below its include, the person's own stays, and the reply names the width the theme wants. The rule "given once, then the person's" gains this one exception, for Vincent to approve.
+
+For Vincent:
+
+- Cboe's terms allow personal, non-commercial viewing; a built-in theme in a public mod that shows them is his call. Until a theme with `"market": true` is the active one (F8), nothing is fetched.
+- The mark's red now reaches 31 with seven agents: one look in his Ghostty that colours above 10/255 come back exactly, and that nothing he runs paints with palette 16.
