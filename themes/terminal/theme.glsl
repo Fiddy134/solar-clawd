@@ -1007,7 +1007,7 @@ Viktor viktorOf(Gate g, float u) {
   if (WAITING != 0) {
     v = Viktor(floor(o + vec2(14.2, 5.0) * u), WAITING == 2 ? 2 : 0, WAITING == 1 ? 1 : 0, WAITING == 1, V_WAIT, -1.0);
   } else if (fountain >= 0.0) {
-    v = Viktor(floor(o + vec2(13.8, 5.0) * u), 2, 1, false, V_FOUNTAIN, fountain);
+    v = Viktor(floor(o + vec2(12.3, 5.2) * u), 2, 1, false, V_FOUNTAIN, fountain);
   } else if (carts >= 0.0) {
     v = Viktor(floor(o + vec2(mix(g.width / u - 6.0, 13.0, smoothstep(2.0, 32.0, carts)), 9.9) * u), carts < 32.0 ? 1 : 2, 1, true, V_CARTS, carts);
   } else if (CLAWD_ASLEEP > 0.5) {
@@ -1250,22 +1250,22 @@ vec4 props(vec4 ly, vec2 p, float u, float k, Gate g, Viktor v, int tool, bool i
     float h = 0.16 + 0.1 * rise;
     stroke = (abs(abs(zq.y) - h) < 0.05 && abs(zq.x) < h) || (abs(zq.x + zq.y) < 0.07 && abs(zq.y) < h) ? -1.0 : 1.0;
   } else if (v.mode == V_FOUNTAIN) {
-    vec2 fo = floor(vec2(g.left, g.top) + vec2(17.6, 5.1) * u) - v.feet;
-    vec2 fq = (vq - fo) / u;
-    at = fo - vec2(0.0, 0.35 * u);
-    size = vec2(1.5, 0.35) * u;
-    mk = vec2(0.0, -1.0 * u);
-    mkSize = vec2(0.16, 0.6) * u;
+    vec2 fo = floor(vec2(g.left, g.top) + vec2(16.6, 5.3) * u) - v.feet;
+    vec2 fq = (vq - fo) / (2.0 * u);
+    at = fo - vec2(0.0, 0.7 * u);
+    size = vec2(3.0, 0.7) * u;
+    mk = vec2(0.0, -2.0 * u);
+    mkSize = vec2(0.32, 1.2) * u;
     ink1 = mix(CREAM, INK_INDIGO, 0.2);
     ink2 = ink1;
     ink3 = mix(INK_BLUE, CREAM, 0.15);
     float s = clamp((abs(fq.x) - 0.55) / 0.8, 0.0, 1.0);
-    stroke = (s > 0.0 && s < 1.0 ? abs(fq.y + 1.95 - 1.4 * s * s) - 0.14 : max(abs(fq.x) - 0.1, abs(fq.y + 2.1) - 0.25)) * u;
+    stroke = (s > 0.0 && s < 1.0 ? abs(fq.y + 1.95 - 1.4 * s * s) - 0.14 : max(abs(fq.x) - 0.1, abs(fq.y + 2.1) - 0.25)) * 2.0 * u;
   } else if (v.mode == V_CARTS) {
-    at = vec2(-3.5 * bc - 2.05 * u, -1.05 * u);
-    size = vec2(2.05, 0.4) * u;
-    mk = vec2(0.0, 0.6 * u);
-    mkSize = vec2(2.05, 0.05) * u;
+    at = vec2(-3.5 * bc - 4.0 * u, -1.25 * u);
+    size = vec2(4.0, 0.5) * u;
+    mk = vec2(0.0, 0.75 * u);
+    mkSize = vec2(4.0, 0.06) * u;
     ink1 = mix(STEEL, INK_INDIGO, 0.45);
     ink2 = ink1;
     ink3 = mix(INK_YELLOW, INK_ORANGE, 0.15);
