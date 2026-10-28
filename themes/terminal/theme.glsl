@@ -646,7 +646,7 @@ vec3 hall(vec3 sky, vec2 p, float u, float k, Gate g, float n, int tool, int age
         if (CLAWD_ACTIVITY == 1 && abs(q.x - 13.4) < 0.5 && abs(q.y - 1.95) < 0.12) c = q.x < 13.4 ? RED_INK : INK_YELLOW;
         float shadeR = length(q - vec2(12.05, 1.0));
         if (shadeR < 0.55) {
-          c = shadeR > 0.42 ? mix(INK_YELLOW, INK_ORANGE, 0.3) : shadeR < 0.24 ? mix(mix(INK_YELLOW, CREAM, 0.4), WARM_WHITE, n) : mix(CREAM, INK_YELLOW, 0.25);
+          c = shadeR > 0.43 ? mix(INK_YELLOW, INK_ORANGE, 0.3) : shadeR < 0.24 ? mix(mix(INK_YELLOW, CREAM, 0.4), WARM_WHITE, n) : mix(CREAM, INK_YELLOW, 0.25);
           dim = 0.0;
           shade = 0.0;
         } else if (length(q - vec2(12.4, 1.35)) < 0.55) c = mix(c, dk, 0.4);
@@ -1040,7 +1040,7 @@ vec4 crowdAt(vec2 q, float n, float S) {
   float lots = band == 0 || (isSeat && q.x < 12.0) ? 4.0 : isSeat ? 3.0 : floor((S - 6.4 - x0) / 3.2);
   float dir = band == 4 ? -1.0 : 1.0;
   float s = q.x - x0;
-  float m = isSeat ? s : mod(s - dir * (band == 5 ? 0.42 : 0.33) * t, lots * lot);
+  float m = isSeat ? s : mod(s - dir * (band == 5 ? 0.44 : 0.33) * t, lots * lot);
   float i = floor(m / lot);
   int id = int(i) + 16 * band;
   uint h = hashi(id * 17 + 5);
