@@ -46,9 +46,13 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // The session's environment: Ghostty's own variables, the home folder.
   const env = new Map([['TERM_PROGRAM', 'ghostty'], ['HOME', '/Users/test']])
   on('env.get', (_, e) => ({ value: env.get(e.name) }))
+  // What reaches the tab, in order: the session's own writes to a /dev
+  // path, and each helper's start and end with the mark it writes.
+  const ttyLog: string[] = []
   on('fs.write', (_, e) => {
     files.set(e.path, { text: e.text, mtimeMs: now })
     writes.push(e.path)
+    if (e.path.startsWith('/dev/')) ttyLog.push(`write ${e.text}`)
     return { value: undefined }
   })
   const unreadable = new Set<string>()
@@ -77,6 +81,28 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     }
     return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
   })
+  // The helpers started (startTicks's zsh), each with the moments it ran
+  // from and to (null while it runs), on the clock `helpersOn` is given:
+  // it says it ticks, and ends when the mod closes its stream. Failing, it
+  // says why on stderr and ends at once, as zsh does on a tty it cannot
+  // open.
+  const helpers: { argv: string[]; from: number; to: number | null }[] = []
+  const helperFails = { value: false }
+  let helperClock: ReturnType<typeof mock.clock> | null = null
+  on('process.spawn', async function* (_, e) {
+    const helper = { argv: [...e.argv], from: helperClock?.now() ?? now, to: null as number | null }
+    helpers.push(helper)
+    ttyLog.push(`start ${e.argv.at(-1)}`)
+    try {
+      if (helperFails.value) yield { stream: 'stderr' as const, text: 'zsh:3: operation not permitted: /dev/ttys004\n' }
+      else yield { stream: 'stdout' as const, text: 'ticking\n' }
+    } finally {
+      helper.to = helperClock?.now() ?? now
+      ttyLog.push(`end ${e.argv.at(-1)}`)
+    }
+
+    return { value: { code: helperFails.value ? 1 : null, signal: helperFails.value ? null : 'SIGTERM' } }
+  })
   on('session.id', () => ({ value: 'this-session' }))
   on('session.end', () => ({ sessionId: 'this-session' }))
   on('ui.toast', (_, e) => {
@@ -84,7 +110,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, tick: (ms: number) => (now = ms) }
+  return { files, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog,
+    helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
+    tick: (ms: number) => (now = ms),
+  }
 }
 
 // The terminal a Ghostty session's tab is, where its mark is written.

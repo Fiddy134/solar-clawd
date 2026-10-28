@@ -391,7 +391,7 @@ const ghosttyOf = (id: string): Ghostty => ({
   stagePx: 240,
   knowsReloadSignal: false,
   isIncluded: true,
-  ticks: { origin: 0, isRunning: false, writing: null },
+  ticks: null,
   written: { shader: '', include: '', mark: '', marking: null, heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, isTicking: false, canTick: false, running: null, isAgain: false },
 })
 const state = (): SkyState => ({ idleMs: 1000, isOnBattery: false, isGhosttyInFront: true, pace: 'spar', waiting: null, catchAt: () => null, workAt: () => ({ tool: 'none', agents: 0 }), livelyAt: () => false })

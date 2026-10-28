@@ -182,6 +182,91 @@ NC/SA, overwriting the user's config, `background-opacity = 0` (a restart on
 macOS). Unsettled: which way `fragCoord.y` runs on Metal (projects disagree; the
 mod already has `Y_UP` and probed it on 2026-10-25).
 
+## Ghostty 1.4.0 (released 2026-10-27, read 2026-10-28)
+
+One pass over the whole of the 1.4.0 release notes
+([page](https://ghostty.org/docs/install/release-notes/1-4-0),
+[source](https://github.com/ghostty-org/website/blob/main/docs/install/release-notes/1-4-0.mdx)),
+set against the mod. Seven months, 2,889 commits. Labels as above; [notes] is
+the release notes.
+
+### What it does to what we built
+
+- **The pace now rests on a release, not on main.** [notes] "The display link
+  now pauses when there is nothing to draw, and unfocused terminals that are
+  animating draw at most once per display refresh instead of once per write"
+  (GH-14035, GH-14068), the PRs the first section read in the code. So
+  `needsVsyncLine` is right to leave 1.4 alone. Still [hypotes], and the first
+  thing Vincent's trial must answer: that **each OSC 4 write draws one frame**
+  even when it sets colour 16 to the value it already has, as every tick does.
+  If 1.4 skips a write that changes nothing, the sky stands still; the way out
+  is a tick that alternates between two marks one step apart.
+- **The GPU tables are 1.3.1's.** [notes] Besides the display link, the
+  renderer holds the terminal lock 2.7x to 11x less per frame, and GH-13585
+  fixes a renderer that, after a long uptime, rebuilt the whole terminal state
+  every frame. Our protocol measured fresh instances, so the tables hold for
+  1.3.1, but an everyday 1.3.1 cost more than they say. [design] The "~40 %
+  device floor at 120 Hz is Ghostty's loop" should largely go on 1.4: measure
+  again (passthrough, `day-clear`, `night-lit`, focused and unfocused) as a
+  "1.4.0" section in `docs/gpu-measurements.md`.
+- **RIS resets the palette** (GH-14480), as foreseen above. The mark is
+  written again each minute (`hooks/ghostty.ts`, writeGhosttySky) and every
+  tick, so a `reset` hides the sky in that tab for at most a minute when it
+  is not ticking.
+- **Fixes that remove risks we carried.** [notes] GH-14833: a freeze when the
+  config was reloaded while a program flooded the terminal with queries, such
+  as colour queries; the mod reloads at every scene change, and Claude Code
+  asks for colours. GH-13638: config parsing silently dropped every setting
+  after a comment or blank line that ended on an internal buffer boundary, in
+  long configs; the mod appends its include, the vsync include and the
+  stage's padding at the end of the person's config, exactly where they could
+  vanish. Hidden tabs free their GPU resources (385 MiB to 18 MiB with 20
+  hidden tabs), so a hidden Claude tab's 224 KB shader and its ticks cost
+  nothing. Small OSC sequences parse about 6x faster.
+- **The shader fix is not ours.** GH-14460 un-swaps the selection colour
+  uniforms; the sky reads only `iPalette`, `iCurrentCursor` and
+  `iBackgroundColor`.
+
+### Ideas it opens
+
+1. **A focus signal per terminal**, which would close "spar with many
+   windows". [notes] The AppleScript `terminal` class now has `tty` and `pid`
+   (GH-11592), and every process gets `GHOSTTY_SURFACE_ID` (GH-12027).
+   [design] The mod could ask for the focused terminal of the front window and
+   compare it with its own tty or surface id, so that in `spar` only the
+   focused session ticks. An `osascript` costs more than `lsappinfo`, so only
+   when `lsappinfo` already says Ghostty is in front.
+2. **Ghostty's program status protocol (OSC 7501):** idle, working, done,
+   blocked, failed, the first spec of Ghostty's own. Parsed; the GUI ignores
+   it for now. It is nearly what the mod knows already (working, done, blocked
+   while Claude asks); writing it on each change costs next to nothing and
+   pays once Ghostty shows it. Low priority.
+3. **Linux.** The GTK renderer is new (EGL on its own thread, triple
+   buffered, hidden tabs no longer render, a systemd 262 reload fix). The
+   pace keeps Linux on today's rules until the ticks are tried there; 1.4
+   makes that trial worth more.
+4. **The macOS 27 glass tab bar** now blends with the terminal's background
+   colour. [hypotes] Setting the background (OSC 11) to the sky's colour at
+   its top edge would join the tab bar to the sky, but the shader reads
+   `iBackgroundColor` to decide light or dark (`hooks/glsl/main.ts`), and the
+   background must be given back (OSC 111) when the sky goes. An experiment,
+   not a task.
+
+### Not for us
+
+Visibility reports (mode 2033) answer on the program's stdin, which is Claude
+Code's, not the mod's. Kitty graphics (now complete, with animation) live in
+the text layer, scroll with it and are drawn over by Claude Code's redraws;
+the sky has to stay behind everything. Kitty clipboard, `+ssh`, scrollback
+compression, splits, key encoding, and the Glyph Protocol (parsed, not drawn).
+
+### For Vincent when he updates
+
+`copy-on-select` now defaults to `none` on macOS (set `primary` for the old
+behaviour); `cmd+arrow_up/down` jump between prompts again. Updates installed
+by themselves no longer ask to restart and take effect at the next launch, so
+an update never has to end a running session.
+
 ## Everything else the sweeps found
 
 Kept so that nothing found is lost; less likely to matter than the above.

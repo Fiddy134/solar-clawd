@@ -10,7 +10,7 @@ import type { DomePoint } from './dome'
 import { chartAt, TILE, tileLines, tileStars } from './chart'
 import { animationOf, WAITING_MS, WAITING_SWEEP_MS, WAITING_URGENT_MS, waitingAt } from './waiting'
 import { elementsOf, issAt, issVisible } from './iss'
-import { asPace, AWAY_MS, canTick, FULL_STILL_MS, nextTickAt, PACE_HZ, skyRules, versionOf } from './pace'
+import { asPace, AWAY_MS, canTick, FULL_STILL_MS, skyRules, versionOf } from './pace'
 import { staleFiles } from './tidy'
 import { shaderParams, skyShader } from './shader'
 import { BASKET } from './glsl/basket'
@@ -640,16 +640,3 @@ test('ticks need macOS, a known Ghostty, and on 1.3 the vsync line', () => {
   for (const text of ['', '{"pace":"fast"}', '{', 'null', '"full"']) expect(asPace(text)).toBe('spar')
 })
 
-test('a late tick goes to the next frame of the grid, never back for the ones it missed', () => {
-  const frame = 1000 / PACE_HZ
-  const near = (a: number, b: number) => Math.abs(a - b) < 1e-6
-  expect(PACE_HZ).toBe(24)
-  expect(near(nextTickAt(1000, 1000, PACE_HZ), 1000 + frame)).toBe(true)
-  expect(near(nextTickAt(1000 + frame / 2, 1000, PACE_HZ), 1000 + frame)).toBe(true)
-  // On the grid exactly: the next one, not this one again.
-  expect(near(nextTickAt(1000 + frame * 3, 1000, PACE_HZ), 1000 + frame * 4)).toBe(true)
-  const woken = 1000 + 3_600_000 + 5
-  const next = nextTickAt(woken, 1000, PACE_HZ)
-  expect(next).toBeGreaterThan(woken)
-  expect(next - woken).toBeLessThanOrEqual(frame)
-})

@@ -475,7 +475,7 @@ export const register: Register = on => {
         stagePx: stagePtOf(theme),
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
-        ticks: { origin: 0, isRunning: false, writing: null },
+        ticks: null,
         written: {
           shader: '',
           include: '',

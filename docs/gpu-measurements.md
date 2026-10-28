@@ -1186,3 +1186,25 @@ What the whole GPU drew (mW, mean of 30 s):
 | day-clear, spinner | | | 660 (spinner alone, no ticks) | |
 
 At 24 a second the focused sky draws 79 % less power by day and 83 % less on a lit night than at 120, and the floor falls by 59 %. Ghostty's own CPU went from 14 % to 9 %. Out of focus at 24 it costs about as much as focused (1120 against 1256 mW), where `true` costs nothing today. The 15/24/30 rows are not in proportion (day 24 and 30 nearly equal), so one pass is good for the size of the saving and not for the shape of the curve; device % swings ±6–10 under ticking, since its frames come in bursts, and says little here. Vincent's blind trial the same evening found 24 and 30 a second "nästan exakt som 120" and 15 visible in the dolphin's leap.
+
+## Ghostty 1.4.0, 2026-10-28: the sky at 24 a second with vsync on
+
+Nine single rows (`tools/measure/gpu.sh row`, one pass), M1 Pro, the built-in display alone at 120 Hz, AC, macOS 27.0, Ghostty 1.4.0, commit `dfe2688`, 15:00–15:08, load average 2.76 at the start; the full table is `docs/measurements/2026-10-28-ghostty-1.4.0.md` (its "not finished" line only means single rows leave no done mark: all nine ran). On 1.4 the ticks need no `window-vsync = false`, so `false` here is the animation off with vsync on, where on 1.3.1 it was `false-novsync`. The live session's sky was hidden while it ran.
+
+What the probe counted with vsync on: ticking at 24, 23.9 frames a second focused and 24.2 unfocused. So 1.4 draws one frame per write and no more, focused or not, which is what the eye trial found.
+
+What the whole GPU drew (mW, mean of 30 s), against the same rows on 1.3.1 (the section above):
+
+| scene | `true`, 120 Hz: 1.3.1 → 1.4.0 | 24 a second: 1.3.1 (vsync off) → 1.4.0 (vsync on) | 1.4.0, 24 against `true` |
+|---|---|---|---|
+| floor (passthrough) | 885 → 793 | 363 → 182 | −77 % |
+| day-clear | 5936 → 5645 | 1256 → 910 | −84 % |
+| night-lit | 5461 → 5100 | 953 → 837 | −84 % |
+| day-clear, out of focus | ~0 under `true` (F2) | 1120 → 912 | |
+
+- **The floor under `true` stays.** Passthrough, focused and still, draws 37.7 % device and 793 mW on 1.4, against 36.8 % and 797 mW in the first run on 1.3.1 (row 2; 885 in the fps run): the same, to the MHz (389) and nearly the residency (75 %). The display link that pauses "when there is nothing to draw" does not pause for a shader that animates, so the handoff's hope that 1.4 would take away most of the ~40 % floor does not hold: what takes it away is the animation off and the ticks.
+- **Ticking is cheaper on 1.4 than it was on 1.3.1 without vsync**: the floor halves (363 → 182 mW) and the sky falls a further 12–28 %. One pass each, so the size and not the last per cent.
+- **CPU beside it:** Ghostty 16 % → 10 % and WindowServer 60 % → 12 % of a core, `true` against 24 a second, by day.
+- Out of focus, ticking costs what it costs focused (912 against 910 mW), as on 1.3.1; `spar` is what keeps a sky behind other windows from ticking.
+
+Claude Code's own CPU for the ticks, live in the same session, is in `docs/superpowers/plans/2026-10-27-himlens-takt.md` (Task 5): about 9 % of a core for the in-process chain, which the zsh helper replaces.
