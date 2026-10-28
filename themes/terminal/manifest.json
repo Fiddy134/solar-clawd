@@ -1,0 +1,55 @@
+{
+  "engine": 1,
+  "name": "terminal",
+  "title": "The terminal",
+  "description": "Gate B4 of an airport at the right, seen from above as a room in a game is: the truss and skylights of its ceiling, its glass wall onto the apron with a plane parked nose in, the split-flap board and the gate's sign hung in front of it, and on the carpet the gate desk and its GROUP lanes, rows of seats with travellers and charging posts, the coffee kiosk, a palm in a planter, and the baggage carousel carrying the context window as suitcases; the jet bridge comes in through the west wall. Viktor, a Clawd, lives at the gate as the man in The Terminal did: his rug and his lamp, crackers with ketchup and mustard, a can of Planters, Krakozhia forever delayed, his fountain and the carts he brings back for their quarters. Outside, planes land and lift off on the runway at the horizon by the control tower.",
+  "author": "Solar Clawd",
+  "version": "0.2.0",
+  "license": "GPL-3.0",
+  "stage": "wanted",
+  "stagePt": 440,
+  "waits": "Two lamps on the gate's sign hung over the desk, either side of its B4, and the board's CLAUDE row: the right lamp orange and the row BOARDING in orange while Claude asks, the lamp white and the row LANDED once it is done, both lamps orange with a wider, quicker glow and the row LAST CALL once a question has waited; Viktor gets up from his bench and faces the sign.",
+  "context": "resident",
+  "market": false,
+  "events": [
+    {
+      "kind": "concorde",
+      "word": "concorde",
+      "slotMinutes": 360,
+      "chance": 0.5,
+      "minutes": 1,
+      "layer": "front",
+      "when": {
+        "sun": "day",
+        "dry": true
+      },
+      "salt": 31
+    },
+    {
+      "kind": "superjumbo",
+      "word": "a380 landing",
+      "slotMinutes": 90,
+      "chance": 1,
+      "minutes": 1,
+      "layer": "front",
+      "when": {},
+      "salt": 37
+    }
+  ],
+  "previews": [
+    {
+      "kind": "fountain",
+      "word": "fountain"
+    },
+    {
+      "kind": "carts",
+      "word": "baggage carts"
+    }
+  ],
+  "aliases": {
+    "a380": "superjumbo",
+    "jumbo": "superjumbo",
+    "trolleys": "carts",
+    "viktor": "fountain"
+  }
+}
