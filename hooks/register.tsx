@@ -34,7 +34,8 @@ import { AWAY_MS, FULL_STILL_MS, needsVsyncLine, versionOf } from './pace'
 import type { Pace } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
-import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshWeather, settlePlace } from './net'
+import { MARKET_MS } from './market'
+import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshMarket, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
 import { fromBase64 } from './paint'
 import { shaderParams, skyShader } from './shader'
@@ -415,6 +416,7 @@ export const register: Register = on => {
         hidden: `${folder}/hidden`,
         settings: `${folder.slice(0, -'/runtime'.length)}/sky.json`,
         vsync: `${folder}/vsync.ghostty`,
+        market: theme.manifest.market === true ? `${folder}/market.json` : null,
         version: versionOf((await $.env.get('TERM_PROGRAM_VERSION')) ?? undefined),
         home,
         tty: await ttyOf($),
@@ -498,6 +500,14 @@ export const register: Register = on => {
         })().catch(() => undefined)
       })
       $.clock.every(SKY_MS, () => void update().catch(() => undefined))
+      // The market's prices, for a theme that shows them: the shared file
+      // looked at every few minutes, fetched again only once it is old.
+      const marketPath = sky.market
+      if (marketPath !== null) {
+        const fetchMarket = () => void refreshMarket($, marketPath, sky.id).catch(() => undefined)
+        fetchMarket()
+        $.clock.every(MARKET_MS, fetchMarket)
+      }
     }
 
     // The network is not waited on: the sky starts in Stockholm.

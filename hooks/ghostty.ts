@@ -1,6 +1,8 @@
 import type { EngineInterface } from 'claude-code'
 
 import { field, number } from './json'
+import { asMarketFile, marketAt } from './market'
+import type { Market } from './market'
 import { markOf, UNMARK_TAB } from './mark'
 import { asPace, canTick, nextTickAt, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
@@ -55,6 +57,9 @@ export type Ghostty = {
   // apart from the sky's and nothing but /solar vsync empties.
   settings: string
   vsync: string
+  // The market's snapshot every session shares (net.ts, refreshMarket), for
+  // a theme that shows prices; null for one that does not, which reads none.
+  market: string | null
   // Ghostty's major and minor version, as TERM_PROGRAM_VERSION says; null
   // when it says none.
   version: [number, number] | null
@@ -169,7 +174,7 @@ export async function ghosttyKnowsReloadSignal($: EngineInterface): Promise<bool
 
 // Writes `text` to a file of this session's own beside `path`, then moves it
 // into place: Ghostty, reloading at any moment, never reads half a file.
-async function writeWhole($: EngineInterface, path: string, text: string, id: string): Promise<void> {
+export async function writeWhole($: EngineInterface, path: string, text: string, id: string): Promise<void> {
   const temp = `${path}.tmp-${id}`
   await $.fs.write(temp, text)
   const { exitCode } = await $.process.run(['/bin/mv', '-f', temp, path])
@@ -190,7 +195,13 @@ export type SkyState = {
 }
 
 // What the session's shader is asked to draw beyond the scene.
-export type SkyExtras = { waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null; isYUp: boolean; stagePx: number; isLight: boolean }
+export type SkyExtras = {
+  waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null
+  isYUp: boolean
+  stagePx: number
+  isLight: boolean
+  market: Market | null
+}
 
 // The sky in Ghostty as it should be now: `shaderAt`'s shader while the
 // sky is not hidden, nothing otherwise, and Ghostty animating it, or the
@@ -311,12 +322,16 @@ async function writeGhosttySky(
   })
   if (isWanted) {
     // Ghostty draws with OpenGL on Linux, where fragCoord has y up. The
-    // lighter sky as the rules say: on battery or with the person away.
+    // lighter sky as the rules say: on battery or with the person away. The
+    // market as the shared file has it now, latched to the scene, so every
+    // session draws the same prices.
+    const marketFile = ghostty.market === null ? null : await $.fs.read(ghostty.market).catch(() => '')
     const extras = {
       waiting: waiting && { mode: waiting.mode, isUrgent: waiting.isUrgent },
       isYUp: ghostty.isLinux,
       stagePx: ghostty.stagePx,
       isLight: rules.isLight,
+      market: marketFile === null ? null : marketAt(asMarketFile(marketFile), now),
     }
     // Against the disk, not what this session last wrote: another session
     // may have written the same (no reload) or something else (put right).

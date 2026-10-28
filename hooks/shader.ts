@@ -23,6 +23,8 @@ import { EVENTS } from './glsl/events'
 import { CONTEXT_MARK } from './glsl/context'
 import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
+import type { Market } from './market'
+import { newYorkHour, newYorkOpen } from './newyork'
 import { ENTRY_POINTS, themeEventIndex, uncommented } from './themes/theme'
 import type { Theme } from './themes/theme'
 
@@ -83,6 +85,12 @@ export type ShaderParams = {
   time: { hour: number; weekday: number; month: number; day: number }
   // The air in °C, whole degrees; a mild 10 while the weather is unknown.
   temperature: number
+  // The market's prices as the scene shows them (market.ts, marketAt), in
+  // SYMBOLS' order; null with none fetched, or a theme that shows none.
+  market: Market | null
+  // New York's clock at the scene, with its minutes, and whether its market
+  // is open then: the scene's own clock, as LOCAL_HOUR is.
+  newYork: { hour: number; isOpen: boolean }
   // Ghostty's fragCoord has y up (OpenGL, Linux) rather than down (Metal).
   isYUp: boolean
   // The width of the strip at the right where the theme stands its scenery
@@ -122,6 +130,11 @@ const EVENT_INDEX: Record<EngineEventKind, number> = {
 function eventIndex(kind: EventKind, theme: Theme): number {
   return Object.hasOwn(EVENT_INDEX, kind) ? EVENT_INDEX[kind as EngineEventKind] : themeEventIndex(kind, theme)
 }
+
+// The market's symbols in the shader's order (market.ts reads their
+// prices): sky_BTC is 0, sky_TSLA 9.
+export const SYMBOLS = ['BTC', 'ETH', 'NDX', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA'] as const
+export type MarketSymbol = (typeof SYMBOLS)[number]
 
 // Scenes are worked out on this grid, so the shader's text (and with it a
 // reload) changes about every two minutes.
@@ -170,6 +183,7 @@ export function shaderParams(
     isYUp?: boolean
     stagePx?: number
     isLight?: boolean
+    market?: Market | null
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -226,6 +240,8 @@ export function shaderParams(
     clawd: { activity, isAsleep: activity === 'sleep' },
     time: { hour: time.hour + time.minute / 60, weekday: time.weekday, month: time.month, day: time.day },
     temperature: weather ? Math.round(weather.temperature) : 10,
+    market: options.market ?? null,
+    newYork: { hour: round(newYorkHour(ms), 0.0001), isOpen: newYorkOpen(ms) },
     fireworks: round(options.events?.find(event => event.kind === 'fireworks')?.progress ?? 0, 0.05),
   }
 }
@@ -374,7 +390,27 @@ export const THEME_SIGNALS = [
   'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'WAITING', 'WAITING_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
   'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
   'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
+  // Added after contract 1, so prefixed: the market (market.ts) and New York's clock.
+  'sky_QUOTE_COUNT', ...SYMBOLS.map(symbol => `sky_${symbol}` as const), 'sky_QUOTE_PRICE', 'sky_QUOTE_CHANGE', 'sky_QUOTES_FRESH',
+  'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR',
 ] as const
+
+// The market as the shader reads it: each symbol's index, its price (0
+// while unknown) and its change over the day in percent; whether every
+// price known is fresh; and New York's clock and market.
+function marketConstants(params: ShaderParams): string[] {
+  const quotes = params.market?.quotes ?? SYMBOLS.map(() => null)
+
+  return [
+    `const int sky_QUOTE_COUNT = ${SYMBOLS.length};`,
+    ...SYMBOLS.map((symbol, i) => `const int sky_${symbol} = ${i};`),
+    `const float sky_QUOTE_PRICE[${SYMBOLS.length}] = ${floats(quotes.map(quote => quote?.price ?? 0))};`,
+    `const float sky_QUOTE_CHANGE[${SYMBOLS.length}] = ${floats(quotes.map(quote => quote?.change ?? 0))};`,
+    `const float sky_QUOTES_FRESH = ${params.market?.isFresh ? '1.0' : '0.0'};`,
+    `const float sky_MARKET_OPEN = ${params.newYork.isOpen ? '1.0' : '0.0'};`,
+    `const float sky_NEW_YORK_HOUR = ${f(params.newYork.hour)};`,
+  ]
+}
 
 // The whole shader for these constants, drawn with `theme`: the same text
 // for the same params.
@@ -437,6 +473,7 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
     `const int DAY = ${params.time.day};`,
     `const float TEMPERATURE = ${f(params.temperature)};`,
     `const int CLAWD_ACTIVITY = ${ACTIVITIES.indexOf(params.clawd.activity)};`,
+    ...marketConstants(params),
     `const int THEME_FORCE = ${force};`,
     `const int EVENT_COUNT = ${shown.length};`,
     `const int EVENT_KIND[${events.length}] = int[${events.length}](${events.map(e => eventIndex(e.kind, theme)).join(', ')});`,

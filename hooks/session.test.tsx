@@ -1153,3 +1153,17 @@ test('where Ghostty says no version, vsync is left alone and the pace is not pro
   expect(await solar('full')).toBe(UNKNOWN_VERSION)
   expect(world.files.has(SETTINGS)).toBe(false)
 })
+
+test('fyr shows no prices, so its session asks no market for them and reads no market file', async ($, on) => {
+  const fetched: string[] = []
+  const { clock, world, runtime } = await waitingWorld($, on, { value: 1 }, () =>
+    on('http.fetch', (_, e) => {
+      fetched.push(e.url)
+      return { deny: 'offline' }
+    }),
+  )
+  await clock.advance(11 * 60_000)
+  expect(fetched.some(url => /cboe|binance|coinbase/.test(url))).toBe(false)
+  expect(world.files.has(`${runtime}/market.json`)).toBe(false)
+  expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float sky_QUOTES_FRESH = 0.0;')
+})

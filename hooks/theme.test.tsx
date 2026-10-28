@@ -238,6 +238,8 @@ test('the contract is what contract 1 says it is', () => {
     'ISS_UP', 'ISS_AT', 'ISS_TRAIL', 'WAITING', 'WAITING_URGENT', 'CONTEXT', 'STAGE_PX', 'Y_UP', 'LIGHT',
     'SHOOTING_RATE', 'FIREWORKS', 'FLAG_DAY', 'CLAWD_ASLEEP', 'THEME_FORCE', 'EVENT_COUNT', 'EVENT_KIND', 'EVENT_SEED', 'EVENT_SECONDS',
     'LOCAL_HOUR', 'WEEKDAY', 'MONTH', 'DAY', 'TEMPERATURE', 'CLAWD_ACTIVITY',
+    'sky_QUOTE_COUNT', 'sky_BTC', 'sky_ETH', 'sky_NDX', 'sky_AAPL', 'sky_MSFT', 'sky_NVDA', 'sky_GOOGL', 'sky_AMZN', 'sky_META', 'sky_TSLA',
+    'sky_QUOTE_PRICE', 'sky_QUOTE_CHANGE', 'sky_QUOTES_FRESH', 'sky_MARKET_OPEN', 'sky_NEW_YORK_HOUR',
   ])
   const text = skyShader(params, FYR)
   for (const signal of THEME_SIGNALS) expect(text).toMatch(new RegExp(`\\bconst \\w+ ${signal}\\b`))
@@ -369,4 +371,11 @@ test('the check says what the lint and the caps say; the engine alone has every 
   expect(none).not.toContain('basket(')
   expect(weightOf(NO_THEME).glsl).toBe(0)
   expect(weightOf(FYR).night).toBe(skyShader(longNight(), FYR).length)
+})
+
+test('a theme may say it shows the market, as true or false', () => {
+  expect(errorOf(manifest({ market: true }))).toBeNull()
+  expect(errorOf(manifest({ market: false }))).toBeNull()
+  expect(errorOf(manifest({ market: 'yes' }))).toBe('market is not true or false')
+  expect(FYR.manifest.market).toBeUndefined()
 })

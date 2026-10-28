@@ -1,15 +1,19 @@
 import type { EngineInterface } from 'claude-code'
 
 import type { Place } from './astro'
+import { writeWhole } from './ghostty'
 import { elementsOf } from './iss'
 import type { Elements } from './iss'
 import { field, number } from './json'
+import { asMarketFile, asSnapshot, BINANCE_URL, binanceQuotes, cboeQuote, cboeUrl, coinbaseQuote, coinbaseUrl, MARKET_MS, merged } from './market'
+import type { MarketSymbol, Price } from './market'
 import { isPrintable } from './paint'
 import { SKY_WORDS, skyOf } from './sky'
 import type { Weather } from './sky'
 
 // What the network says: where the computer is, the weather there, the
-// aurora's Kp index and the ISS's elements; and the store's memory of them.
+// aurora's Kp index, the ISS's elements and the market's prices; and the
+// store's memory of them.
 
 // A place guessed from the IP address is trusted this long before it is guessed again.
 const GUESS_MS = 12 * 3_600_000
@@ -45,6 +49,63 @@ export async function issElements($: EngineInterface): Promise<Elements | null> 
   await $.store.set(ISS_ELEMENTS, { fetchedAt: now, json }).catch(() => undefined)
 
   return fresh
+}
+
+// The market's last snapshot, kept for a session that starts without the
+// shared file.
+export const MARKET_STORE = 'market'
+
+// The prices now: Cboe for the index and each stock, Binance for both
+// coins and Coinbase for a coin it did not give. What did not answer is
+// left out; nothing throws.
+async function fetchQuotes($: EngineInterface): Promise<Partial<Record<MarketSymbol, Price>>> {
+  const stocks = ['NDX', 'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'AMZN', 'META', 'TSLA'] as const
+  const [coins, ...answers] = await Promise.all([getJson($, BINANCE_URL).then(binanceQuotes), ...stocks.map(symbol => getJson($, cboeUrl(symbol)).then(cboeQuote))])
+  const quotes: Partial<Record<MarketSymbol, Price>> = { ...coins }
+  stocks.forEach((symbol, i) => {
+    if (answers[i]) quotes[symbol] = answers[i]!
+  })
+  for (const coin of ['BTC', 'ETH'] as const) {
+    if (quotes[coin]) continue
+    const fallback = coinbaseQuote(await getJson($, coinbaseUrl(coin)))
+    if (fallback) quotes[coin] = fallback
+  }
+
+  return quotes
+}
+
+// The market file every session reads (market.ts, MarketFile): fetched
+// again once its newest snapshot is MARKET_MS old, written whole, the last
+// kept in the store too. A session that finds no file begins it from the
+// store, its age as it was. A fetch that got nothing writes nothing, so the
+// last prices stay, growing stale; nothing here throws.
+export async function refreshMarket($: EngineInterface, path: string, id: string): Promise<void> {
+  try {
+    let file = asMarketFile(await $.fs.read(path).catch(() => ''))
+    let isSeeded = false
+    if (file.current === null) {
+      const kept = asSnapshot(await $.store.get(MARKET_STORE).catch(() => null))
+      if (kept) {
+        file = { previous: null, current: kept }
+        isSeeded = true
+      }
+    }
+    const now = await $.clock.now()
+    const isDue = file.current === null || now - file.current.fetchedAt >= MARKET_MS
+    const fetched = isDue ? await fetchQuotes($) : {}
+    if (Object.keys(fetched).length > 0) {
+      // Taken once the answers are in, so the file is written straight after
+      // the moment it names.
+      const current = merged(fetched, file.current, await $.clock.now())
+      file = { previous: file.current, current }
+      await $.store.set(MARKET_STORE, current).catch(() => undefined)
+    } else if (!isSeeded) {
+      return
+    }
+    await writeWhole($, path, JSON.stringify(file), id)
+  } catch {
+    // The last prices stay.
+  }
 }
 
 async function getJson($: EngineInterface, url: string): Promise<unknown> {

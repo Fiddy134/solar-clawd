@@ -85,6 +85,9 @@ export type ThemeManifest = {
   previews: { kind: string; word: string }[]
   // Old words still taken by /solar event.
   aliases: Record<string, string>
+  // Whether it shows the market's prices (sky_QUOTE_PRICE and the rest):
+  // only then are they fetched, from Cboe and Binance, every few minutes.
+  market?: boolean
 }
 
 export type Theme = { manifest: ThemeManifest; glsl: string }
@@ -123,6 +126,7 @@ export function themeOf(manifest: unknown, glsl: string): Theme | { error: strin
   if (manifest.stage !== 'wanted' && manifest.stage !== 'none') return { error: 'stage is not "wanted" or "none"' }
   if (manifest.context !== 'resident' && manifest.context !== 'engine') return { error: 'context is not "resident" or "engine"' }
   if (!Array.isArray(manifest.events) || !Array.isArray(manifest.previews) || !isRecord(manifest.aliases)) return { error: 'events, previews and aliases are missing' }
+  if (manifest.market !== undefined && typeof manifest.market !== 'boolean') return { error: 'market is not true or false' }
   if (typeof glsl !== 'string') return { error: 'the GLSL is not text' }
 
   const kinds = new Set<string>(Object.keys(EVENT_WORDS))

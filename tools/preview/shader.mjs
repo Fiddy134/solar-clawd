@@ -10,6 +10,7 @@
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
+//   --market up|down (prices for a theme that shows them, fresh, every symbol's day up or down; NDX down 2.4 %)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
 //   --bench 200 (ms a frame, and what the theme costs: its frame less the engine's alone, and against fyr's)
 //   --gpu (the Mac's own GPU instead of SwiftShader) --without clouds,shaded --passthrough
@@ -51,6 +52,17 @@ function contextState(state) {
   if (['idle', 'catch', 'grill', 'embers'].includes(state)) return state
   throw new Error(`--fish: no state called "${state}" (idle, catch, grill or embers)`)
 }
+// Prices to preview a market with: BTC, ETH, the Nasdaq-100 and Apple as
+// the research saw them on 2026-10-27, the others made up near where they
+// stood; the day up, or down for every symbol.
+function sampleMarket(day) {
+  if (day !== 'up' && day !== 'down') throw new Error(`--market: up or down, not "${day}"`)
+  const prices = [80988.83, 2353, 29651.44, 347.28, 512.4, 201.7, 268.9, 231.5, 742.1, 448.2]
+  const up = [1.01, 1.24, 1.29, 0.98, 0.61, 2.13, 1.42, 0.35, 0.82, 3.21]
+  const down = [-1.73, -2.85, -2.41, -1.12, -0.94, -4.06, -1.88, -2.27, -1.35, -5.62]
+
+  return { quotes: prices.map((price, i) => ({ price: Number(price.toPrecision(5)), change: (day === 'up' ? up : down)[i] })), isFresh: true }
+}
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
   {
@@ -67,6 +79,7 @@ const params = shaderParams(
     stagePx: o.stage ? Number(o.stage) : 0,
     isLight: !!o.light,
     context: fish === undefined ? null : { fish: Number(fish), state: contextState(fishState) },
+    market: o.market ? sampleMarket(String(o.market)) : null,
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))

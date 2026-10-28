@@ -7,6 +7,7 @@
 // these, so they say the same.
 
 import { STOCKHOLM } from '../astro'
+import { SYMBOLS } from '../market'
 import { shaderParams, skyShader } from '../shader'
 import type { ShaderParams } from '../shader'
 import { ENGINE_CONTRACT, lintTheme, SHADER_MAX, THEME_GLSL_MAX, themeOf, topLevelNames } from './theme'
@@ -39,7 +40,12 @@ export const NO_THEME: Theme = {
 export function longNight(): ShaderParams {
   return shaderParams(
     { ms: Date.UTC(2026, 9, 26, 3), t: 0, place: STOCKHOLM, weather: null, isAuroraForced: true },
-    { iss: { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } }, context: { fish: 9, state: 'grill' } },
+    {
+      iss: { at: { x: 0.05, y: 0.33 }, trail: { x: -0.02, y: 0.345 } },
+      context: { fish: 9, state: 'grill' },
+      // Every price known, each as long as a price gets.
+      market: { quotes: SYMBOLS.map(() => ({ price: -123456, change: -12.34 })), isFresh: true },
+    },
   )
 }
 
