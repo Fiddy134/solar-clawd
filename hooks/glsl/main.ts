@@ -212,9 +212,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 uv = fragCoord / iResolution.xy;
   vec4 term = texture(iChannel0, uv);
   // Only in a tab where Claude runs: its session marks palette colour 16,
-  // blue one step off black (tabMark). Asked first, so any other tab the
-  // shader is drawn in costs no more than the terminal itself.
-  if (abs(iPalette[16].b - 1.0 / 255.0) > 0.5 / 255.0 || iPalette[16].r > 3.5 / 255.0 || iPalette[16].g > 10.5 / 255.0) {
+  // a few steps off black (tabMark), blue 1 to 6. Asked first, so any other
+  // tab the shader is drawn in costs no more than the terminal itself.
+  if (iPalette[16].b < 0.5 / 255.0 || iPalette[16].b > 6.5 / 255.0 || iPalette[16].r > 31.5 / 255.0 || iPalette[16].g > 10.5 / 255.0) {
     fragColor = vec4(term.rgb, 1.0);
     return;
   }

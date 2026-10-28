@@ -229,6 +229,14 @@ test('the contract is what contract 1 says it is', () => {
     'const int CONTEXT_GAINED',
     'int contextFish()',
     'int contextState()',
+    'const int sky_TOOL_NONE',
+    'const int sky_TOOL_COMMAND',
+    'const int sky_TOOL_EDIT',
+    'const int sky_TOOL_READ',
+    'const int sky_TOOL_WEB',
+    'const int sky_TOOL_OTHER',
+    'int sky_tool()',
+    'int sky_agents()',
   ])
   expect(/^\w+ shootingStarAge\([^)]*\)/m.exec(EVENTS_GLSL)?.[0]).toBe('float shootingStarAge(float time, out vec2 from)')
   expect([...THEME_SIGNALS]).toEqual([

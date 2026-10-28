@@ -6,7 +6,7 @@ import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
 import { ROWS } from './clawd'
-import { UNMARK_TAB } from './mark'
+import { markOf, UNMARK_TAB } from './mark'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
 import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
@@ -1166,4 +1166,92 @@ test('fyr shows no prices, so its session asks no market for them and reads no m
   expect(fetched.some(url => /cboe|binance|coinbase/.test(url))).toBe(false)
   expect(world.files.has(`${runtime}/market.json`)).toBe(false)
   expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float sky_QUOTES_FRESH = 0.0;')
+})
+
+// A Ghostty session whose tool calls stay open until let go, by tool.
+async function workWorld($: Engine, on: On) {
+  const gates: Record<string, () => void> = {}
+  const listed: { id: string; status: string }[] = []
+  const w = await waitingWorld($, on, { value: 1 }, () => {
+    on('tool.call', (_, e) => new Promise(done => (gates[e.tool_use_id] = () => done({ result: {} } as never))))
+    on('agent.spawn', () => ({ model: 'opus', agentId: 'spawned' }))
+    on('agent.list', () => ({ value: listed.map(agent => ({ ...agent, description: 'x', subagentType: 'general-purpose' })) as never }))
+  })
+  const call = (tool: string, id: string, agentId?: string) => $.tool.call({ tool, tool_use_id: id, ...(agentId ? { agentId } : {}), command: 'make', file_path: '/x' } as never)
+  const mark = () => w.world.files.get(TTY)?.text
+
+  return { ...w, gates, listed, call, mark }
+}
+const idle = { fish: 0, state: 'idle' } as const
+
+test("a command marks the tab at once with what Claude does, and reloads nothing", async ($, on) => {
+  const { clock, world, call, gates, mark } = await workWorld($, on)
+  await clock.advance(1_000)
+  expect(mark()).toBe(markOf(idle))
+  const reloads = RELOADS(world.runs)
+  const shaders = world.writes.filter(path => path.includes('sky.glsl')).length
+  const running = call('Bash', 'b1')
+  await clock.advance(10)
+  expect(mark()).toBe(markOf(idle, { tool: 'command', agents: 0 }))
+  // A read begun under the command's hold shows once the hold is over.
+  const reading = call('Read', 'r1')
+  await clock.advance(100)
+  expect(mark()).toBe(markOf(idle, { tool: 'command', agents: 0 }))
+  await clock.advance(1_500)
+  expect(mark()).toBe(markOf(idle, { tool: 'read', agents: 0 }))
+  // Over at once, it is still shown for its hold, then the command again.
+  gates.r1!()
+  await reading
+  await clock.advance(10)
+  expect(mark()).toBe(markOf(idle, { tool: 'read', agents: 0 }))
+  await clock.advance(1_500)
+  expect(mark()).toBe(markOf(idle, { tool: 'command', agents: 0 }))
+  gates.b1!()
+  await running
+  await clock.advance(1_600)
+  expect(mark()).toBe(markOf(idle))
+  expect(RELOADS(world.runs)).toBe(reloads)
+  expect(world.writes.filter(path => path.includes('sky.glsl')).length).toBe(shaders)
+})
+
+test('a subagent counts from its spawn or its first call, and stops counting at its end or once the engine lists it ended', async ($, on) => {
+  const { clock, call, gates, mark, listed } = await workWorld($, on)
+  await $.agent.spawn({ prompt: 'Read README.md.' } as never)
+  await clock.advance(10)
+  expect(mark()).toBe(markOf(idle, { tool: 'none', agents: 1 }))
+  // One not heard starting, at its first call.
+  const reading = call('Grep', 'g1', 'unheard')
+  await clock.advance(10)
+  expect(mark()).toBe(markOf(idle, { tool: 'read', agents: 2 }))
+  gates.g1!()
+  await reading
+  await $.turn.complete({ answer: 'done', durationMs: 1_000, isAborted: false, turnId: 't9', reason: 'answer', agentId: 'unheard' } as never)
+  await clock.advance(2_000)
+  expect(mark()).toBe(markOf(idle, { tool: 'none', agents: 1 }))
+  // The spawned one's end never heard: the engine's list says it is over.
+  listed.push({ id: 'spawned', status: 'completed' })
+  await clock.advance(10_000)
+  expect(mark()).toBe(markOf(idle))
+})
+
+test('a subagent silent ten minutes and not listed at work stops counting; one listed at work goes on', async ($, on) => {
+  const { clock, mark, listed } = await workWorld($, on)
+  await $.agent.spawn({ prompt: 'Think.' } as never)
+  listed.push({ id: 'spawned', status: 'running' })
+  await clock.advance(11 * 60_000)
+  expect(mark()).toBe(markOf(idle, { tool: 'none', agents: 1 }))
+  listed.length = 0
+  await clock.advance(10_000)
+  expect(mark()).toBe(markOf(idle))
+})
+
+test('the session ends while a call runs: the last word to the tab is still its unmarking', async ($, on) => {
+  const { clock, world, call, gates } = await workWorld($, on)
+  const running = call('Edit', 'e1')
+  await clock.advance(10)
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  gates.e1!()
+  await running
+  await clock.advance(2_000)
+  expect(world.files.get(TTY)?.text).toBe(UNMARK_TAB)
 })

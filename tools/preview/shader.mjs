@@ -10,6 +10,7 @@
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
+//   --tool command --agents 3 (what Claude is doing, in the tab's mark: none, command, edit, read, web or other, and 0 to 7 subagents)
 //   --market up|down (prices for a theme that shows them, fresh, every symbol's day up or down; NDX down 2.4 %)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
 //   --bench 200 (ms a frame, and what the theme costs: its frame less the engine's alone, and against fyr's)
@@ -23,6 +24,7 @@ import { join } from 'node:path'
 
 import { STOCKHOLM } from '../../hooks/astro.ts'
 import { contextAt, EVENTS, eventsAt, shootingRate, specsOf } from '../../hooks/events.ts'
+import { TOOLS } from '../../hooks/activity.ts'
 import { tabMark } from '../../hooks/mark.ts'
 import { shaderParams, skyShader } from '../../hooks/shader.ts'
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
@@ -52,6 +54,9 @@ function contextState(state) {
   if (['idle', 'catch', 'grill', 'embers'].includes(state)) return state
   throw new Error(`--fish: no state called "${state}" (idle, catch, grill or embers)`)
 }
+// What Claude is doing, as the tab's mark carries it.
+if (o.tool !== undefined && !TOOLS.includes(String(o.tool))) throw new Error(`--tool: one of ${TOOLS.join(', ')}`)
+const work = { tool: o.tool === undefined ? 'none' : String(o.tool), agents: o.agents === undefined ? 0 : Number(o.agents) }
 // Prices to preview a market with: BTC, ETH, the Nasdaq-100 and Apple as
 // the research saw them on 2026-10-27, the others made up near where they
 // stood; the day up, or down for every symbol.
@@ -270,7 +275,7 @@ try {
   gl.uniform1i(gl.getUniformLocation(program, 'iFocus'), ${o.unfocused ? 0 : 1})
   // A tab Claude has marked (register.tsx, markTab), or with --unmarked one
   // it has not, colour 16 as xterm has it.
-  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.context).map(v => v / 255).join(', ')})
+  gl.uniform3f(gl.getUniformLocation(program, 'iPalette[16]'), ${o.unmarked ? '0, 0, 0' : tabMark(params.context, work).map(v => v / 255).join(', ')})
   gl.uniform3f(gl.getUniformLocation(program, 'iBackgroundColor'), ${((background >> 16) & 255) / 255}, ${((background >> 8) & 255) / 255}, ${(background & 255) / 255})
   gl.viewport(0, 0, w, h)
   gl.drawArrays(gl.TRIANGLES, 0, 3)

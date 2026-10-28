@@ -1,6 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import { activityKindOf, HOLD_MS, heldTool, wantedTool } from './activity'
+import type { Call, Shown, Work } from './activity'
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './waiting'
 import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
@@ -19,6 +21,7 @@ import {
   isVsyncOff,
   readPace,
   reloadGhostty,
+  remark,
   runtimeFolder,
   setVsync,
   shareWaiting,
@@ -35,6 +38,7 @@ import type { Pace } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { MARKET_MS } from './market'
+import { markOf } from './mark'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshMarket, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
 import { fromBase64 } from './paint'
@@ -83,6 +87,27 @@ const FILL_MS = 30_000
 const SKY_MS = 10_000
 // How often to ask whether the Mac runs on battery.
 const BATTERY_MS = 60_000
+
+// A subagent heard nothing of this long, and not listed as at work, is
+// counted gone.
+const AGENT_SILENT_MS = 10 * 60_000
+// What $.agent.list() says of an agent still at work.
+const AGENT_AT_WORK = ['pending', 'running', 'waiting']
+
+// Drops the subagents the engine lists as ended, and those heard nothing
+// of for AGENT_SILENT_MS that it does not list as at work (a workflow's
+// agents are not listed at all); whether any went.
+async function prunedAgents($: EngineInterface, agents: Map<string, number>, now: number): Promise<boolean> {
+  const listed = await $.agent.list().catch(() => [])
+  const atWork = new Set(listed.filter(agent => AGENT_AT_WORK.includes(agent.status)).map(agent => agent.id))
+  const ended = new Set(listed.filter(agent => !atWork.has(agent.id)).map(agent => agent.id))
+  let isChanged = false
+  for (const [id, seen] of agents) {
+    if (ended.has(id) || (!atWork.has(id) && now - seen >= AGENT_SILENT_MS)) isChanged = agents.delete(id) || isChanged
+  }
+
+  return isChanged
+}
 
 // A turn of Claude's this long earns confetti when it is done.
 const MILESTONE_MS = 3 * 60_000
@@ -190,6 +215,24 @@ export const register: Register = on => {
     grillShownUntil: 0,
     fishShownUntil: 0,
   }
+  // What Claude is doing, for the tab's mark: its calls running in any loop
+  // with their kinds, the kind shown and since when, the subagents at work
+  // by id with the last moment one was heard of, and whether a mark is due
+  // once a kind's hold is over.
+  const work = {
+    open: new Map<string, Call>(),
+    shown: { tool: 'none', since: -Infinity } as Shown,
+    agents: new Map<string, number>(),
+    isHeldOver: false,
+  }
+  const workAt = (now: number): Work => {
+    work.shown = heldTool(work.shown, wantedTool(work.open.values()), now)
+
+    return { tool: work.shown.tool, agents: work.agents.size }
+  }
+  // Marks the tab at once for what Claude is doing, once a Ghostty session
+  // has started.
+  let remarkSky: (() => void) | null = null
   // What Claude waits on the person for: an answer (a permission or a
   // question), or the next task once work is done. The lighthouse's.
   let waiting: Waiting | null = null
@@ -353,6 +396,7 @@ export const register: Register = on => {
     pace: activity.pace,
     waiting,
     catchAt,
+    workAt,
     livelyAt,
   })
 
@@ -431,6 +475,7 @@ export const register: Register = on => {
           shader: '',
           include: '',
           mark: '',
+          marking: null,
           heartbeatAt: -Infinity,
           isReloadOwed: false,
           isEnded: false,
@@ -499,7 +544,25 @@ export const register: Register = on => {
           if (isPassing || wasPassing) await update()
         })().catch(() => undefined)
       })
-      $.clock.every(SKY_MS, () => void update().catch(() => undefined))
+      // What Claude is doing, in the tab's mark alone; a kind held back is
+      // marked once its hold is over.
+      remarkSky = () =>
+        void (async () => {
+          const now = await $.clock.now()
+          await remark($, sky, markOf(catchAt(now), workAt(now)))
+          if (wantedTool(work.open.values()) === work.shown.tool || work.isHeldOver) return
+          work.isHeldOver = true
+          $.clock.after(Math.max(1, work.shown.since + HOLD_MS - now), () => {
+            work.isHeldOver = false
+            remarkSky?.()
+          })
+        })().catch(() => undefined)
+      $.clock.every(SKY_MS, () => {
+        void (async () => {
+          if (work.agents.size > 0 && (await prunedAgents($, work.agents, await $.clock.now()))) remarkSky?.()
+          await update()
+        })().catch(() => undefined)
+      })
       // The market's prices, for a theme that shows them: the shared file
       // looked at every few minutes, fetched again only once it is old.
       const marketPath = sky.market
@@ -672,6 +735,8 @@ export const register: Register = on => {
   })
 
   on('turn.complete', async ($, e, next) => {
+    // A subagent's end, which every hook hears.
+    if (e.agentId !== undefined && work.agents.delete(e.agentId)) remarkSky?.()
     if (e.agentId === undefined) {
       claude.isWorking = false
       claude.open.clear()
@@ -708,7 +773,22 @@ export const register: Register = on => {
     if ((isQuestion || (e.agentId === undefined && !isOpen)) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
     const kind = e.agentId === undefined ? toolKind(e.tool) : null
     if (kind && e.tool_use_id) claude.open.set(e.tool_use_id, kind)
-    const result = await next(e).finally(() => claude.open.delete(e.tool_use_id))
+    // What Claude is doing, in any loop: a subagent not heard starting
+    // counts from its first call.
+    const activity = activityKindOf(e.tool)
+    if (e.agentId !== undefined) {
+      const isNew = !work.agents.has(e.agentId)
+      work.agents.set(e.agentId, startedAt)
+      if (isNew) remarkSky?.()
+    }
+    if (activity && e.tool_use_id) {
+      work.open.set(e.tool_use_id, { tool: activity, at: startedAt })
+      remarkSky?.()
+    }
+    const result = await next(e).finally(() => {
+      claude.open.delete(e.tool_use_id)
+      if (work.open.delete(e.tool_use_id)) remarkSky?.()
+    })
     // Answered: the question's own call, or the last call that asked for a
     // permission, has ended. A notice no call asked for (an MCP server's
     // question) ends with the main call it came up in.
@@ -720,6 +800,18 @@ export const register: Register = on => {
     if (waiting?.mode === 'asking' && isAnswered && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
     if (result.isError && e.agentId === undefined) {
       claude.passing = { kind: 'facepalm', at: await $.clock.now() }
+    }
+
+    return result
+  })
+
+  // A subagent started: one more at work, until its turn ends. A workflow's
+  // remote agent has no id and is not counted.
+  on('agent.spawn', async ($, e, next) => {
+    const result = await next(e)
+    if ('agentId' in result && result.agentId) {
+      work.agents.set(result.agentId, await $.clock.now())
+      remarkSky?.()
     }
 
     return result

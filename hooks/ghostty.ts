@@ -3,6 +3,7 @@ import type { EngineInterface } from 'claude-code'
 import { field, number } from './json'
 import { asMarketFile, marketAt } from './market'
 import type { Market } from './market'
+import type { Work } from './activity'
 import { markOf, UNMARK_TAB } from './mark'
 import { asPace, canTick, nextTickAt, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
@@ -81,8 +82,10 @@ export type Ghostty = {
   written: {
     shader: string
     include: string
-    // The tab's mark as last written (markOf).
+    // The tab's mark as last written (markOf), and a write of it under way
+    // outside an update (remark), which the session's end waits on.
     mark: string
+    marking: Promise<void> | null
     heartbeatAt: number
     // A change Ghostty has not yet reloaded for: tried again each tick.
     isReloadOwed: boolean
@@ -191,6 +194,9 @@ export type SkyState = {
   pace: Pace
   waiting: Waiting | null
   catchAt: (now: number) => ShaderParams['context']
+  // What Claude is doing (activity.ts), for the tab's mark alone: never the
+  // pace or the shader's text, so it costs no reload.
+  workAt: (now: number) => Work
   livelyAt: (now: number) => boolean
 }
 
@@ -294,7 +300,7 @@ async function writeGhosttySky(
   const now = await $.clock.now()
   // The tab's mark when its context window changes, and again each minute:
   // a `reset` in the tab would have cleared it.
-  const mark = markOf(state.catchAt(now))
+  const mark = markOf(state.catchAt(now), state.workAt(now))
   if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
     await markTab($, ghostty, mark)
     written.mark = mark
@@ -354,6 +360,19 @@ async function writeGhosttySky(
   if (written.isTicking) startTicks($, ghostty)
 }
 
+// The tab's mark again at once, where only it changed (what Claude is
+// doing): written straight to the tab, with no shader built and nothing
+// reloaded. The ticks and the next update write the same.
+export async function remark($: EngineInterface, ghostty: Ghostty, mark: string): Promise<void> {
+  const { written } = ghostty
+  if (written.isEnded || mark === written.mark) return
+  written.mark = mark
+  const marking = markTab($, ghostty, mark)
+  written.marking = marking
+  await marking
+  if (written.marking === marking) written.marking = null
+}
+
 // Writes the tab's mark PACE_HZ times a second while the sky ticks, on a
 // grid of frames held against the clock, so that a late write puts no
 // later one off and a tick woken long after its time does not make up for
@@ -390,6 +409,7 @@ export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason
   if (reason === 'clear' || reason === 'resume') return
   ghostty.written.isEnded = true
   await ghostty.ticks.writing?.catch(() => undefined)
+  await ghostty.written.marking?.catch(() => undefined)
   await markTab($, ghostty, UNMARK_TAB)
   await ghostty.written.running?.catch(() => undefined)
   const { folder, heartbeat, include } = ghostty

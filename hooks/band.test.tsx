@@ -110,8 +110,9 @@ test("the keeper's catch reads the tab's mark, and the shader's tab test lets ev
   expect(text).toContain(FYR.glsl)
   expect(FYR.glsl).not.toContain('iPalette')
   expect(text).toContain('int fish = contextFish();')
-  // Red up to 3, a tenth just filled; 4 is no mark of ours.
-  expect(MAIN).toContain('iPalette[16].r > 3.5 / 255.0')
+  // Red's low bits up to 3, a tenth just filled, under the agents' count
+  // (activity.test.tsx); 32 is no mark of ours.
+  expect(MAIN).toContain('iPalette[16].r > 31.5 / 255.0')
   expect(Math.max(...(['idle', 'grill', 'embers', 'catch'] as const).map(state => tabMark({ fish: 10, state })[0]))).toBe(3)
 })
 
