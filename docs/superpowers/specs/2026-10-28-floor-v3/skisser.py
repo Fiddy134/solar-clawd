@@ -616,12 +616,22 @@ def town5(p, mood):
 
 def hall5(p, mood):
     out = []
-    # the exchange's own crown, front-on, above its back wall (the roof is lifted off)
-    out.append(rect(CUT, 40, W - CUT, 20, p['shade']))
-    out.append(poly([(CUT, 40), ((CUT + W) / 2, 6), (W, 40)], p['nyse']))
-    out.append(rect(CUT, 60, W - CUT, 26, p['nyse']) + text(CUT + 60, 79, 'NEW YORK STOCK EXCHANGE', 14, '#3B3346', 'font-weight="bold"'))
+    # the hall's own ceiling, gilded and coffered, up to the window's top edge
+    ceil = '#B88A3E' if mood == 'day' else '#8E6A3A'
+    out.append(rect(CUT, 0, W - CUT, 86, ceil))
+    for r, (y0, y1) in enumerate([(0, 26), (30, 54), (58, 78)]):
+        n = 6 + r * 2
+        for c in range(n):
+            x0 = CUT + 4 + c * (W - CUT - 8) / n
+            out.append(rect(x0 + 3, y0 + 3, (W - CUT - 8) / n - 6, y1 - y0 - 6, '#D9B464' if mood == 'day' else '#B48A4E'))
+            out.append(rect(x0 + 7, y0 + 7, (W - CUT - 8) / n - 14, y1 - y0 - 14, '#E9CC86' if mood == 'day' else '#C9A060', 'opacity="0.8"'))
+    if mood == 'eve':
+        for cx in [CUT + 90, (CUT + W) / 2, W - 90]:
+            out.append(f'<circle cx="{cx}" cy="70" r="7" fill="#FFE2A0"/><circle cx="{cx}" cy="70" r="22" fill="#FFD27A" opacity="0.2"/>')
+    out.append(rect(CUT, 78, W - CUT, 8, '#7A5A2E'))
     # the back wall's inside, arched windows onto the sky, the flag, the ticker
     out.append(rect(CUT, 86, W - CUT, 360, p['wall']))
+    out.append(rect(CUT, 86, W - CUT, 26, p['shade']) + text(CUT + 40, 104, 'NEW YORK STOCK EXCHANGE', 14, '#3B3346', 'font-weight="bold"'))
     for wx in [1080, 1180, 1280, 1380]:
         out.append(f'<path d="M{wx},400 L{wx},170 A30,30 0 0 1 {wx + 60},170 L{wx + 60},400 Z" fill="{p["sky0"] if mood == "day" else "#2B2E6A"}"/>')
         out.append(f'<line x1="{wx + 30}" y1="140" x2="{wx + 30}" y2="400" stroke="{p["wall"]}" stroke-width="3"/>')
@@ -822,7 +832,7 @@ def scene7(mood, with_text=True):
     return f'<svg viewBox="0 0 {W} {H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block;border-radius:6px">' + ''.join(parts) + '</svg>'
 
 if __name__ == '__main__' and len(sys.argv) > 2 and sys.argv[2] == 'v7':
-    html = ['<h2>Börsgolvet v3 – skiss A, version 7: bara börsen, himlen får vara</h2>',
+    html = ['<h2>Börsgolvet v3 – skiss A, version 8: innertak i stället för gavel</h2>',
             '<p class="subtitle">Vänstra halvan är himlen som i dag, lugn för texten. Till höger NYSE snett uppifrån med taket lyft, och en smal trottoar längs dess västra vägg med dörren, statyn och lyktorna.</p>',
             '<div class="options">']
     for key, title, mood in [('j', 'Dag', 'day'), ('k', 'Kväll', 'eve')]:

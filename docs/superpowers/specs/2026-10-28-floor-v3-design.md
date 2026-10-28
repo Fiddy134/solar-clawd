@@ -14,7 +14,7 @@ Om runda 2: *"Intressant, jag ser många ställen som behöver ändras utifrån 
 
 **Referenser:**
 - Vincents sex foton ligger lokalt i `.preview/ref-floor/` och committas inte, eftersom de är andras: NYSE:s golv från läktaren, posterna och kuberna, Beaver Street, en gata i Financial District, Stone Street en kväll och Wall Street med Washington.
-- Den skiss han valde är version 7: `2026-10-28-floor-v3/skiss-dag.png` och `skiss-kvall.png`. Generatorn ligger i `skisser.py`.
+- Den skiss han valde är version 8 (version 7 med innertak): `2026-10-28-floor-v3/skiss-dag.png` och `skiss-kvall.png`. Generatorn ligger i `skisser.py`.
 - Skisserna är kompositionen, inte stilen. Husstilen gäller.
 
 ## Bilden
@@ -27,7 +27,8 @@ Om runda 2: *"Intressant, jag ser många ställen som behöver ändras utifrån 
 - **Clawdarna** går på golvet i alla riktningar, som i en värld och inte längs en linje. Det är svaret på "för 2D".
 
 Uppifrån och ner:
-- **Krönet:** byggnadens gavel och NEW YORK STOCK EXCHANGE, rakt framifrån. Taket är lyft, så att man ser in.
+- **Innertaket:** salens förgyllda kassettak, sett inifrån, når ända upp till fönstrets överkant. Det är ingen gavel eller utsida (Vincent: *"jag tänker att vi försöker göra mer av ett innertak istället för att behöva visa det som en utsida. Man har kvar fönster som det är men att toppen blir som ett innertak"*). På kvällen hänger tända lampor i taket.
+- **En fris med NEW YORK STOCK EXCHANGE** på bakväggen, precis under taket.
 - **Bakväggen inifrån:**
   - höga valvfönster mot himlen (`themeWindow` > 0 i rutorna, så att vädret syns där)
   - den stora flaggan
