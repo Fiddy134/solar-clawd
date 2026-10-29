@@ -59,8 +59,14 @@ import { BASE_THEME, THEMES } from './themes/index'
 import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
+import type { SolarClawdCarried } from '../types'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
+// What the sky is drawn from, kept by the host through a hot reload of this
+// code (never into a new process): the reloaded module starts from it and
+// draws the sky the old one left. Another shape (code that keeps something
+// else) reads as none, and the module starts from nothing as a new one does.
+const carried = atom({ plugin: 'solar-clawd', key: 'carried' } as const, null, { shape: 'sky-inputs-1' })
 
 const KEY = 'sky'
 // The moon's texture, baked by tools/bake-moon.sh.
@@ -134,9 +140,33 @@ const ISS_TICK_MS = 2_000
 // its stage under text in a window opened with that padding; in pixels,
 // times the scale of the screen the front Ghostty window is on (Linux has
 // the points as they are). Every session reads the same config and theme.
-async function stageOf($: EngineInterface, ghostty: Ghostty, pt: number): Promise<void> {
+// A reloaded module takes the scale the sessions share where it was asked
+// within SCALE_MS, as the SCALE_MS timer does, rather than asking again.
+async function stageOf($: EngineInterface, ghostty: Ghostty, pt: number, isShared = false): Promise<void> {
   ghostty.stagePt = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt)
-  ghostty.stagePx = ghostty.stagePt * (await askScale($, ghostty))
+  ghostty.stagePx = ghostty.stagePt * ((isShared ? await sharedScale($, ghostty) : null) ?? (await askScale($, ghostty)))
+}
+
+// Keeps what the sky is drawn from in the host for a reload of this code to
+// start from (carried), when something in it changed since `last`. A write
+// the host refused is tried again next time, and holds up nothing.
+async function keepCarried($: EngineInterface, value: SolarClawdCarried, last: { text: string }): Promise<void> {
+  const text = JSON.stringify(value)
+  if (text === last.text) return
+  last.text = text
+  await update($, carried, () => value).catch(() => {
+    if (last.text === text) last.text = ''
+  })
+}
+
+// The scale in the runtime folder's scale file where it was asked within
+// SCALE_MS; null where it is older, or none.
+async function sharedScale($: EngineInterface, ghostty: Ghostty): Promise<number | null> {
+  const text = await $.fs.read(`${ghostty.folder}/scale`).catch(() => '')
+  const askedAt = scaleAskedAt(text)
+  const shared = asScale(text)
+
+  return askedAt !== null && shared !== null && (await $.clock.now()) - askedAt < SCALE_MS - 1_000 ? shared : null
 }
 
 // The scale of the screen the front Ghostty window is on, asked of the
@@ -459,7 +489,45 @@ export const register: Register = on => {
     return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now) }), theme)
   }
 
+  // What the sky is drawn from now, for the host to keep (keepCarried)
+  // after each update of the Ghostty sky and each new mark, as written last.
+  const carriedLast = { text: '' }
+  const carriedNow = (): SolarClawdCarried => ({
+    where: { ...where, offsetMs: where.offsetMs ?? null },
+    fill: claude.fill,
+    agents: [...work.agents],
+    shown: { tool: work.shown.tool, since: Number.isFinite(work.shown.since) ? work.shown.since : null },
+    waiting,
+    activity: { idleMs: activity.idleMs, isGhosttyInFront: activity.isGhosttyInFront, pace: activity.pace },
+    issOrbit,
+    pinnedAt,
+    demoFrom,
+    forced,
+    tty: ghostty?.tty ?? null,
+    mark: ghostty?.written.mark ?? '',
+    heartbeatAt: ghostty && Number.isFinite(ghostty.written.heartbeatAt) ? ghostty.written.heartbeatAt : null,
+    isReloadOwed: ghostty?.written.isReloadOwed ?? false,
+  })
+  // A reload starts from what the old module kept: the sky as it left it.
+  const takeCarried = (kept: NonNullable<SolarClawdCarried>) => {
+    Object.assign(where, { ...kept.where, offsetMs: kept.where.offsetMs ?? undefined })
+    claude.fill = kept.fill
+    work.agents = new Map(kept.agents)
+    work.shown = { tool: kept.shown.tool, since: kept.shown.since ?? -Infinity }
+    waiting = kept.waiting
+    Object.assign(activity, kept.activity)
+    if (kept.activity.idleMs !== null) activity.isAway = kept.activity.idleMs >= AWAY_MS
+    issOrbit = kept.issOrbit
+    pinnedAt = kept.pinnedAt
+    demoFrom = kept.demoFrom
+    forced = kept.forced
+  }
+
   on('session.start', async ($, e, next) => {
+    // A hot reload of this code: what the sky is drawn from comes back
+    // before anything is drawn.
+    const kept = await read($, carried).catch(() => null)
+    if (kept !== null) takeCarried(kept)
     // A reload leaves the pane open and starts the module over: it looks at
     // the folder again.
     if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === LOOK_PANE)) await watchLook($, looking)
@@ -539,6 +607,13 @@ export const register: Register = on => {
           isAgain: false,
         },
       }
+      // The old module's mark is still on the tab, and its heartbeat fresh:
+      // neither is written again before it is due.
+      if (kept !== null && kept.tty === ghostty.tty) {
+        ghostty.written.mark = kept.mark
+        ghostty.written.heartbeatAt = kept.heartbeatAt ?? -Infinity
+        ghostty.written.isReloadOwed = kept.isReloadOwed
+      }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // A Ghostty that draws the sky at its own pace with vsync on needs no
       // vsync line: the one the person asked for on an older one goes.
@@ -563,13 +638,13 @@ export const register: Register = on => {
       if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${stagePtOf(theme)}-point margin on the right of Ghostty's windows; new windows show it.`)
       // The screen's scale costs a moment of osascript: asked only for a sky
       // that shows.
-      if (isOurs) await stageOf($, ghostty, stagePtOf(theme))
+      if (isOurs) await stageOf($, ghostty, stagePtOf(theme), kept !== null)
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
     if (ghostty !== null) {
       const sky = ghostty
-      const update = () => updateGhosttySky($, sky, shaderAt, skyState)
+      const update = () => updateGhosttySky($, sky, shaderAt, skyState).then(() => keepCarried($, carriedNow(), carriedLast))
       // Whether the person is here, the power and the pace, before the
       // first sky.
       const idle = await idleMs($, isOnLinux)
@@ -604,6 +679,7 @@ export const register: Register = on => {
         void (async () => {
           const now = await $.clock.now()
           await remark($, sky, markOf(catchAt(now), workAt(now)))
+          await keepCarried($, carriedNow(), carriedLast)
           if (wantedTool(work.open.values()) === work.shown.tool || work.isHeldOver) return
           work.isHeldOver = true
           $.clock.after(Math.max(1, work.shown.since + HOLD_MS - now), () => {
@@ -635,11 +711,7 @@ export const register: Register = on => {
           if (isOnLinux || !sky.isIncluded || (await read($, isHidden))) return
           if ((await isGhosttyInFront($, isOnLinux)) !== true) return
           const before = sky.stagePx
-          const text = await $.fs.read(`${sky.folder}/scale`).catch(() => '')
-          const askedAt = scaleAskedAt(text)
-          const shared = asScale(text)
-          const isFresh = askedAt !== null && shared !== null && (await $.clock.now()) - askedAt < SCALE_MS - 1_000
-          sky.stagePx = sky.stagePt * (isFresh ? shared : await askScale($, sky))
+          sky.stagePx = sky.stagePt * ((await sharedScale($, sky)) ?? (await askScale($, sky)))
           if (sky.stagePx !== before) refreshSky?.()
         })().catch(() => undefined)
       })

@@ -134,7 +134,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
 // The terminal a Ghostty session's tab is, where its mark is written.
 export const TTY = '/dev/ttys004'
 
-export const RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
+// Ghostty's reloads on a Mac: by AppleScript, and by SIGUSR2 to its app
+// (Ghostty 1.2 and later), one for each app signalled.
+export const APPLESCRIPT_RELOADS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reload_config')).length
+export const RELOADS = (runs: string[][]) => APPLESCRIPT_RELOADS(runs) + runs.filter(argv => argv[0] === '/bin/kill' && argv[1] === '-USR2').length
 
 // A context for a moment over Stockholm, with this weather.
 export const contextFor = (ms: number, weather = { temperature: 12, code: 0, cloudCover: 5, wind: 3 }, lastRainAt: number | null = null) =>
@@ -224,3 +227,55 @@ export const someMinute = (from: number, to: number, kind: string) => {
   for (let ms = from; ms < to; ms += 60_000) if (kindsAt(ms).includes(kind)) return true
   return false
 }
+
+// A hot reload of the mod, as far as the kit can stand for one: it loads a
+// module once a test, so a session's test hands what it left (the files,
+// the mark on its tab, the host's state for the session) to the next test,
+// whose fresh module starts on it as a reloaded one would.
+export type LeftBehind = { files: Map<string, { text: string; mtimeMs: number }>; states: Map<string, unknown>; mark: string; at: number }
+
+// Ghostty 1.4 on a Mac and in front, its config including the sky at the full pace, the
+// context window 45 % full, the weather answered in 400 ms as the network
+// would; on what a session left, with its state, or on none (a new
+// process). The host's state for the session is recorded as it is set.
+export function reloadWorld(on: On, clock: ReturnType<typeof mock.clock>, left: LeftBehind | null) {
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(clock.now())
+  world.helpersOn(clock)
+  world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
+  world.answers.set('/bin/ps', '  619     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
+  // Ghostty in front, so the screen's scale is asked every SCALE_MS.
+  world.front.value = 'com.mitchellh.ghostty'
+  const runtime = '/Users/test/Library/Application Support/solar-clawd/runtime'
+  if (left) for (const [path, file] of left.files) world.files.set(path, { ...file })
+  else {
+    const staged = '# Solar Clawd: the sky while a Claude session runs, and a stage for the lighthouse.'
+    world.files.set(CONFIG, { text: `font-size = 14\n${staged}\nconfig-file = ?${runtime}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`, mtimeMs: clock.now() })
+    world.files.set('/Users/test/Library/Application Support/solar-clawd/sky.json', { text: '{"pace":"full"}', mtimeMs: clock.now() })
+  }
+  const states = new Map<string, unknown>()
+  on('state.set', ($, e, next) => {
+    if (e.plugin === 'solar-clawd') states.set(e.key, e.value)
+    return next(e)
+  })
+  if (left) on('state.get', ($, e, next) => (e.plugin === 'solar-clawd' && left.states.has(e.key) && !states.has(e.key) ? { value: { value: left.states.get(e.key), version: 1 } } : next(e)))
+  const weatherAsks = { count: 0 }
+  on('http.fetch', async (_, e) => {
+    if (!e.url.includes('open-meteo')) return { deny: 'offline' }
+    weatherAsks.count += 1
+    await clock.sleep(400)
+    const current = { temperature_2m: 9, weather_code: 3, cloud_cover: 80, wind_speed_10m: 4 }
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ current, utc_offset_seconds: 3600 }), requestId: 'r', key: 'k' } }
+  })
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200_000, percent: 45 }, rateLimits: [] } }))
+  on('agent.spawn', () => ({ model: 'opus', agentId: 'helper-agent' }))
+  mock.store(on)
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('classic.Notification', () => ({}))
+
+  return { world, states, weatherAsks, runtime }
+}
+
+// The screen's scale asked of the window server.
+export const SCALE_ASKS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('NSScreen')).length

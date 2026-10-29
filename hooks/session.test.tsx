@@ -13,7 +13,7 @@ import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
-import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
+import { APPLESCRIPT_RELOADS, BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
 
 // The comment the mod writes with its include and the stage, and the one it
 // wrote before there was a stage; where its runtime folder is on a Mac.
@@ -314,7 +314,7 @@ test('on a Mac Ghostty 1.2 and later reloads on SIGUSR2 to the app alone, with n
   const world = await macReloads($, on, '1.4.0', MAC_PS)
   expect(KILLS(world.runs).length).toBeGreaterThan(0)
   expect(new Set(KILLS(world.runs))).toEqual(new Set(['/bin/kill -USR2 619']))
-  expect(RELOADS(world.runs)).toBe(0)
+  expect(APPLESCRIPT_RELOADS(world.runs)).toBe(0)
 })
 
 // A Mac session reloading Ghostty of this version, ps listing these processes.
@@ -334,19 +334,19 @@ async function macReloads($: Engine, on: On, version: string, ps: string, isKill
 test('on a Mac AppleScript reloads where ps finds no Ghostty app to signal', async ($, on) => {
   const world = await macReloads($, on, '1.4.0', ' 5150  4300 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
   expect(KILLS(world.runs)).toEqual([])
-  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+  expect(APPLESCRIPT_RELOADS(world.runs)).toBeGreaterThan(0)
 })
 
 test('on a Mac AppleScript reloads where the signal was refused', async ($, on) => {
   const world = await macReloads($, on, '1.4.0', MAC_PS, true)
   expect(KILLS(world.runs).length).toBeGreaterThan(0)
-  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+  expect(APPLESCRIPT_RELOADS(world.runs)).toBeGreaterThan(0)
 })
 
 test('on a Mac a Ghostty before 1.2, or of no known version, is never sent SIGUSR2', async ($, on) => {
   const world = await macReloads($, on, '1.1.3', MAC_PS)
   expect(KILLS(world.runs)).toEqual([])
-  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+  expect(APPLESCRIPT_RELOADS(world.runs)).toBeGreaterThan(0)
 })
 
 test('on Linux the shader flips fragCoord, which OpenGL gives with y up', async ($, on) => {
