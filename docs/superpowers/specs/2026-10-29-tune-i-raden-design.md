@@ -77,6 +77,8 @@ Provmodden `band-probe` ritade en rad med en `Client` och knappar med
 | Fokus på en knapp i raden (`ui.focus`, `origin=person`) | Alla knappars `hotkey` fungerar, också bokstäver. |
 | Esc med fokus i raden | Fokus tillbaka till prompten. Raden stängs inte. |
 | `$.ui.focus` från modden | `{"deny":"that site does not hold the keyboard"}`. Modden kan inte ta fokus till raden. |
+| ctrl+x tab med bara en `Client` i raden (andra provet) | Tangenterna stannar i prompten (`h` blev text). ctrl+x tab når inte en ensam `Client`. |
+| Tillbaka från agentvyn | Provmodden loggar inget mer: varken `prompt.edit`, en rad eller en ny start. En dev-modd följer inte med när samtalet går till bakgrunden och tillbaka; det förklarar "unknown command" från förra sessionen. Solar Clawd laddas på annat sätt och berörs inte på samma sätt (inte kontrollerat). |
 
 Följder:
 - Bara personen kan ge raden fokus, med ett klick eller ctrl+x tab.
@@ -181,11 +183,10 @@ keep, text och stängning i `hooks/register.tsx` flyttas från panelens
 
 ## Ej verifierat
 
-- Om ctrl+x tab ger en `Client` i raden tangenterna, eller bara knapparna.
-  Provet visade ctrl+x tab eller klick till en knapp (`ui.focus` på `btn-k`
-  med `autoFocus`), men loggen skiljer inte de två åt.
-- Om Tab och Enter når en `Client` i raden med fokus. Panelen får dem i dag.
+- Om Tab och Enter når en `Client` i raden med fokus. Panelen får dem i dag;
+  `[` `]` byter flik och `s` keepar också, så verktyget fungerar ändå.
 - Om en knapps `hotkey` utan fokus fungerar när prompten har text (provet
   gjordes bara i tom prompt).
 - Om `autoFocus` på en knapp i raden flyttar fokus när raden ritas första
   gången, eller bara när personen går in i raden.
+- Om Solar Clawds rad och verktyg finns kvar efter agentvyn.
