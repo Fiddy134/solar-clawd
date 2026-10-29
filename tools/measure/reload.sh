@@ -5,8 +5,10 @@
 #   tools/measure/reload.sh <interval-ms> <seconds>
 #
 # Copies the live shader (runtime/sky.glsl), then for <seconds> alternates
-# two versions every <interval-ms>: the original, and one with the line
-# `sky = tone(sky, k);` made `sky = tone(sky, k * 0.72);`. Each is written by
+# two versions every <interval-ms>: the original, and one with the sky's
+# line dimmed, `sky = tone(sky, k);` (a shader from before /solar tune) or
+# `sky = sky_tuned(sky, k, tune);` (one since) with its `k` made
+# `k * 0.72`. The shader must hold exactly one of them. Each is written by
 # write-then-rename as hooks/ghostty.ts does and followed by the reload a Mac
 # gets since 0.9.2: SIGUSR2 to the Ghostty app (the process whose parent is 1
 # and whose command ends in /Ghostty.app/Contents/MacOS/ghostty). Ghostty's
@@ -28,8 +30,11 @@ zmodload zsh/datetime zsh/zselect
 
 runtime="$HOME/Library/Application Support/solar-clawd/runtime"
 shader=$runtime/sky.glsl
-original='  sky = tone(sky, k);'
-changed='  sky = tone(sky, k * 0.72);'
+# The sky's line before /solar tune and since, and each dimmed.
+lines_from=('  sky = tone(sky, k);' '  sky = sky_tuned(sky, k, tune);')
+lines_to=('  sky = tone(sky, k * 0.72);' '  sky = sky_tuned(sky, k * 0.72, tune);')
+# What restore cleans up, empty until there is something.
+backup='' cpu='' top_pid=''
 
 die() { print -u2 "reload.sh: $*"; exit 1 }
 
@@ -42,10 +47,16 @@ interval=$1 seconds=$2
 [[ -f $shader ]] || die "no shader at $shader (is a Solar session running?)"
 text=$(<$shader)
 lines=(${(f)text})
-(( ${#lines[(I)$original]} == 1 )) || die "expected exactly one line '$original' in the shader, found ${#lines[(I)$original]}"
+# Exactly one sky line, of either kind, in the whole shader.
+found=0 original='' changed=''
+for i in 1 2; do
+  n=${#${(M)lines:#${lines_from[$i]}}}
+  (( n == 0 )) && continue
+  (( found += n ))
+  original=${lines_from[$i]} changed=${lines_to[$i]}
+done
+(( found == 1 )) || die "expected exactly one line '${lines_from[1]}' or '${lines_from[2]}' in the shader, found $found"
 
-backup=${TMPDIR:-/tmp}/solar-reload-original.$$
-cp $shader $backup || die 'cannot copy the shader'
 # The same text with the one line changed.
 altered=${text/$original/$changed}
 [[ $altered != $text ]] || die 'the changed shader equals the original'
@@ -57,12 +68,18 @@ put() {
 
 restore() {
   trap - EXIT INT TERM HUP
-  [[ -f $backup ]] && cp $backup $shader.tmp-reload && mv -f $shader.tmp-reload $shader && reload > /dev/null
-  rm -f $backup $shader.tmp-reload
+  [[ -n $top_pid ]] && kill $top_pid 2>/dev/null
+  [[ -n $backup && -f $backup ]] && cp $backup $shader.tmp-reload && mv -f $shader.tmp-reload $shader && reload > /dev/null
+  [[ -n $backup ]] && rm -f $backup
+  [[ -n $cpu ]] && rm -f $cpu
+  rm -f $shader.tmp-reload
   return 0
 }
 trap restore EXIT
 trap 'restore; exit 130' INT TERM HUP
+
+backup=${TMPDIR:-/tmp}/solar-reload-original.$$
+cp $shader $backup || die 'cannot copy the shader'
 
 failed=0
 # Signals the Ghostty app; counts the ones kill reported as failed.
