@@ -234,10 +234,11 @@ export const someMinute = (from: number, to: number, kind: string) => {
 // whose fresh module starts on it as a reloaded one would.
 export type LeftBehind = { files: Map<string, { text: string; mtimeMs: number }>; states: Map<string, unknown>; mark: string; at: number }
 
-// Ghostty 1.4 on a Mac and in front, its config including the sky at the full pace, the
-// context window 45 % full, the weather answered in 400 ms as the network
-// would; on what a session left, with its state, or on none (a new
-// process). The host's state for the session is recorded as it is set.
+// Ghostty 1.4 on a Mac and in front, its config including the sky at the
+// full pace, the context window 45 % full, the weather answered in 400 ms
+// as the network would; on what a session left, with its state, or on
+// none (a new process). The host's state for the session is recorded as it
+// is set.
 export function reloadWorld(on: On, clock: ReturnType<typeof mock.clock>, left: LeftBehind | null) {
   const world = ghosttyWorld(on, { value: 1 })
   world.tick(clock.now())

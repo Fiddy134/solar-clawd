@@ -85,3 +85,18 @@ test('a new session, with nothing kept from before, asks the weather and the scr
   expect(world.writes.filter(path => path.startsWith(`${runtime}/sky.glsl`)).length).toBe(2)
   expect(world.files.get(`${runtime}/sky.glsl`)!.text).toContain('const float COVER = 0.8;')
 })
+
+test('a reload under another session id than the one kept (a /clear between) writes its own heartbeat at once', async ($, on) => {
+  // The old module beat for the session's id before the /clear; this one
+  // beats for the id the session has now, which no file says is alive yet.
+  const kept = left!.states.get('carried') as { shape: string; value: Record<string, unknown> }
+  const runtime = '/Users/test/Library/Application Support/solar-clawd/runtime'
+  const states = new Map([['carried', { ...kept, value: { ...kept.value, heartbeat: `${runtime}/alive-before-clear` } }]])
+  const clock = mock.clock(on, { now: left!.at + 1_000 })
+  const { world } = reloadWorld(on, clock, { ...left!, states })
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.settle()
+  expect(world.writes).toContain(`${runtime}/alive-this-session`)
+  // The mark goes with the heartbeat, as each minute; the same one.
+  expect(world.ttyLog).toEqual([`write ${MARK}`, `start ${MARK}`])
+})

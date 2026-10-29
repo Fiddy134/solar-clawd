@@ -35,10 +35,12 @@ export type SolarClawdCarried = {
   pinnedAt: number | null
   demoFrom: number | null
   forced: { kind: string; at: number }[]
-  // The tab the mark was last written to, the mark, and the heartbeat's
-  // moment; and a Ghostty reload still owed.
+  // The tab the mark was last written to, the mark, the heartbeat's file
+  // (named by the session's id) and its moment; and a Ghostty reload still
+  // owed.
   tty: string | null
   mark: string
+  heartbeat: string | null
   heartbeatAt: number | null
   isReloadOwed: boolean
 } | null

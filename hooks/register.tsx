@@ -66,7 +66,7 @@ const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false
 // code (never into a new process): the reloaded module starts from it and
 // draws the sky the old one left. Another shape (code that keeps something
 // else) reads as none, and the module starts from nothing as a new one does.
-const carried = atom({ plugin: 'solar-clawd', key: 'carried' } as const, null, { shape: 'sky-inputs-1' })
+const carried = atom({ plugin: 'solar-clawd', key: 'carried' } as const, null, { shape: 'sky-inputs-2' })
 
 const KEY = 'sky'
 // The moon's texture, baked by tools/bake-moon.sh.
@@ -505,6 +505,7 @@ export const register: Register = on => {
     forced,
     tty: ghostty?.tty ?? null,
     mark: ghostty?.written.mark ?? '',
+    heartbeat: ghostty?.heartbeat ?? null,
     heartbeatAt: ghostty && Number.isFinite(ghostty.written.heartbeatAt) ? ghostty.written.heartbeatAt : null,
     isReloadOwed: ghostty?.written.isReloadOwed ?? false,
   })
@@ -608,11 +609,13 @@ export const register: Register = on => {
         },
       }
       // The old module's mark is still on the tab, and its heartbeat fresh:
-      // neither is written again before it is due.
+      // neither is written again before it is due. The heartbeat only where
+      // it is this one's file: after a /clear the session's id is another,
+      // and its own heartbeat is written at once, so other sessions see it.
       if (kept !== null && kept.tty === ghostty.tty) {
         ghostty.written.mark = kept.mark
-        ghostty.written.heartbeatAt = kept.heartbeatAt ?? -Infinity
         ghostty.written.isReloadOwed = kept.isReloadOwed
+        if (kept.heartbeat === ghostty.heartbeat) ghostty.written.heartbeatAt = kept.heartbeatAt ?? -Infinity
       }
       void tidy($, folder, [`alive-${id}`]).catch(() => undefined)
       // A Ghostty that draws the sky at its own pace with vsync on needs no
