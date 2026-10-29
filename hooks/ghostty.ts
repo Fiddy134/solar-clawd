@@ -92,9 +92,9 @@ export type Ghostty = {
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
-  // The helper that ticks (startTicks), the mark it writes, and its start,
-  // which stopping it waits on; null while the sky does not tick.
-  ticks: { helper: HookStream<ProcessSpawnChunk, ProcessSpawnResult>; mark: string; started: Promise<void> } | null
+  // The helper that ticks (startTicks) and its start, which stopping it
+  // waits on; null while the sky does not tick.
+  ticks: { helper: HookStream<ProcessSpawnChunk, ProcessSpawnResult>; started: Promise<void> } | null
   written: {
     shader: string
     include: string
@@ -270,6 +270,8 @@ export type SkyState = {
   isGhosttyInFront: boolean | null
   pace: Pace
   waiting: Waiting | null
+  // Claude Code is writing the conversation, so nothing ticks (skyRules).
+  isWriting: boolean
   catchAt: (now: number) => ShaderParams['context']
   // What Claude is doing (activity.ts), for the tab's mark alone: never the
   // pace or the shader's text, so it costs no reload.
@@ -384,9 +386,6 @@ async function writeGhosttySky(
   // a `reset` in the tab would have cleared it.
   const mark = markOf(state.catchAt(now), state.workAt(now))
   if (mark !== written.mark || now - written.heartbeatAt >= HEARTBEAT_MS) {
-    // A helper still writing the old mark would put it back over the new
-    // one: it goes first, and one with the new mark starts below.
-    if (ghostty.ticks !== null && ghostty.ticks.mark !== mark) await stopTicks(ghostty)
     await markTab($, ghostty, mark)
     written.mark = mark
   }
@@ -410,6 +409,7 @@ async function writeGhosttySky(
     isOnBattery: state.isOnBattery,
     isLively: state.livelyAt(now),
     isGhosttyInFront: state.isGhosttyInFront,
+    isWriting: state.isWriting,
   })
   if (isWanted) {
     // Ghostty draws with OpenGL on Linux, where fragCoord has y up. The
@@ -451,37 +451,34 @@ async function writeGhosttySky(
 
 // The tab's mark again at once, where only it changed (what Claude is
 // doing): written straight to the tab, with no shader built and nothing
-// reloaded. A helper ticking the old mark would put it back, so it goes
-// first and one with the new mark takes over; the next update writes the
-// same.
+// reloaded; the next update writes the same.
 export async function remark($: EngineInterface, ghostty: Ghostty, mark: string): Promise<void> {
   const { written } = ghostty
   if (written.isEnded || mark === written.mark) return
   written.mark = mark
-  const marking = (async () => {
-    if (ghostty.ticks !== null && ghostty.ticks.mark !== mark) await stopTicks(ghostty)
-    await markTab($, ghostty, mark)
-    if (written.isTicking && !written.isEnded && written.mark === mark) startTicks($, ghostty)
-  })()
+  const marking = markTab($, ghostty, mark)
   written.marking = marking
   await marking
   if (written.marking === marking) written.marking = null
 }
 
-// The helper's loop: the tab's mark written PACE_HZ times a second on a
-// grid of frames held against the clock, so that a late write puts no
+// The helper's loop: a lone NUL written PACE_HZ times a second on a grid
+// of frames held against the clock, so that a late write puts no
 // later one off and a wake long after its time does not make up for the
 // ones it missed; zselect waits in hundredths. Each write wakes Ghostty,
-// which draws a frame of the sky. It holds the tty open, says so once on
+// which draws a frame of the sky. Ghostty does nothing with a NUL, and one
+// landing inside another program's escape sequence leaves it whole, where
+// the mark's own ESC would cut it short (Ghostty's parse_table.zig); the
+// palette keeps the mark between its writes. It holds the tty open, says so once on
 // its output, and ends by itself when a write fails (the tab has closed)
 // or within a second of Claude Code ending without stopping it.
 export const TICKER = `zmodload zsh/zselect zsh/datetime zsh/mathfunc || exit 1
-tty=$1 step=$(( 1.0 / $2 )) mark=$3 parent=$PPID second=$SECONDS
+tty=$1 step=$(( 1.0 / $2 )) parent=$PPID second=$SECONDS
 exec 3>>$tty || exit 1
 print ticking
 next=$EPOCHREALTIME
 while :; do
-  print -rn -u3 -- $mark || exit 0
+  print -rn -u3 -- $'\\0' || exit 0
   if (( SECONDS != second )); then
     second=$SECONDS
     kill -0 $parent 2>/dev/null || exit 0
@@ -493,22 +490,21 @@ while :; do
 done
 `
 
-// Ticks the sky: one zsh beside Claude Code writes the tab's mark PACE_HZ
-// times a second (TICKER). Written from inside Claude Code the same ticks
-// cost about 9 % of a core live, the helper about 1 % in its own process
-// (docs/superpowers/plans/2026-10-27-himlens-takt.md, Task 5). The mark
-// travels as an argument, so a new mark starts a new helper, once
-// writeGhosttySky has stopped the old one; the mark changes a few times an
-// hour. Its output is read
-// only up to the word that it ticks: the engine keeps the child until the
-// stream is closed (stopTicks) or the module unloads. Read further, a pull
-// left waiting on a child that says nothing more would hold up the
-// closing, so a helper that dies after it ticked goes unnoticed until the
-// mark changes or the sky stops and starts ticking again.
+// Ticks the sky: one zsh beside Claude Code writes a NUL PACE_HZ times a
+// second (TICKER). Written from inside Claude Code the same ticks cost
+// about 9 % of a core live, the helper about 1 % in its own process
+// (docs/superpowers/plans/2026-10-27-himlens-takt.md, Task 5). The mark is
+// the session's to write, so the helper outlives its changes. Its output
+// is read only up to the word that it ticks: the engine keeps the child
+// until the stream is closed (stopTicks) or the module unloads. Read
+// further, a pull left waiting on a child that says nothing more would
+// hold up the closing, so a helper that dies after it ticked goes
+// unnoticed until the sky stops and starts ticking again, as it does
+// around every turn.
 export function startTicks($: EngineInterface, ghostty: Ghostty): void {
-  const { tty, written } = ghostty
+  const { tty } = ghostty
   if (tty === null || ghostty.ticks !== null) return
-  const helper = $.process.spawn({ argv: ['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', tty, String(PACE_HZ), written.mark] })
+  const helper = $.process.spawn({ argv: ['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', tty, String(PACE_HZ)] })
   const started = (async () => {
     // Ended before it ticked (a tty it could not open, says so on stderr;
     // no zsh): the next update tries again.
@@ -523,7 +519,7 @@ export function startTicks($: EngineInterface, ghostty: Ghostty): void {
   })().catch(() => {
     if (ghostty.ticks?.helper === helper) ghostty.ticks = null
   })
-  ghostty.ticks = { helper, mark: written.mark, started }
+  ghostty.ticks = { helper, started }
 }
 
 // The sky ticks no more: the helper's stream is closed, which kills it.

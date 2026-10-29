@@ -1340,78 +1340,80 @@ test('hidden, or ended, the sky ticks no more, and the last word to the tab is i
   expect(await marks(5_000)).toBe(0)
 })
 
-test('one zsh beside Claude Code ticks, with the mark as its argument: a new mark is a new helper, and never two at once', TICKING, async ($, on) => {
+test('one zsh beside Claude Code ticks a lone NUL, and stays the one helper as the mark changes', TICKING, async ($, on) => {
   const { world, solar, clock } = await tickWorld($, on, 'full', true)
   const { helpers, ttyLog } = world
   expect(helpers.length).toBe(1)
-  expect(helpers[0]!.argv).toEqual(['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', TTY, '24', markOf(null)])
-  expect(helpers[0]!.to).toBe(null)
+  expect(helpers[0]!.argv).toEqual(['/bin/zsh', '-f', '-c', TICKER, 'solar-ticks', TTY, '24'])
+  // A NUL wakes Ghostty and leaves a sequence it lands in whole; the mark
+  // goes to the tab only from the session, as it changes.
+  expect(TICKER).toContain(`print -rn -u3 -- $'\\0'`)
+  expect(TICKER).not.toContain('$3')
   await solar('catch')
   await clock.advance(3_100)
   await solar('grill')
   await clock.advance(3_100)
-  expect(helpers.length).toBeGreaterThan(2)
-  expect(helpers.at(-1)!.argv.at(-1)).toBe(world.files.get(TTY)?.text)
-  // In the order things reached the tab: never two helpers at once, and a
-  // new mark written only once no helper writes the old one.
-  let ticking: string | null = null
-  for (const entry of ttyLog) {
-    const [kind, ...rest] = entry.split(' ')
-    const mark = rest.join(' ')
-    if (kind === 'start') {
-      expect(ticking).toBe(null)
-      ticking = mark
-    }
-    if (kind === 'end') {
-      expect(ticking).toBe(mark)
-      ticking = null
-    }
-    if (kind === 'write' && ticking !== null) expect(mark).toBe(ticking)
-  }
+  expect(helpers.length).toBe(1)
+  expect(helpers[0]!.to).toBe(null)
+  expect(world.files.get(TTY)?.text).not.toBe(markOf(null))
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(helpers.every(h => h.to !== null)).toBe(true)
   expect(ttyLog.at(-1)).toBe(`write ${UNMARK_TAB}`)
-  expect(ttyLog.lastIndexOf(`write ${UNMARK_TAB}`)).toBeGreaterThan(ttyLog.findLastIndex(entry => entry.startsWith('end ')))
+  expect(ttyLog.lastIndexOf(`write ${UNMARK_TAB}`)).toBeGreaterThan(ttyLog.lastIndexOf('end'))
 })
 
-test('what Claude does, marked while the sky ticks, goes to a new helper once the old one has stopped', TICKING, async ($, on) => {
+test('what Claude does is marked straight to the tab while the one helper ticks on', TICKING, async ($, on) => {
   const gates: Record<string, () => void> = {}
   on('tool.call', (_, e) => new Promise(done => (gates[e.tool_use_id] = () => done({ result: {} } as never))))
   const { world, clock } = await tickWorld($, on, 'full', true)
-  const { helpers, ttyLog } = world
+  const { helpers } = world
   const before = helpers.length
   const running = $.tool.call({ tool: 'Bash', tool_use_id: 'b1', command: 'make' } as never)
   await clock.advance(10)
-  const command = markOf(null, { tool: 'command', agents: 0 })
-  expect(helpers.length).toBe(before + 1)
-  expect(helpers.at(-1)!.argv.at(-1)).toBe(command)
-  expect(helpers.filter(h => h.to === null).length).toBe(1)
-  expect(world.files.get(TTY)?.text).toBe(command)
+  expect(world.files.get(TTY)?.text).toBe(markOf(null, { tool: 'command', agents: 0 }))
   gates.b1!()
   await running
   await clock.advance(1_600)
-  expect(helpers.at(-1)!.argv.at(-1)).toBe(markOf(null))
+  expect(world.files.get(TTY)?.text).toBe(markOf(null))
+  expect(helpers.length).toBe(before)
   expect(helpers.filter(h => h.to === null).length).toBe(1)
-  let ticking: string | null = null
-  for (const entry of ttyLog) {
-    const [kind, ...rest] = entry.split(' ')
-    const mark = rest.join(' ')
-    if (kind === 'start') {
-      expect(ticking).toBe(null)
-      ticking = mark
-    }
-    if (kind === 'end') ticking = null
-    if (kind === 'write' && ticking !== null) expect(mark).toBe(ticking)
-  }
+})
+
+// Claude Code writes the conversation while a turn runs, at times many
+// kilobytes at once, which the kernel hands Ghostty a kilobyte at a time:
+// no tick goes in between. Asking the person, it stands still, and the
+// lighthouse sweeps.
+test('a turn of the main conversation stills the ticks until it ends, save while Claude asks the person', TICKING, async ($, on) => {
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const { marks, clock } = await tickWorld($, on, 'full', true)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  await $.turn.start({ text: 'skriv mycket', turnId: 't1' })
+  await clock.advance(100)
+  expect(await marks(5_000)).toBeLessThanOrEqual(1)
+  await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(100)
+  expect(within(await marks(1_000), 24)).toBe(true)
+  await $.turn.start({ text: 'kör make', turnId: 't2' })
+  await clock.advance(100)
+  expect(await marks(5_000)).toBeLessThanOrEqual(1)
+  await $.classic.Notification({ message: 'Claude needs your permission to use Bash', notification_type: 'permission_prompt' })
+  await clock.advance(100)
+  expect(within(await marks(1_000), 24)).toBe(true)
 })
 
 test('a helper that cannot open the tab says so and ends, and the next update starts another', TICKING, async ($, on) => {
-  const { world, solar, clock } = await tickWorld($, on, 'full', true)
+  on('turn.start', (_, e) => ({ turnId: e.turnId }))
+  on('turn.complete', (_, e) => ({ text: e.answer }))
+  const { world, clock } = await tickWorld($, on, 'full', true)
   world.helperFails.value = true
-  await solar('catch')
-  await clock.advance(3_100)
+  // A turn stops the helper, and its end starts one, which fails.
+  await $.turn.start({ text: 'skriv', turnId: 't1' })
+  await clock.advance(100)
+  await $.turn.complete({ answer: 'klart', durationMs: 30_000, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.advance(10_100)
   const tried = world.helpers.length
-  expect(tried).toBeGreaterThan(1)
+  expect(tried).toBeGreaterThan(2)
   expect(world.helpers.every(h => h.to !== null)).toBe(true)
   world.helperFails.value = false
   await clock.advance(10_100)

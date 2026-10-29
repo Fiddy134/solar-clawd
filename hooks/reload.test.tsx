@@ -31,7 +31,8 @@ test('a session with its sky up keeps what the sky is drawn from in the host, fo
   await $.agent.spawn({ prompt: 'Read README.md.' } as never)
   await clock.advance(RUN_MS)
   left = { files: new Map(world.files), states: new Map(states), mark: MARK, at: clock.now() }
-  expect(world.helpers.at(-1)?.argv.at(-1)).toBe(MARK)
+  expect(world.helpers.filter(helper => helper.to === null)).toHaveLength(1)
+  expect(world.ttyLog).toContain(`write ${MARK}`)
   const kept = JSON.stringify(states.get('carried'))
   expect(kept).toContain('"cloudCover":80')
   expect(kept).toContain('"fill":45')
@@ -53,10 +54,10 @@ test('a reload of the mod with nothing changed leaves the sky as it was', async 
   expect(RELOADS(world.runs)).toBe(0)
   expect(world.writes.filter(path => path.includes('/sky.glsl') || path.includes('/solar-clawd.ghostty'))).toEqual([])
   expect(world.files.get(`${runtime}/sky.glsl`)!.text).toBe(shader)
-  // The old helper ended with the old module: one new one ticks the same
-  // mark, which is not written to the tab again.
-  expect(world.helpers.map(helper => [helper.argv.at(-1), helper.to])).toEqual([[MARK, null]])
-  expect(world.ttyLog).toEqual([`start ${MARK}`])
+  // The old helper ended with the old module: one new one ticks, and the
+  // mark, the same, is not written to the tab again.
+  expect(world.helpers.map(helper => helper.to)).toEqual([null])
+  expect(world.ttyLog).toEqual(['start'])
 })
 
 test('a reload keeps the sky ticking', { timeoutMs: 30_000 }, async ($, on) => {
@@ -102,7 +103,7 @@ test('a reload under another session id than the one kept (a /clear between) wri
   await clock.settle()
   expect(world.writes).toContain(`${runtime}/alive-this-session`)
   // The mark goes with the heartbeat, as each minute; the same one.
-  expect(world.ttyLog).toEqual([`write ${MARK}`, `start ${MARK}`])
+  expect(world.ttyLog).toEqual([`write ${MARK}`, 'start'])
 })
 
 let tuneLeft: LeftBehind | null = null

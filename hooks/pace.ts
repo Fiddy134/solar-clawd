@@ -54,7 +54,10 @@ export function canTick(o: { isLinux: boolean; version: [number, number] | null;
 // vsync off would set its 8 ms timer running free. Full ticks until twenty
 // minutes without the person, never light; spar ticks where today's sky
 // would move: always while the lighthouse sweeps, and otherwise only with
-// Ghostty in front (`true` animates the focused tab alone).
+// Ghostty in front (`true` animates the focused tab alone). Neither ticks
+// while Claude writes the conversation: a tick landing inside one of Claude
+// Code's long writes breaks the escape sequence it lands in, and Claude
+// Code's own writes draw the sky's frames meanwhile.
 export function skyRules(o: {
   pace: Pace
   canTick: boolean
@@ -64,12 +67,13 @@ export function skyRules(o: {
   isOnBattery: boolean
   isLively: boolean
   isGhosttyInFront: boolean | null
+  isWriting: boolean
 }): { animation: 'true' | 'false' | 'always'; isLight: boolean; isTicking: boolean } {
   const isAway = o.idleMs !== null && o.idleMs >= AWAY_MS
   const today = animationOf({ waiting: o.waiting, now: o.now, isAway, isOnBattery: o.isOnBattery, isLively: o.isLively })
   if (!o.canTick) return { animation: today, isLight: o.isOnBattery || isAway, isTicking: false }
-  if (o.pace === 'full') return { animation: 'false', isLight: false, isTicking: o.idleMs === null || o.idleMs < FULL_STILL_MS }
-  const isTicking = today === 'always' || (today === 'true' && o.isGhosttyInFront !== false)
+  if (o.pace === 'full') return { animation: 'false', isLight: false, isTicking: !o.isWriting && (o.idleMs === null || o.idleMs < FULL_STILL_MS) }
+  const isTicking = !o.isWriting && (today === 'always' || (today === 'true' && o.isGhosttyInFront !== false))
 
   return { animation: 'false', isLight: o.isOnBattery || isAway, isTicking }
 }

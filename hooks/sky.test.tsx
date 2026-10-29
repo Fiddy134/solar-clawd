@@ -578,7 +578,7 @@ test("/solar event plays fyr's previews, the keeper's abduction and surf, and th
 // sweep, or none; the person here a second or six minutes.
 const WAITS = [null, { mode: 'asking' as const, since: 0 }, { mode: 'done' as const, since: -WAITING_SWEEP_MS }]
 const rulesWith = (o: Partial<Parameters<typeof skyRules>[0]>) =>
-  skyRules({ pace: 'spar', canTick: true, waiting: null, now: 1000, idleMs: 1000, isOnBattery: false, isLively: true, isGhosttyInFront: true, ...o })
+  skyRules({ pace: 'spar', canTick: true, waiting: null, now: 1000, idleMs: 1000, isOnBattery: false, isLively: true, isGhosttyInFront: true, isWriting: false, ...o })
 
 test("without ticks the rules are today's, to the letter", () => {
   for (const pace of ['full', 'spar'] as const) {
@@ -627,6 +627,17 @@ test("spar ticks where today's sky would move, and only in front unless the ligh
   expect(rulesWith({ isOnBattery: true }).isLight).toBe(true)
   expect(rulesWith({ idleMs: AWAY_MS }).isLight).toBe(true)
   expect(rulesWith({}).isLight).toBe(false)
+})
+
+// A tick that lands in the middle of a long write of Claude Code's breaks
+// the escape sequence it lands in (docs/superpowers/notes/tick-tearing-research.md).
+test('while Claude writes the conversation nothing ticks, at either pace, and the animation stays false', () => {
+  for (const pace of ['full', 'spar'] as const) {
+    for (const waiting of WAITS) {
+      expect(rulesWith({ pace, waiting, isWriting: true })).toEqual({ animation: 'false', isLight: false, isTicking: false })
+    }
+  }
+  expect(rulesWith({ pace: 'full', isWriting: false }).isTicking).toBe(true)
 })
 
 test('ticks need macOS, a known Ghostty, and on 1.3 the vsync line', () => {

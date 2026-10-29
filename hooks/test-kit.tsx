@@ -148,13 +148,13 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   on('process.spawn', async function* (_, e) {
     const helper = { argv: [...e.argv], from: helperClock?.now() ?? now, to: null as number | null }
     helpers.push(helper)
-    ttyLog.push(`start ${e.argv.at(-1)}`)
+    ttyLog.push('start')
     try {
       if (helperFails.value) yield { stream: 'stderr' as const, text: 'zsh:3: operation not permitted: /dev/ttys004\n' }
       else yield { stream: 'stdout' as const, text: 'ticking\n' }
     } finally {
       helper.to = helperClock?.now() ?? now
-      ttyLog.push(`end ${e.argv.at(-1)}`)
+      ttyLog.push('end')
     }
 
     return { value: { code: helperFails.value ? 1 : null, signal: helperFails.value ? null : 'SIGTERM' } }

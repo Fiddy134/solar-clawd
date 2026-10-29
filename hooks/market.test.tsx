@@ -397,7 +397,7 @@ const ghosttyOf = (id: string): Ghostty => ({
   ticks: null,
   written: { shader: '', include: '', mark: '', marking: null, heartbeatAt: -Infinity, isReloadOwed: false, isEnded: false, isTicking: false, canTick: false, running: null, isAgain: false },
 })
-const state = (): SkyState => ({ idleMs: 1000, isOnBattery: false, isGhosttyInFront: true, pace: 'spar', waiting: null, catchAt: () => null, workAt: () => ({ tool: 'none', agents: 0 }), livelyAt: () => false })
+const state = (): SkyState => ({ idleMs: 1000, isOnBattery: false, isGhosttyInFront: true, pace: 'spar', waiting: null, isWriting: false, catchAt: () => null, workAt: () => ({ tool: 'none', agents: 0 }), livelyAt: () => false })
 const shaderAt = (now: number, extras: SkyExtras) => skyShader(shaderParams({ ms: now, t: 0, place: STOCKHOLM, weather: null }, extras), FYR)
 
 test('two sessions on one market file draw the same prices, and a fetch inside a scene reloads nothing', async () => {

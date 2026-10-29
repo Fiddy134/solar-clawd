@@ -561,6 +561,9 @@ export const register: Register = on => {
     isGhosttyInFront: activity.isGhosttyInFront,
     pace: activity.pace,
     waiting,
+    // A turn of the main conversation, save while it asks the person and
+    // the prompt stands still.
+    isWriting: claude.isWorking && waiting?.mode !== 'asking',
     catchAt,
     workAt,
     livelyAt,
@@ -1057,6 +1060,8 @@ export const register: Register = on => {
       claude.isWorking = true
       claude.open.clear()
       if (waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
+      // The ticks stop before Claude writes.
+      else refreshSky?.()
     }
 
     return next(e)
@@ -1076,6 +1081,8 @@ export const register: Register = on => {
         // A long piece of work done: confetti over the sky.
         if (e.durationMs > MILESTONE_MS) forced.push({ kind: 'milestone', at: now })
       }
+      // The ticks again, now Claude has written.
+      refreshSky?.()
     }
 
     return next(e)
