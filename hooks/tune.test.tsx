@@ -22,6 +22,7 @@ import {
   onPaneKey,
   onTuneKey,
   ownTextOf,
+  tabOf,
   PHASES,
   phaseWeights,
   PREVIEW_LIFE_MS,
@@ -220,6 +221,19 @@ test('keys move, clamp, reset, undo and keep', () => {
   const undone = press(['left', 'return', 'u', 'return'])
   expect(undone.action).toBe('keep')
   expect(undone.state.tune).toEqual(OPENED)
+  // s keeps as Enter does, should the band not hand Enter on.
+  expect(press(['left', 's']).action).toBe('keep')
+  // q closes, from any tab, and changes nothing.
+  expect(press(['left', 'q'])).toEqual({ state: press(['left']).state, action: 'close' })
+  expect(press(['tab', 'q'], night)).toEqual({ state: press(['tab'], night).state, action: 'close' })
+  // The digits go straight to a tab: a part of the day previews, the text
+  // tab leaves the sky as it was, and the tab already shown does nothing.
+  expect(press(['3'])).toMatchObject({ state: { phase: 'dusk', isOnText: false }, action: 'preview' })
+  expect(press(['5'])).toMatchObject({ state: { phase: 'day', isOnText: true }, action: 'none' })
+  expect(press(['2'])).toEqual({ state: press([]).state, action: 'none' })
+  expect(press(['5', '1'])).toMatchObject({ state: { phase: 'dawn', isOnText: false }, action: 'preview' })
+  expect(press(['5', '2'])).toMatchObject({ state: { phase: 'day', isOnText: false }, action: 'preview' })
+  expect([press([]).state, press(['5']).state, press(['4']).state].map(tabOf)).toEqual(['day', 'text', 'night'])
   // Anything else does nothing.
   expect(press(['x'])).toEqual({ state: press([]).state, action: 'none' })
 })
@@ -245,7 +259,8 @@ test('the pane shows each value as the mock-up does, and no number in it reads a
   }
   expect(TUNE_WORDS.notGhostty).toBe('Solar: tune is for the sky in Ghostty on a Mac.')
   expect(TUNE_WORDS.kept).toBe('kept')
-  expect(TUNE_WORDS.hint).toBe('\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close')
+  expect(TUNE_WORDS.hint).toBe('click   \u2191\u2193 pick   \u2190\u2192 move   tab phase   \u23ce keep   r reset   u undo   q close')
+  expect(TUNE_WORDS.closed).toBe('Solar: tune closed.')
 })
 
 test('each key starts from the last, and a keep travels in every post after it', () => {
@@ -265,6 +280,8 @@ test('each key starts from the last, and a keep travels in every post after it',
   expect(after.post).toMatchObject({ action: 'preview', keeps: 1, keptTune: kept.local.pane.tune })
   expect(after.post?.state.tune.day.brightness).toBe(0.9)
   expect(after.local.isKeptLast).toBe(false)
+  // q posts a close, the keeps made so far with it.
+  expect(keys(['left', 'return', 'q']).post).toMatchObject({ action: 'close', keeps: 1, keptTune: kept.local.pane.tune })
 })
 
 test('text values clamp, snap and stay untouched as null', () => {

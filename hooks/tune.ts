@@ -354,7 +354,8 @@ export const TUNE_WORDS = {
   notIncluded: "Solar: Ghostty's config does not show the sky yet (/solar ghostty), so the sliders change nothing you can see.",
   hidden: 'Solar: the sky is hidden, so the sliders change nothing you can see until /solar brings it back.',
   kept: 'kept',
-  hint: '\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close',
+  hint: 'click   \u2191\u2193 pick   \u2190\u2192 move   tab phase   \u23ce keep   r reset   u undo   q close',
+  closed: 'Solar: tune closed.',
 }
 
 // The pane's rows, top to bottom, and their labels.
@@ -395,7 +396,7 @@ export type PaneState = {
   text: TextValues
   textOpened: TextValues
 }
-export type TuneAction = 'none' | 'preview' | 'text' | 'keep'
+export type TuneAction = 'none' | 'preview' | 'text' | 'keep' | 'close'
 
 // What the text tab moves through besides its limits: the person's own
 // values, where a row they have not touched starts from, and the fonts.
@@ -405,6 +406,19 @@ const NO_TEXT_WORLD: TextWorld = { own: NO_OWN, fonts: [] }
 // Where an untouched row starts when the person's own value is not known:
 // Ghostty's own defaults on a Mac.
 const TEXT_START: Record<Exclude<TextNumberRow, 'weight'>, number> = { size: 13, lineHeight: 0, faint: 0.5, gap: 0 }
+
+// The tab a state shows: the text tab, or the part of the day.
+export function tabOf(state: PaneState): Phase | typeof TAB_TEXT {
+  return state.isOnText ? TAB_TEXT : state.phase
+}
+
+// The state on a tab: a part of the day previews it, the text tab leaves
+// the sky on the part of the day it showed.
+function toTab(state: PaneState, tab: Phase | typeof TAB_TEXT): { state: PaneState; action: TuneAction } {
+  if (tab === TAB_TEXT) return { state: { ...state, isOnText: true }, action: 'none' }
+
+  return { state: { ...state, phase: tab, isOnText: false }, action: 'preview' }
+}
 
 const around = <T>(list: readonly T[], item: T, by: number): T => list[(list.indexOf(item) + by + list.length) % list.length]!
 
@@ -444,25 +458,24 @@ function onTextKey(state: PaneState, key: string, world: TextWorld): { state: Pa
   if (key === 'left' || key === 'right') return set(stepText(text, textRow, key === 'left' ? -1 : 1, world))
   if (key === 'r') return set(text[textRow] === DEFAULT_TEXT[textRow] ? null : { ...text, [textRow]: DEFAULT_TEXT[textRow] })
   if (key === 'u') return { state: { ...state, text: state.textOpened }, action: 'text' }
-  if (key === 'return') return { state, action: 'keep' }
+  if (key === 'return' || key === 's') return { state, action: 'keep' }
 
   return { state, action: 'none' }
 }
 
 // One key pressed in the pane: up and down pick a row, left and right move
 // its value a step within its limits, tab and ] go to the next tab and [ to
-// the one before, r puts the row back to its default, u the whole tune
-// back to where the pane started, and Enter keeps it. A key that changes
+// the one before, the digits 1 to 5 straight to one, r puts the row back
+// to its default, u the whole tune back to where the pane started, Enter
+// (or s) keeps it, and q closes. A key that changes
 // what the sky should show asks for a preview; the text tab's keys are its
 // own (onTextKey), and coming to it changes nothing the sky shows.
 export function onTuneKey(state: PaneState, key: string, world: TextWorld = NO_TEXT_WORLD): { state: PaneState; action: TuneAction } {
   const { phase, row, tune } = state
-  if (key === 'tab' || key === ']' || key === '[') {
-    const next = around(TABS, state.isOnText ? TAB_TEXT : phase, key === '[' ? -1 : 1)
-    if (next === TAB_TEXT) return { state: { ...state, isOnText: true }, action: 'none' }
-
-    return { state: { ...state, phase: next, isOnText: false }, action: 'preview' }
-  }
+  if (key === 'q') return { state, action: 'close' }
+  if (key === 'tab' || key === ']' || key === '[') return toTab(state, around(TABS, tabOf(state), key === '[' ? -1 : 1))
+  const digit = TABS[Number(key) - 1]
+  if (/^[1-5]$/.test(key) && digit !== undefined) return digit === tabOf(state) ? { state, action: 'none' } : toTab(state, digit)
   if (state.isOnText) return onTextKey(state, key, world)
   const set = (value: number) => {
     const values = clampTune({ ...tune[phase], [row]: value })
@@ -472,7 +485,7 @@ export function onTuneKey(state: PaneState, key: string, world: TextWorld = NO_T
   if (key === 'left' || key === 'right') return set(tune[phase][row] + (key === 'left' ? -1 : 1) * LIMITS[row].step)
   if (key === 'r') return set(DEFAULT_TUNE[phase][row])
   if (key === 'u') return { state: { ...state, tune: state.opened }, action: 'preview' }
-  if (key === 'return') return { state, action: 'keep' }
+  if (key === 'return' || key === 's') return { state, action: 'keep' }
 
   return { state, action: 'none' }
 }
@@ -484,7 +497,7 @@ export function onTuneKey(state: PaneState, key: string, world: TextWorld = NO_T
 // frame, the last, so a keep followed by a move in the same frame still
 // reaches the hooks module, in the move's post.
 export type PaneLocal = { pane: PaneState; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null; isKeptLast: boolean }
-export type PanePost = { state: PaneState; action: 'preview' | 'text' | 'keep'; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null }
+export type PanePost = { state: PaneState; action: 'preview' | 'text' | 'keep' | 'close'; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null }
 
 // One key in the surface module: the next local state, and the post to
 // send, or null where neither the sky nor the text would change.
@@ -540,3 +553,4 @@ export function textBarOf(row: TextNumberRow, value: number): string {
 
   return '\u2593'.repeat(at) + '\u25cf' + '\u2591'.repeat(BAR - 1 - at)
 }
+
