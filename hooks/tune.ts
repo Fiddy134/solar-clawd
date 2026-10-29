@@ -231,8 +231,8 @@ export const TUNE_ROWS: readonly (keyof TuneValues)[] = ['brightness', 'shade', 
 export const ROW_LABELS: Record<keyof TuneValues, string> = { brightness: 'brightness', shade: 'text shade', colour: 'colour', warmth: 'warmth' }
 
 // The pane as the person has it: the part of the day and the row chosen,
-// the tune they are making, and the one it started from (the saved tune as
-// the pane opened, or as last kept).
+// the tune they are making, and the saved tune as the pane opened, which u
+// goes back to however often they keep.
 export type PaneState = { phase: Phase; row: keyof TuneValues; tune: TuneSettings; opened: TuneSettings }
 export type TuneAction = 'none' | 'preview' | 'keep'
 
@@ -254,9 +254,32 @@ export function onTuneKey(state: PaneState, key: string): { state: PaneState; ac
   if (key === 'tab' || key === ']' || key === '[') return { state: { ...state, phase: around(PHASES, phase, key === '[' ? -1 : 1) }, action: 'preview' }
   if (key === 'r') return set(DEFAULT_TUNE[phase][row])
   if (key === 'u') return { state: { ...state, tune: state.opened }, action: 'preview' }
-  if (key === 'return') return { state: { ...state, opened: tune }, action: 'keep' }
+  if (key === 'return') return { state, action: 'keep' }
 
   return { state, action: 'none' }
+}
+
+// What the pane's surface module keeps: the pane, how many keeps it has
+// made and the tune of the last, and whether the last key was Enter, so it
+// says kept until the next key. What it posts carries the keeps too: the
+// engine delivers one post a frame, the last, so a keep followed by a move
+// in the same frame still reaches the hooks module, in the move's post.
+export type PaneLocal = { pane: PaneState; keeps: number; keptTune: TuneSettings | null; isKeptLast: boolean }
+export type PanePost = { state: PaneState; action: 'preview' | 'keep'; keeps: number; keptTune: TuneSettings | null }
+
+// One key in the surface module: the next local state, and the post to
+// send, or null where the sky would show nothing new.
+export function onPaneKey(local: PaneLocal, key: string): { local: PaneLocal; post: PanePost | null } {
+  const { state, action } = onTuneKey(local.pane, key)
+  const isKeep = action === 'keep'
+  const next: PaneLocal = {
+    pane: state,
+    keeps: local.keeps + (isKeep ? 1 : 0),
+    keptTune: isKeep ? state.tune : local.keptTune,
+    isKeptLast: isKeep,
+  }
+
+  return { local: next, post: action === 'none' ? null : { state, action, keeps: next.keeps, keptTune: next.keptTune } }
 }
 
 // A value as the pane shows it: brightness as a percent, the others as

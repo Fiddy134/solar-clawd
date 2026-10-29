@@ -78,7 +78,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
       ],
     }
   })
-  on('process.run', (_, e) => {
+  // Files whose next move into place waits for the promise, as a slow disk
+  // does, so a test can act while the write is under way.
+  const slowMoves = new Map<string, Promise<void>>()
+  on('process.run', async (_, e) => {
     runs.push([...e.argv])
     const [command] = e.argv
     if (command && denied.has(command)) return { deny: 'denied in a test' }
@@ -91,6 +94,11 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     if (command === '/bin/rm') for (const path of e.argv.slice(2)) files.delete(path)
     if (command === '/bin/mv') {
       const [from, to] = e.argv.slice(-2) as [string, string]
+      const wait = slowMoves.get(to)
+      if (wait !== undefined) {
+        slowMoves.delete(to)
+        await wait
+      }
       if (files.has(from)) files.set(to, { ...files.get(from)!, mtimeMs: now })
       files.delete(from)
     }
@@ -125,7 +133,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, reads, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog,
+  return { files, reads, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
     helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
     tick: (ms: number) => (now = ms),
   }

@@ -9,8 +9,8 @@ import { withSettings } from './ghostty'
 import { luminance, mix, saturate } from './paint'
 import { sceneAt } from './shader'
 import { STOPS } from './sky'
-import { activeTune, asSettings, barOf, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, onTuneKey, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, TUNE_ROWS, TUNE_WORDS, tuneAt, tunedColour, valueText } from './tune'
-import type { PaneState, Phase, TuneSettings, TuneValues } from './tune'
+import { activeTune, asSettings, barOf, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, onPaneKey, onTuneKey, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, TUNE_ROWS, TUNE_WORDS, tuneAt, tunedColour, valueText } from './tune'
+import type { PaneLocal, PaneState, Phase, TuneSettings, TuneValues } from './tune'
 
 test('settings from an older Solar, broken or out of range give defaults and limits', () => {
   const old = asSettings('{"pace":"full"}')
@@ -174,10 +174,15 @@ test('keys move, clamp, reset, undo and keep', () => {
   const night = { phase: 'night' as Phase, row: 'brightness' as const, tune: OPENED, opened: OPENED }
   expect(press(['tab'], night).state.phase).toBe('dawn')
   expect(press(['['], { ...night, phase: 'dawn' }).state.phase).toBe('night')
-  // Enter keeps, and what it kept is where u goes back to from then on.
+  // Enter keeps; u still goes back to the tune the pane opened with, and
+  // Enter again would keep that.
   const kept = press(['left', 'return'])
   expect(kept.action).toBe('keep')
-  expect(kept.state.opened.day.brightness).toBe(0.95)
+  expect(kept.state.tune.day.brightness).toBe(0.95)
+  expect(kept.state.opened).toEqual(OPENED)
+  const undone = press(['left', 'return', 'u', 'return'])
+  expect(undone.action).toBe('keep')
+  expect(undone.state.tune).toEqual(OPENED)
   // Anything else does nothing.
   expect(press(['x'])).toEqual({ state: press([]).state, action: 'none' })
 })
@@ -204,4 +209,23 @@ test('the pane shows each value as the mock-up does, and no number in it reads a
   expect(TUNE_WORDS.notGhostty).toBe('Solar: tune is for the sky in Ghostty on a Mac.')
   expect(TUNE_WORDS.kept).toBe('kept')
   expect(TUNE_WORDS.hint).toBe('\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close')
+})
+
+test('each key starts from the last, and a keep travels in every post after it', () => {
+  const start: PaneLocal = { pane: { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED }, keeps: 0, keptTune: null, isKeptLast: false }
+  const keys = (list: string[]) => list.reduce(({ local }, key) => onPaneKey(local, key), { local: start, post: null as ReturnType<typeof onPaneKey>['post'] })
+  // Two lefts in a row are two steps.
+  expect(keys(['left', 'left']).local.pane.tune.day.brightness).toBe(0.9)
+  // A key that changes nothing the sky shows posts nothing.
+  expect(keys(['down']).post).toBeNull()
+  expect(keys(['left', 'down']).local.pane.row).toBe('shade')
+  // Enter counts a keep and carries what it kept; a move after it, posted
+  // in the same frame in its place, still carries the keep.
+  const kept = keys(['left', 'return'])
+  expect(kept.post).toEqual({ state: kept.local.pane, action: 'keep', keeps: 1, keptTune: kept.local.pane.tune })
+  expect(kept.local.isKeptLast).toBe(true)
+  const after = keys(['left', 'return', 'left'])
+  expect(after.post).toMatchObject({ action: 'preview', keeps: 1, keptTune: kept.local.pane.tune })
+  expect(after.post?.state.tune.day.brightness).toBe(0.9)
+  expect(after.local.isKeptLast).toBe(false)
 })

@@ -60,7 +60,7 @@ import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
 import { activeTune, asSettings, PHASES, phaseWeights, PREVIEW_LIFE_MS, PREVIEW_MS as TUNE_PREVIEW_MS, previewMoment, RENEW_MS, TUNE_PANE, TUNE_WORDS } from './tune'
-import type { PaneState, TuneAction } from './tune'
+import type { PanePost, PaneState } from './tune'
 import type { TunePaneProps } from './tune-pane'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
@@ -1292,41 +1292,47 @@ export const register: Register = on => {
   })
 
   // What the pane posts: a preview, written once the moves have rested a
-  // PREVIEW_MS, the last of them winning; or the tune kept for every
+  // PREVIEW_MS, the last of them winning; and a keep it has not heard of
+  // yet, which may ride in a later move's post: that tune kept for every
   // session, the preview gone, and the pane told so.
   on('ui.message', { requestId: TUNE_PANE }, async ($, e, next) => {
-    const message = e.data as { state?: PaneState; action?: TuneAction } | null
+    const message = e.data as Partial<PanePost> | null
     const state = message?.state
-    if (ghostty === null || tuning.props === null || state === undefined || typeof state !== 'object') return next(e)
+    if (ghostty === null || tuning.props === null || typeof state !== 'object' || state === null) return next(e)
     const sky = ghostty
     // The pane is drawn again from where it is, should its module start over.
     tuning.latest = state
     tuning.props = { ...tuning.props, start: state }
+    const keeps = message?.keeps
+    const keptTune = message?.keptTune
+    let answer = {}
+    if (typeof keeps === 'number' && keeps > tuning.props.kept && typeof keptTune === 'object' && keptTune !== null) {
+      tuning.due?.cancel()
+      tuning.due = null
+      await inTurn(async () => {
+        await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: keptTune })).tune, preview: null })
+        tuning.isPreviewing = false
+        refreshSky?.()
+      })
+      tuning.props = { ...tuning.props, kept: keeps }
+      answer = { props: tuning.props }
+    }
     if (message?.action === 'preview') {
       tuning.due ??= $.clock.after(TUNE_PREVIEW_MS, () => {
         tuning.due = null
-        const state = tuning.latest
-        if (state === null) return
+        const latest = tuning.latest
+        if (latest === null) return
+        // Counted as written before the write, so a close while it is under
+        // way, which waits its turn, takes it away again.
+        tuning.isPreviewing = true
         void inTurn(async () => {
-          await writePreview($, sky, state)
-          tuning.isPreviewing = true
+          await writePreview($, sky, latest)
           refreshSky?.()
         })
       })
-
-      return {}
     }
-    if (message?.action !== 'keep') return {}
-    tuning.due?.cancel()
-    tuning.due = null
-    await inTurn(async () => {
-      await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: state.tune })).tune, preview: null })
-      tuning.isPreviewing = false
-      refreshSky?.()
-    })
-    tuning.props = { ...tuning.props, kept: tuning.props.kept + 1 }
 
-    return { props: tuning.props }
+    return answer
   })
 
   // The pane closed (Escape, its close mark, a reload): what was not kept
@@ -1335,14 +1341,14 @@ export const register: Register = on => {
     tuning.due?.cancel()
     tuning.renew?.cancel()
     Object.assign(tuning, { props: null, latest: null, due: null, renew: null })
+    // Its turn comes after any write already asked for, and decides then.
     const sky = ghostty
-    if (sky !== null && tuning.isPreviewing) {
-      await inTurn(async () => {
-        await writeSettings($, sky, { preview: null })
-        tuning.isPreviewing = false
-        refreshSky?.()
-      })
-    }
+    await inTurn(async () => {
+      if (sky === null || !tuning.isPreviewing) return
+      await writeSettings($, sky, { preview: null })
+      tuning.isPreviewing = false
+      refreshSky?.()
+    })
 
     return next(e)
   })

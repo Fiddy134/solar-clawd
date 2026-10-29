@@ -1870,3 +1870,50 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   expect(saves()).toBe(quiet)
   expect(saved().preview).toBeNull()
 })
+
+test('a close while the first preview is still being written leaves no preview', async ($, on) => {
+  const panes = paneWorld(on)
+  const { clock, world } = await noonWorld($, on)
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  // The preview's move of sky.json into place waits until it is let go.
+  let letGo = () => {}
+  world.slowMoves.set(SETTINGS, new Promise<void>(resolve => (letGo = resolve)))
+  await ui.key({ key: 'left' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.slowMoves.has(SETTINGS)).toBe(false)
+  expect(asSettings(world.files.get(SETTINGS)?.text ?? '').preview).toBeNull()
+  // Closed while it is under way: the preview lands, and the close after it
+  // takes it away again.
+  const closing = closeTune($, panes)
+  await clock.advance(1)
+  letGo()
+  await closing
+  await clock.advance(1)
+  expect(asSettings(world.files.get(SETTINGS)?.text ?? '').preview).toBeNull()
+  await ui.unmount()
+})
+
+test('a keep the pane posted together with a later move is kept, and the move previewed', async ($, on) => {
+  const panes = paneWorld(on)
+  const { clock, world } = await noonWorld($, on)
+  const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  // What the module posts for Enter at 95 % and a left after it, when the
+  // frame delivers only the second.
+  const day = (brightness: number) => ({ ...DEFAULT_TUNE, day: { ...DEFAULT_TUNE.day, brightness } })
+  const state = { phase: 'day', row: 'brightness', tune: day(0.9), opened: DEFAULT_TUNE }
+  await ui.post({ state, action: 'preview', keeps: 1, keptTune: day(0.95) })
+  expect(saved().tune.day.brightness).toBe(0.95)
+  expect(saved().preview).toBeNull()
+  await clock.advance(PREVIEW_MS)
+  expect(saved().preview?.tune.day.brightness).toBe(0.9)
+  expect(saved().tune.day.brightness).toBe(0.95)
+  // Two keys in one go are two steps from where the pane last was, 90 %.
+  await Promise.all([ui.key({ key: 'left' }), ui.key({ key: 'left' })])
+  await clock.advance(PREVIEW_MS)
+  expect(saved().preview?.tune.day.brightness).toBe(0.8)
+  await closeTune($, panes)
+  await ui.unmount()
+})
