@@ -125,15 +125,20 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - Arken skickas till Vincent.
 
    Fråga honom om det ska vara en workflow eller inline.
-3. **Prova temana live (Vincent):**
+3. **Från Vincents liveprov 2026-10-29 natt:**
+   - floor i 400 pt ser bra ut på Mac-skärmen (Vincent). Dörrgubben som stod fast är rättad (`7a1c070`).
+   - **Att rätta härnäst: skärmens skala.** `stagePxOf` frågar `NSScreen.mainScreen.backingScaleFactor` en gång (sessionsstart, temabyte). Ett fönster på den externa skärmen (skala 1) med skalan avläst som 2 fick hallen dubbelt så bred som marginalen, under texten. Förslag: fråga om skalan när Ghostty är framme, var ~30 s, och skriv om shadern när den ändras. Fönster på två skärmar samtidigt kan inte båda bli rätt (en shader för alla).
+   - **Också öppet:** sessioner i fönster med olika marginal (gammalt 240, nytt 400) är oense om `STAGE_PX` (`openPaddingPt` per session) och kan skriva över varandras shader; en omladdning av modden läser om marginalen från konfigurationen. Förslag: varje session sparar fönstrets marginal i `runtime/padding-<id>`, stagebredden blir den smalaste bland levande sessioner.
+   - Trottoaren i floor ligger med avsikt under textens sista kolumner (dämpad med `sky_under`); Vincent har inte sagt att den stör.
+4. **Prova temana live (Vincent):**
    - **Först, i `.claude/hooks/mirror.sh` (bara Vincent):** spegeln kopierar inte `themes/`. Ändra raden `for part in hooks assets types; do` till `for part in hooks assets types themes; do`, sedan armera. Utan det svarar `/solar theme floor` "no theme called".
    - `/solar theme floor`, `/solar theme terminal`, `/solar theme fyr`. Marginalen följer temat i nya fönster; i ett öppet fönster ritas staget inte bredare än fönstrets padding, så öppna ett nytt fönster (⌘N) för att se hela temat.
    - floor hämtar kurser från Cboe/Binance/Coinbase; villkoren innan leverans är fortfarande öppna.
    - Mät gärna fyr/floor/terminal: `tools/measure/gpu.sh row .:day-clear@floor tick24 focused …` (se gpu.sh-huvudet).
    - Push av 0.9.0 efter Vincents ja.
    - **Sedan en steg-för-steg-guide för att skapa ett tema** (processen, inte den tekniska THEME-GUIDE), som ett levande dokument som förbättras för varje nytt tema. Claudes utgångspunkt efter v1–v3: visionen inline med Vincent (foton, skisser i rätt storlek, design med "ska läsas som"-lista); motorns luckor först; bygg i lager (grova former → former → detaljer → rörelse → natt) med render och bench per lager; Vincent tittar efter de grova formerna; det mekaniska (lint, storlek, bench, memesiffror) i skript; domaren mot en checklista "läses varje sak som det den är"; två korta rättningsrundor. Workflow/subagenter för detaljarbetet efter Vincents kontrollpunkt, inline för smakbesluten.
-4. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
-5. **Senare:**
+5. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
+6. **Senare:**
    - runda 3 av F7 om guiden ska bevisas
    - markeringsrundan
    - nivåer efter dator
