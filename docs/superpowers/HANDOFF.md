@@ -1,6 +1,6 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 kväll → nästa. På `main` (**0.11.1**, `4871a1a`): `/solar tune` i raden ovanför prompten, mergat från `tune-band` och **godkänt av Vincent live** ("bra för nu"). **Inte pushat:** `origin/main` står på `19cc1ca` (0.9.3); 30 commits från `e4bfc4c` och framåt är lokala. Push bara efter Vincents ja, som `Fiddy134`.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 kväll → nästa. På `main` (**0.11.1**, `4871a1a`): `/solar tune` i raden ovanför prompten, mergat från `tune-band` och **godkänt av Vincent live** ("bra för nu"). **Pushat** 2026-10-29 som `Fiddy134`: `origin/main` står på samma commit som `main`. Push bara efter Vincents ja.
 
 ## Läge
 
@@ -30,7 +30,6 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 ## Väntar på Vincents ord
 
-- **Push** av allt från `e4bfc4c` (30 commits, till 0.11.1).
 - **`assets/demo.gif`** visar fortfarande Clawd i raden; `tools/preview/gif.sh` spelar in den på nytt.
 - **Cboes villkor** innan ett tema med `"market": true` levereras.
 - **Weight-reglaget:** behålla eller ta bort.
@@ -52,10 +51,9 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
 
 ## Nästa steg
 
-1. **Push** efter Vincents ja (som `Fiddy134`).
-2. **De mindre fynden** ovan, i en egen omgång i en worktree, med test först.
-3. **`demo.gif`** och `plugin.json`:s beskrivning utan Clawd i raden.
-4. **Senare:** `floor` v3 och `terminal` v3, processguidens steg 5–9, runda 3 av F7, markeringsrundan, nivåer efter dator, helhetsgranskningen av GPU-arbetet, F6, idéerna ur 1.4.
+1. **De mindre fynden** ovan, i en egen omgång i en worktree, med test först.
+2. **`demo.gif`** och `plugin.json`:s beskrivning utan Clawd i raden.
+3. **Senare:** `floor` v3 och `terminal` v3, processguidens steg 5–9, runda 3 av F7, markeringsrundan, nivåer efter dator, helhetsgranskningen av GPU-arbetet, F6, idéerna ur 1.4.
 
 Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Ta <nästa steg>."*
 
