@@ -888,13 +888,17 @@ Who whoAt(vec2 p, Hall h, Market m, int agents, int crowd, int state, int resPos
     w.look = -1;
     return w;
   }
+  // The first 6 s of every half minute someone walks through, in from the
+  // sidewalk or out onto it, and then the doorway is empty.
   float doorY = h.doorBot - 0.6 * u;
-  if (abs(p.x - h.left) < 2.2 * u && p.y > doorY - 3.0 * u && p.y < doorY + u) {
+  float through = mod(iTime, 30.0) / 6.0;
+  if (through < 1.0 && abs(p.x - h.left) < 3.0 * u && p.y > doorY - 3.0 * u && p.y < doorY + u) {
     float pick = rand(int(mod(floor(iTime / 30.0), 1000.0)) * 7 + 3);
     bool isMessenger = pick < 0.35;
-    w.feet = vec2(h.left + 0.3 * u, doorY);
+    float way = pick < 0.7 ? 1.0 : -1.0;
+    w.feet = vec2(h.left + way * mix(-2.2, 2.2, through) * u, doorY);
     w.stride = int(floor(iTime * 3.0)) % 2;
-    w.look = pick < 0.7 ? 1 : -1;
+    w.look = int(way);
     w.gear = isMessenger ? GEAR_CAP : GEAR_NONE;
     w.coat = isMessenger ? WOOD : mix(INK_BLUE, CREAM, 0.2);
     w.pose = isMessenger ? POSE_POINT : POSE_STAND;
