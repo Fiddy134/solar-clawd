@@ -5,8 +5,10 @@ import { asMarketFile, marketAt } from './market'
 import type { Market } from './market'
 import type { Work } from './activity'
 import { markOf, UNMARK_TAB } from './mark'
-import { asPace, canTick, PACE_HZ, skyRules } from './pace'
+import { canTick, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
+import { asSettings } from './tune'
+import type { Settings } from './tune'
 import type { ShaderParams } from './shader'
 import { STAGE_WIDTHS } from './themes/theme'
 import { staleFiles } from './tidy'
@@ -537,9 +539,10 @@ export function scaleAskedAt(text: string): number | null {
   return Number.isFinite(at) && at > 0 ? at : null
 }
 
-// The sky's pace, as the settings file says it; spar for anything else.
-export async function readPace($: EngineInterface, ghostty: Ghostty): Promise<Pace> {
-  return asPace(await $.fs.read(ghostty.settings).catch(() => ''))
+// The settings the file says (pace, tune, preview); defaults, and spar, for
+// anything else.
+export async function readSettings($: EngineInterface, ghostty: Ghostty): Promise<Settings> {
+  return asSettings(await $.fs.read(ghostty.settings).catch(() => ''))
 }
 
 // The theme the settings file names (/solar theme): null where it names
@@ -560,9 +563,12 @@ export async function readThemeName($: EngineInterface, ghostty: Ghostty): Promi
   return themeNameOf(await $.fs.read(ghostty.settings).catch(() => ''))
 }
 
+// What a write may set: any of the settings, and the theme's name.
+export type SettingsPatch = Partial<Settings> & { theme?: string | null }
+
 // Sets some of the settings file's keys and keeps the rest: /solar full
 // keeps the theme, /solar theme the pace.
-export function withSettings(text: string, patch: Record<string, unknown>): string {
+export function withSettings(text: string, patch: SettingsPatch): string {
   let value: unknown
   try {
     value = JSON.parse(text)
@@ -574,7 +580,7 @@ export function withSettings(text: string, patch: Record<string, unknown>): stri
   return JSON.stringify({ ...kept, ...patch })
 }
 
-export async function writeSettings($: EngineInterface, ghostty: Ghostty, patch: Record<string, unknown>): Promise<void> {
+export async function writeSettings($: EngineInterface, ghostty: Ghostty, patch: SettingsPatch): Promise<void> {
   const text = await $.fs.read(ghostty.settings).catch(() => '')
   await writeWhole($, ghostty.settings, withSettings(text, patch), ghostty.id)
 }

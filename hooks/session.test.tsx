@@ -11,6 +11,7 @@ import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
+import { asSettings, DEFAULT_TUNE } from './tune'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
 import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
@@ -1029,6 +1030,16 @@ test('/solar full and spar are saved for every session, and on Ghostty 1.3 say w
   await solar('vsync off')
   expect(await solar('spar')).toBe(SPAR)
   expect(world.files.get(SETTINGS)?.text).toBe('{"pace":"spar"}')
+})
+
+test('/solar spar keeps a tune already saved', async ($, on) => {
+  const { world, solar } = await paceWorld($, on, '1.4.0')
+  const tune = { ...DEFAULT_TUNE, night: { ...DEFAULT_TUNE.night, brightness: 0.7 } }
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', tune }), mtimeMs: 0 })
+  await solar('spar')
+  const saved = asSettings(world.files.get(SETTINGS)!.text)
+  expect(saved.pace).toBe('spar')
+  expect(saved.tune).toEqual(tune)
 })
 
 // A theme from elsewhere in the plugin's themes/: fyr's own GLSL under

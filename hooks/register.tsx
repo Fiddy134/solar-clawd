@@ -20,7 +20,7 @@ import {
   includeVsync,
   isIncluded,
   isVsyncOff,
-  readPace,
+  readSettings,
   readThemeName,
   reloadGhostty,
   remark,
@@ -575,7 +575,7 @@ export const register: Register = on => {
       const idle = await idleMs($, isOnLinux)
       activity.idleMs = idle
       if (idle !== null) activity.isAway = idle >= AWAY_MS
-      activity.pace = await readPace($, sky)
+      activity.pace = (await readSettings($, sky)).pace
       power.isOnBattery = await isOnBattery($, isOnLinux)
       $.clock.every(BATTERY_MS, () => {
         void (async () => {
@@ -687,7 +687,7 @@ export const register: Register = on => {
         // What the sky's ticks depend on, which another session's /solar
         // or the person may have changed: the sky is updated at once.
         if (ghostty !== null) {
-          activity.pace = await readPace($, ghostty)
+          activity.pace = (await readSettings($, ghostty)).pace
           // Another session's /solar theme: this one follows. A file that
           // says nothing readable changes nothing, and a theme refused once
           // is not checked again every few seconds.

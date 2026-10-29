@@ -5,6 +5,7 @@
 // whenever the sky shows, spar where today's sky would move. Where the mod
 // cannot tick, the rules are today's.
 
+import { asSettings } from './tune'
 import { animationOf } from './waiting'
 import type { Waiting } from './waiting'
 
@@ -21,13 +22,7 @@ export type Pace = 'full' | 'spar'
 
 // The pace a settings file says, spar for anything it does not say plainly.
 export function asPace(text: string): Pace {
-  try {
-    const value = JSON.parse(text) as unknown
-
-    return typeof value === 'object' && value !== null && (value as { pace?: unknown }).pace === 'full' ? 'full' : 'spar'
-  } catch {
-    return 'spar'
-  }
+  return asSettings(text).pace
 }
 
 // Ghostty's major and minor version from TERM_PROGRAM_VERSION (1.3.1,
