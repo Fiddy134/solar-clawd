@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** A keyboard pane, `/solar tune`, where anyone sets the sky's brightness, text shade, colour and warmth for dawn, day, dusk and night, and watches the sky follow while they change it.
+**Goal:** A keyboard pane, `/solar tune`, where anyone sets the sky's brightness, text shade, colour and warmth for dawn, day, dusk and night, and Ghostty's text (size, weight, line height, font, faint text, the gap to the stage) once for all hours and themes, and watches both follow while they change them.
 
 **Architecture:** One pure module, `hooks/tune.ts`, owns the settings: their shape, limits, the phase weights from the sun, and the blend into the four numbers a moment needs. `skyShader` bakes those numbers in as `TUNE` (and `DEMO_TUNE` per demo scene); the GLSL applies them only at the sky's own gradient and in the rim round text. Settings and an unsaved preview live in the shared `sky.json` beside `pace`, read at every sky update so every session draws the same sky. The pane is a `Client` surface module that posts key presses to the hooks module, which writes the preview and the saved values.
 
@@ -30,6 +30,7 @@
 3. `/solar full` or `/solar spar` after tuning keeps the tune, and saving a tune keeps the pace. (Task 2 tests.)
 4. `/solar demo` with a tuned day and an untuned night: the demo's day is dimmed and its night is not, through the whole 48 s. (Task 3 tests.)
 5. `/solar tune` outside Ghostty (iTerm2, Linux, plain terminal): one line saying it is Ghostty's, no pane, nothing written. (Task 5 tests.)
+6. A text value Ghostty refuses never reaches the config, so Ghostty's error window never opens; closing the pane without keeping leaves the text as it was; the person's own `font-family` list is replaced only when they chose a font. (Task 5b tests.)
 
 ---
 
@@ -42,7 +43,7 @@
 **Interfaces:**
 - Produces: a decision recorded here: `reload` (the live path below) or `palette` (stop and replan).
 
-- [ ] **Step 1: Write `tools/measure/reload.sh <interval-ms> <seconds>`** (zsh, header comment like `tools/measure/gpu.sh`). It copies the live shader from `~/Library/Application Support/solar-clawd/runtime/` (find the file name in `hooks/ghostty.ts`), then for `<seconds>` alternates two versions every `<interval-ms>`: the original, and one with `sky = tone(sky, k);` replaced by `sky = tone(sky, k * 0.72);`, each written by write-then-rename as `hooks/ghostty.ts` does, each followed by the `osascript` `reload_config` call from `RELOAD_GHOSTTY`. A running Solar session rewrites the shader at its next update (every 10 s) when the text differs; that blip is expected and the script's next write follows within the interval. It samples Ghostty's CPU with `top -pid <ghostty pid> -l <n> -s 1 -stats pid,cpu` alongside, and puts the original back on exit (trap). It prints mean CPU and the count of reloads that `osascript` reported as failed.
+- [ ] **Step 1: Write `tools/measure/reload.sh <interval-ms> <seconds>`** (zsh, header comment like `tools/measure/gpu.sh`). It copies the live shader from `~/Library/Application Support/solar-clawd/runtime/` (find the file name in `hooks/ghostty.ts`), then for `<seconds>` alternates two versions every `<interval-ms>`: the original, and one with `sky = tone(sky, k);` replaced by `sky = tone(sky, k * 0.72);`, each written by write-then-rename as `hooks/ghostty.ts` does, each followed by a reload as `reloadGhostty` in `hooks/ghostty.ts` makes it on a Mac since 0.9.2: `kill -USR2` to the app's pid (`ps -axo pid=,ppid=,comm=`, the line whose parent is 1 and whose command ends in `/Ghostty.app/Contents/MacOS/ghostty`). A running Solar session rewrites the shader at its next update (every 10 s) when the text differs; that blip is expected and the script's next write follows within the interval. It samples Ghostty's CPU with `top -pid <ghostty pid> -l <n> -s 1 -stats pid,cpu` alongside, and puts the original back on exit (trap). It prints mean CPU and the count of signals `kill` reported as failed. Note in the result that the mod itself already reloads Ghostty every 3 to 10 seconds (Ghostty's log, 2026-10-29), and that every reload may recompile the shader in every open tab (`docs/superpowers/notes/text-tuning-research.md`); measure with two tabs open as well as one.
 
 - [ ] **Step 2: Check it without Ghostty**
 
@@ -185,6 +186,45 @@ Expected: the three new tests fail (missing module, then wrong values).
 - [ ] **Step 4: Run tests and tsc**; green. Ask Vincent to try it in Ghostty once the mirror carries the branch (he arms it; you do not), and note what he says here.
 
 - [ ] **Step 5: Commit**, with the version bump to `0.10.0`, the README's `/solar` list, and `/solar tune` in `argumentHint` and the help line.
+
+---
+
+### Task 5b: The text tab
+
+Ghostty's own text settings, one set for every hour and every theme (spec, "Texten"; research in `docs/superpowers/notes/text-tuning-research.md`). They are not the shader's: they go into a Ghostty include of their own and reach Ghostty through the same reload.
+
+**Files:**
+- Modify: `hooks/tune.ts` (the values, limits, lines), `hooks/ghostty.ts` (the text include, validation, the font-size reset, the gap in the padding line), `hooks/register.tsx` (the pane's text tab, the reload), `hooks/tune-pane.tsx`
+- Test: `hooks/tune.test.tsx`, `hooks/session.test.tsx`
+
+**Interfaces:**
+- Produces, in `hooks/tune.ts`:
+  - `export type TextValues = { size: number | null; weight: number | null; lineHeight: number | null; font: string | null; faint: number | null; gap: number }`. `null` means untouched: the person's own config decides, and no line is written.
+  - `export const TEXT_LIMITS`: size 8–28 step 0.5; weight 0–255 step 32 (any number turns `font-thicken` on, `null` leaves it off); lineHeight 0–40 step 5 (percent, up only: 0 is today's); faint 0.5–1 step 0.1 (up only from Ghostty's 0.5); gap 0–120 step 8 points (0 is today's).
+  - `Settings` gains `text: TextValues` (default all `null`, `gap: 0`); `asSettings` reads it as it reads `tune`, clamping and snapping, and an unknown font is kept as text.
+  - `export function textLines(text: TextValues): string[]`: `font-size = 14.5`; `font-thicken = true` and `font-thicken-strength = 128`; `adjust-cell-height = 10%`; `font-family = ""` then `font-family = <name>` (so the choice replaces the person's list); `faint-opacity = 0.8`; nothing for a `null`, nothing for the gap.
+- Produces, in `hooks/ghostty.ts`:
+  - The text lines in `runtime/text.ghostty`, included by `config-file = ?<runtime>/text.ghostty` beside the mod's own include line, the way `vsync.ghostty` is (`includeVsync`). The mod never empties it when the sky goes: these are the person's Ghostty settings, kept while no session runs.
+  - Before each write, `ghostty +validate-config --config-file=<temp>` with the app's binary (the path in the `ps` line `reloadGhostty` finds); its output piped, not sent to a file. On a failure the old file stays and the pane names the key. Then write-then-rename, and a reload.
+  - After a write that changed `size`: `osascript -l JavaScript` running `reset_font_size` on every terminal of the app (as ghostty-designer does, `crates/host/src/ghostty.rs:313-337`), not awaited, since macOS asks the person once for Automation. Without it a window whose size was changed by hand keeps its size.
+  - The gap: the mod's padding line becomes `window-padding-x = <left>,<stagePt + gap>`; `restageGhostty` and `includeInGhostty` take it. It reaches new windows only, as the stage's width does.
+- Behaviour, in the pane:
+  - A fifth tab, `text`, after `night`. Rows: size, weight, line height, font, faint text, gap. Each untouched row shows the person's own value from `ghostty +show-config` (read once as the pane opens), dimmed, with `own`.
+  - ← → move a row by its step, the font row through `ghostty +list-fonts`'s families. A change is written at most once per `PREVIEW_MS`, the last one winning. `⏎` keeps (`writeSettings({ text })`); `r` sets the row back to untouched; `u` returns every row to what it was when the pane opened. Escape or the close mark write the opened values back, so nothing unkept stays.
+  - The gap row says `new windows` beside its value.
+- Not here: `minimum-contrast` (it does not see the sky and pushes grey text towards white), and a wider darkening of the sky behind text, which is a [hypotes] for frames first (spec, "Texten").
+
+- [ ] **Step 1: Write the failing tests:**
+  - `hooks/tune.test.tsx`: `'text values clamp, snap and stay untouched as null'` (a `sky.json` with no `text`, with a size of 40, with a lineHeight of −5 and with a font of `"Iosevka"`: 28, 0, kept); `'textLines writes only what was touched, the font list cleared first'` (all null gives `[]`; a font gives `['font-family = ""', 'font-family = Iosevka']`).
+  - `hooks/session.test.tsx`: `'a text change is validated, written to its own include and reloaded'` (Ghostty world: `+validate-config` runs before `text.ghostty` is renamed into place, then one `kill -USR2`); `'a text change Ghostty refuses is not written'` (`+validate-config` failing: `text.ghostty` as before, no reload); `'a change of size resets the font size of every terminal'` (one `osascript -l JavaScript` with `reset_font_size`; none for a change of weight); `'the gap widens the padding line for new windows'` (gap 16 on a 400-point stage: `window-padding-x = 2,416`); `'hiding the sky keeps the text include'`.
+
+- [ ] **Step 2: Run them and see them fail.**
+
+- [ ] **Step 3: Implement**, reusing `writeSettings`, the reload and the include helpers.
+
+- [ ] **Step 4: Run tests and tsc**; green. Ask Vincent to try the text tab live (he arms the mirror): a change of size, of weight and of line height in an open window, and a new window for the gap. Note what he says here, and whether `font-family` and `adjust-cell-height` reflow a running Claude Code cleanly (research, "Ej verifierat" 2).
+
+- [ ] **Step 5: Commit.**
 
 ---
 
