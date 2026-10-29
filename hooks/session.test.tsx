@@ -1726,7 +1726,7 @@ test('a place chosen in another session is followed here', async ($, on) => {
 test("another live session's storm, aurora, pinned time or demo is drawn here, and goes with that session", TICKING, async ($, on) => {
   const { clock, world, runtime, shader } = await noonWorld($, on)
   const wind = windIn(shader())
-  const moment = { by: 'other', pinnedAt: null, demoFrom: null, isWindForced: true, isAuroraForced: false }
+  const moment = { by: 'other', at: clock.now(), pinnedAt: null, demoFrom: null, isWindForced: true, isAuroraForced: false }
   world.files.set(`${runtime}/alive-other`, { text: String(clock.now()), mtimeMs: clock.now() })
   world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', moment }), mtimeMs: clock.now() })
   await clock.advance(10_100)
@@ -1735,6 +1735,33 @@ test("another live session's storm, aurora, pinned time or demo is drawn here, a
   world.files.set(`${runtime}/alive-other`, { text: String(clock.now() - 10 * 60_000), mtimeMs: clock.now() - 10 * 60_000 })
   await clock.advance(10_100)
   expect(windIn(shader())).toBe(wind)
+})
+
+test("/solar storm in one session turns off the storm another session turned on, at once", async ($, on) => {
+  const { clock, world, runtime } = await noonWorld($, on)
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+  world.files.set(`${runtime}/alive-other`, { text: String(clock.now()), mtimeMs: clock.now() })
+  const storm = { by: 'other', at: clock.now(), pinnedAt: null, demoFrom: null, isWindForced: true, isAuroraForced: true }
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', moment: storm }), mtimeMs: clock.now() })
+  expect(await solar('storm')).toBe('Solar: the wind as it really is.')
+  expect(await solar('aurora')).toBe('Solar: aurora only when there is one.')
+})
+
+test('a read of the settings from before /solar storm does not undo it', async ($, on) => {
+  const { clock, world, runtime } = await noonWorld($, on)
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+  expect(await solar('storm')).toBe('Solar: a storm, to see the wind.')
+  // What a read begun before the storm was written finds: no moment, or an
+  // older one of another live session's. Neither is taken over the storm.
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full' }), mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  world.files.set(`${runtime}/alive-other`, { text: String(clock.now()), mtimeMs: clock.now() })
+  const older = { by: 'other', at: clock.now() - 60_000, pinnedAt: null, demoFrom: null, isWindForced: false, isAuroraForced: false }
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', moment: older }), mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(await solar('storm')).toBe('Solar: the wind as it really is.')
 })
 
 test('/solar storm, aurora, a pinned time, demo and now share what they set, with this session as its keeper', async ($, on) => {

@@ -600,15 +600,29 @@ export const register: Register = on => {
     Object.assign(where, taken)
     whereAt = at
   }
-  // The moment and weather a live session set, this one's or another's;
-  // as they really are when none did (readSettings).
+  // Which session set the moment this one draws, and when: a read begun
+  // before a newer moment was set here is not taken over it.
+  let momentFrom: { by: string | null; at: number } = { by: null, at: -Infinity }
+  // The moment and weather a live session set, this one's or another's,
+  // when newer than what this one draws; as they really are once that
+  // session has ended (readSettings), but never over this session's own.
   const takeMoment = (moment: Moment | null) => {
+    if (moment === null) {
+      if (momentFrom.by === null || momentFrom.by === ghostty?.id) return
+      momentFrom = { by: null, at: -Infinity }
+    } else if (moment.at <= momentFrom.at) return
+    else momentFrom = { by: moment.by, at: moment.at }
     pinnedAt = moment?.pinnedAt ?? null
     demoFrom = moment?.demoFrom ?? null
     isWindForced = moment?.isWindForced ?? false
     isAuroraForced = moment?.isAuroraForced ?? false
   }
-  const momentNow = () => ({ pinnedAt, demoFrom, isWindForced, isAuroraForced })
+  // The moment as this session has just set it, at `at`, to share.
+  const setMoment = (at: number) => {
+    momentFrom = { by: ghostty?.id ?? null, at }
+
+    return { at, pinnedAt, demoFrom, isWindForced, isAuroraForced }
+  }
 
   // Whether Ghostty's sky shows through the band, and with it the context
   // window on the keeper's line.
@@ -1319,17 +1333,19 @@ export const register: Register = on => {
     }
 
     if (word === 'demo') {
+      if (ghostty !== null) takeMoment((await readSettings($, ghostty)).moment)
       demoFrom = now
-      await shareMoment($, ghostty, momentNow())
+      await shareMoment($, ghostty, setMoment(now))
       await update($, isHidden, () => false)
 
       return { text: 'Solar: a whole day in 48 seconds.' }
     }
 
     if (word === 'now') {
+      if (ghostty !== null) takeMoment((await readSettings($, ghostty)).moment)
       demoFrom = null
       pinnedAt = null
-      await shareMoment($, ghostty, momentNow())
+      await shareMoment($, ghostty, setMoment(now))
 
       return { text: 'Solar: following the sun again.' }
     }
@@ -1526,15 +1542,17 @@ export const register: Register = on => {
     }
 
     if (word === 'aurora') {
+      if (ghostty !== null) takeMoment((await readSettings($, ghostty)).moment)
       isAuroraForced = !isAuroraForced
-      await shareMoment($, ghostty, momentNow())
+      await shareMoment($, ghostty, setMoment(now))
 
       return { text: isAuroraForced ? 'Solar: aurora on, to see how it looks.' : 'Solar: aurora only when there is one.' }
     }
 
     if (word === 'storm') {
+      if (ghostty !== null) takeMoment((await readSettings($, ghostty)).moment)
       isWindForced = !isWindForced
-      await shareMoment($, ghostty, momentNow())
+      await shareMoment($, ghostty, setMoment(now))
 
       return { text: isWindForced ? 'Solar: a storm, to see the wind.' : 'Solar: the wind as it really is.' }
     }
@@ -1570,9 +1588,10 @@ export const register: Register = on => {
         const day = at[1]
           ? Date.UTC(Number(at[1]), Number(at[2]) - 1, Number(at[3])) - (where.offsetMs ?? 3_600_000)
           : localMidnight(now, where.offsetMs)
+        if (ghostty !== null) takeMoment((await readSettings($, ghostty)).moment)
         demoFrom = null
         pinnedAt = day + (hour * 60 + minute) * 60_000
-        await shareMoment($, ghostty, momentNow())
+        await shareMoment($, ghostty, setMoment(now))
         await update($, isHidden, () => false)
 
         return { text: `Solar: pinned at ${at[1] ? `${at[1]}-${at[2]}-${at[3]} ` : ''}${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}.` }

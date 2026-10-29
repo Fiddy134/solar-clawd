@@ -73,18 +73,18 @@ export type Settings = {
   // not know of them would write the sky without them back.
   forced: Forced[]
   // The sky's moment and weather as a session set them (/solar HH:MM,
-  // demo, now, storm, aurora), with that session's id: they hold for
-  // every session while it lives, as they held for it alone before.
+  // demo, now, storm, aurora), with that session's id and when: they hold
+  // for every session while it lives, as they held for it alone before.
   moment: Moment | null
 }
 
-export type Moment = { by: string; pinnedAt: number | null; demoFrom: number | null; isWindForced: boolean; isAuroraForced: boolean }
+export type Moment = { by: string; at: number; pinnedAt: number | null; demoFrom: number | null; isWindForced: boolean; isAuroraForced: boolean }
 
 function asMoment(value: unknown): Moment | null {
   if (!isObject(value) || typeof value.by !== 'string') return null
   const at = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
 
-  return { by: value.by, pinnedAt: at(value.pinnedAt), demoFrom: at(value.demoFrom), isWindForced: value.isWindForced === true, isAuroraForced: value.isAuroraForced === true }
+  return { by: value.by, at: at(value.at) ?? 0, pinnedAt: at(value.pinnedAt), demoFrom: at(value.demoFrom), isWindForced: value.isWindForced === true, isAuroraForced: value.isAuroraForced === true }
 }
 
 const KEYS = Object.keys(LIMITS) as (keyof TuneValues)[]
