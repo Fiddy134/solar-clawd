@@ -1,6 +1,6 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 natt, session `a7764813` (Opus 5.5, auto mode). Workflowen `v3-teman` är klar, `/solar theme` byggt, allt på `main` (0.9.0, `59801c5`), **inte pushat**. Vincent ska prova temana live.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 natt, session `a7764813` (Opus 5.5, auto mode) → nästa. På `main` (0.9.0, `f90386d` + handoff): temamotorn, floor och terminal, `/solar theme`, skalan från Ghostty-fönstrets skärm. **Inget av 0.9.0 är pushat**; Vincent har provat floor och terminal live och sagt att de fungerar bra på Mac-skärmen, och skalrättningen fungerade på båda skärmarna. Spegeln kopierar nu `themes/` (Vincent ändrade `mirror.sh`).
 
 ## Läge
 
@@ -146,7 +146,7 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - F6
    - idéerna ur 1.4: fokus per terminal och OSC 7501
 
-Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Nu bygger vi /solar tune efter planen, med subagenter."*
+Första meningen i den nya sessionen kan vara: *"Läs docs/superpowers/HANDOFF.md. Pusha 0.9.0, sedan steg-för-steg-guiden för teman"* eller *"… nu bygger vi /solar tune efter planen, med subagenter."*
 
 ## Hur handoffen används
 
