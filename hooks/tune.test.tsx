@@ -1,6 +1,6 @@
 // The tune settings: their limits, what a settings file may say, how a
 // saved tune and a saved pace keep each other, the parts of the day they
-// follow, and the colour they make of the sky.
+// follow, the colour they make of the sky, and the pane's keys and words.
 
 import { expect, test } from 'claude-code/testing'
 
@@ -9,8 +9,8 @@ import { withSettings } from './ghostty'
 import { luminance, mix, saturate } from './paint'
 import { sceneAt } from './shader'
 import { STOPS } from './sky'
-import { activeTune, asSettings, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, tuneAt, tunedColour } from './tune'
-import type { Phase, TuneSettings, TuneValues } from './tune'
+import { activeTune, asSettings, barOf, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, onTuneKey, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, TUNE_ROWS, TUNE_WORDS, tuneAt, tunedColour, valueText } from './tune'
+import type { PaneState, Phase, TuneSettings, TuneValues } from './tune'
 
 test('settings from an older Solar, broken or out of range give defaults and limits', () => {
   const old = asSettings('{"pace":"full"}')
@@ -136,4 +136,72 @@ test("a preview's moment is today's sunrise, noon, sunset or midnight, and now w
   for (const ms of [Date.UTC(2026, 11, 21, 12), Date.UTC(2026, 5, 21, 12)]) {
     for (const phase of PHASES) expect(previewMoment(phase, ms, svalbard)).toBe(ms)
   }
+})
+
+// The pane opened on the day with brightness chosen, the saved tune as it
+// opened; keys pressed in turn.
+const OPENED: TuneSettings = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
+const press = (keys: string[], from: PaneState = { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED }) =>
+  keys.reduce<{ state: PaneState; action: string }>(({ state }, key) => onTuneKey(state, key), { state: from, action: 'none' })
+
+test('keys move, clamp, reset, undo and keep', () => {
+  // Right at today's brightness stays there: it only lowers the sky.
+  expect(press(['right']).state.tune.day.brightness).toBe(1)
+  const left = press(['left'])
+  expect(left.state.tune.day.brightness).toBe(0.95)
+  expect(left.action).toBe('preview')
+  expect(left.state.tune.dusk).toEqual(OPENED.dusk)
+  // Far down it stops at the limit.
+  expect(press(Array(20).fill('left')).state.tune.day.brightness).toBe(LIMITS.brightness.min)
+  // r puts the chosen row back to the default.
+  expect(press(['left', 'left', 'r']).state.tune.day.brightness).toBe(DEFAULT_TUNE.day.brightness)
+  // The rows, wrapping; each moves by its own step.
+  expect(press(['down']).state.row).toBe('shade')
+  expect(press(['up']).state.row).toBe('warmth')
+  expect(press(['down', 'down', 'down', 'down']).state.row).toBe('brightness')
+  expect(press(['down', 'right']).state.tune.day.shade).toBe(1.05)
+  expect(press(['up', 'left']).state.tune.day.warmth).toBe(-0.25)
+  // u takes every phase back to how the pane opened.
+  const moved = press(['left', 'tab', 'down', 'right', 'tab', 'up', 'left'])
+  expect(moved.state.tune).not.toEqual(OPENED)
+  expect(onTuneKey(moved.state, 'u').state.tune).toEqual(OPENED)
+  expect(onTuneKey(moved.state, 'u').action).toBe('preview')
+  // The phases, both ways and wrapping.
+  expect(press(['tab']).state.phase).toBe('dusk')
+  expect(press([']']).state.phase).toBe('dusk')
+  expect(press(['[']).state.phase).toBe('dawn')
+  expect(press(['tab']).action).toBe('preview')
+  const night = { phase: 'night' as Phase, row: 'brightness' as const, tune: OPENED, opened: OPENED }
+  expect(press(['tab'], night).state.phase).toBe('dawn')
+  expect(press(['['], { ...night, phase: 'dawn' }).state.phase).toBe('night')
+  // Enter keeps, and what it kept is where u goes back to from then on.
+  const kept = press(['left', 'return'])
+  expect(kept.action).toBe('keep')
+  expect(kept.state.opened.day.brightness).toBe(0.95)
+  // Anything else does nothing.
+  expect(press(['x'])).toEqual({ state: press([]).state, action: 'none' })
+})
+
+test('the pane shows each value as the mock-up does, and no number in it reads as a meme', () => {
+  expect(valueText('brightness', 0.85)).toBe('85 %')
+  expect(valueText('shade', 1)).toBe('normal')
+  expect(valueText('shade', 1.1)).toBe('+2')
+  expect(valueText('colour', 0.95)).toBe('\u22121')
+  expect(valueText('warmth', 0)).toBe('normal')
+  expect(valueText('warmth', -1)).toBe('\u22124')
+  expect(barOf('brightness', 0.85)).toBe('\u2593'.repeat(13) + '\u25cf' + '\u2591'.repeat(6))
+  expect(barOf('brightness', 1)).toBe('\u2593'.repeat(19) + '\u25cf')
+  expect(barOf('brightness', 0.5)).toBe('\u25cf' + '\u2591'.repeat(19))
+  expect(TUNE_ROWS).toEqual(['brightness', 'shade', 'colour', 'warmth'])
+  // Every value each row can take, on its steps.
+  for (const key of TUNE_ROWS) {
+    const { min, max, step } = LIMITS[key]
+    for (let i = 0; min + i * step <= max + 1e-9; i++) {
+      const shown = valueText(key, clampTune({ [key]: min + i * step })[key])
+      for (const meme of ['67', '42', '69', '420']) expect(shown.includes(meme)).toBe(false)
+    }
+  }
+  expect(TUNE_WORDS.notGhostty).toBe('Solar: tune is for the sky in Ghostty on a Mac.')
+  expect(TUNE_WORDS.kept).toBe('kept')
+  expect(TUNE_WORDS.hint).toBe('\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close')
 })

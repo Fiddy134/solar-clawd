@@ -3,7 +3,9 @@
 // sky from today's and shade only strengthens the rim, so the neutral values
 // are today's sky. This file knows the limits and what a settings file may
 // say, how much of each part of the day a moment is, and the colour a tune
-// makes of the sky; the shader, the sessions and the pane build on it.
+// makes of the sky; the shader, the sessions and the pane build on it. The
+// pane's keys and words are here too, plain functions its surface module
+// and the tests share.
 
 import { sunAt } from './astro'
 import type { Place } from './astro'
@@ -208,4 +210,70 @@ export function tunedColour(c: number, k: number, values: TuneValues): number {
   const lightness = luminance(tuned)
 
   return lightness > luminance(today) ? mix(0, tuned, luminance(today) / lightness) : tuned
+}
+
+// The pane, /solar tune: its id, how often a session writes what it shows
+// (at most, the last state winning), and how often it renews the preview
+// while open, well within PREVIEW_LIFE_MS.
+export const TUNE_PANE = 'solar-tune'
+export const PREVIEW_MS = 250
+export const RENEW_MS = 20_000
+
+// What the pane says, in English as the rest of Solar.
+export const TUNE_WORDS = {
+  notGhostty: 'Solar: tune is for the sky in Ghostty on a Mac.',
+  kept: 'kept',
+  hint: '\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close',
+}
+
+// The pane's rows, top to bottom, and their labels.
+export const TUNE_ROWS: readonly (keyof TuneValues)[] = ['brightness', 'shade', 'colour', 'warmth']
+export const ROW_LABELS: Record<keyof TuneValues, string> = { brightness: 'brightness', shade: 'text shade', colour: 'colour', warmth: 'warmth' }
+
+// The pane as the person has it: the part of the day and the row chosen,
+// the tune they are making, and the one it started from (the saved tune as
+// the pane opened, or as last kept).
+export type PaneState = { phase: Phase; row: keyof TuneValues; tune: TuneSettings; opened: TuneSettings }
+export type TuneAction = 'none' | 'preview' | 'keep'
+
+const around = <T>(list: readonly T[], item: T, by: number): T => list[(list.indexOf(item) + by + list.length) % list.length]!
+
+// One key pressed in the pane: up and down pick a row, left and right move
+// its value a step within its limits, tab and ] go to the next part of the
+// day and [ to the one before, r puts the row back to its default, u the
+// whole tune back to where the pane started, and Enter keeps it. A key that
+// changes what the sky should show asks for a preview.
+export function onTuneKey(state: PaneState, key: string): { state: PaneState; action: TuneAction } {
+  const { phase, row, tune } = state
+  const set = (value: number) => {
+    const values = clampTune({ ...tune[phase], [row]: value })
+    return values[row] === tune[phase][row] ? { state, action: 'none' as const } : { state: { ...state, tune: { ...tune, [phase]: values } }, action: 'preview' as const }
+  }
+  if (key === 'up' || key === 'down') return { state: { ...state, row: around(TUNE_ROWS, row, key === 'up' ? -1 : 1) }, action: 'none' }
+  if (key === 'left' || key === 'right') return set(tune[phase][row] + (key === 'left' ? -1 : 1) * LIMITS[row].step)
+  if (key === 'tab' || key === ']' || key === '[') return { state: { ...state, phase: around(PHASES, phase, key === '[' ? -1 : 1) }, action: 'preview' }
+  if (key === 'r') return set(DEFAULT_TUNE[phase][row])
+  if (key === 'u') return { state: { ...state, tune: state.opened }, action: 'preview' }
+  if (key === 'return') return { state: { ...state, opened: tune }, action: 'keep' }
+
+  return { state, action: 'none' }
+}
+
+// A value as the pane shows it: brightness as a percent, the others as
+// normal at today's value and otherwise the steps away from it, signed.
+export function valueText(key: keyof TuneValues, value: number): string {
+  if (key === 'brightness') return `${Math.round(value * 100)} %`
+  const steps = Math.round((value - NEUTRAL[key]) / LIMITS[key].step)
+  if (steps === 0) return 'normal'
+
+  return steps > 0 ? `+${steps}` : `\u2212${-steps}`
+}
+
+// A row's bar, BAR cells wide: filled up to the knob, empty after it.
+export const BAR = 20
+export function barOf(key: keyof TuneValues, value: number): string {
+  const { min, max } = LIMITS[key]
+  const at = Math.round(((value - min) / (max - min)) * (BAR - 1))
+
+  return '\u2593'.repeat(at) + '\u25cf' + '\u2591'.repeat(BAR - 1 - at)
 }

@@ -51,7 +51,7 @@ import { markOf } from './mark'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshMarket, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
 import { fromBase64 } from './paint'
-import { shaderParams, skyShader } from './shader'
+import { sceneAt, shaderParams, skyShader } from './shader'
 import type { ShaderParams } from './shader'
 import { skyOf, wallpaperPng } from './sky'
 import type { MoonTexture, WallpaperCache, Weather } from './sky'
@@ -59,7 +59,9 @@ import { BASE_THEME, THEMES } from './themes/index'
 import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
-import { activeTune, asSettings, previewMoment } from './tune'
+import { activeTune, asSettings, PHASES, phaseWeights, PREVIEW_LIFE_MS, PREVIEW_MS as TUNE_PREVIEW_MS, previewMoment, RENEW_MS, TUNE_PANE, TUNE_WORDS } from './tune'
+import type { PaneState, TuneAction } from './tune'
+import type { TunePaneProps } from './tune-pane'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
 
@@ -204,6 +206,15 @@ const PACE_WORDS = {
 const NOT_GHOSTTY = 'Solar: this session is not running in Ghostty.'
 const UNREADABLE_CONFIG = `Solar: could not read Ghostty's config, so it is left as it is.`
 
+// The tune pane's state as the preview in sky.json, its tune held to the
+// limits (it came from the surface module), running a PREVIEW_LIFE_MS from
+// now.
+async function writePreview($: EngineInterface, ghostty: Ghostty, state: PaneState): Promise<void> {
+  const tune = asSettings(JSON.stringify({ tune: state.tune })).tune
+  const phase = PHASES.includes(state.phase) ? state.phase : 'day'
+  await writeSettings($, ghostty, { preview: { tune, phase, until: (await $.clock.now()) + PREVIEW_LIFE_MS } })
+}
+
 // The notifications that ask the person something.
 const ASKING = ['permission_prompt', 'elicitation_dialog']
 
@@ -211,6 +222,20 @@ export const register: Register = on => {
   // The checkpoint pane's pictures and notes as last read, what the folder
   // held then, and the timer that looks at it while the pane is open.
   const looking: LookState = { look: { pictures: [], notes: [] }, signature: null, watch: null }
+  // The tune pane while it is open: the props it is drawn with, the last
+  // state it posted, whether this session has a preview in sky.json, the
+  // write waiting for its PREVIEW_MS, the timer renewing the preview, and
+  // the settings writes in the order they were asked for, so a close never
+  // lands before a preview asked earlier.
+  const tuning = {
+    props: null as TunePaneProps | null,
+    latest: null as PaneState | null,
+    isPreviewing: false,
+    due: null as { cancel: () => void } | null,
+    renew: null as { cancel: () => void } | null,
+    writes: Promise.resolve(),
+  }
+  const inTurn = (work: () => Promise<void>) => (tuning.writes = tuning.writes.then(work).catch(() => undefined))
 
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
@@ -478,7 +503,7 @@ export const register: Register = on => {
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | theme <name> | look | full | spar | vsync off|on]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | theme <name> | tune | look | full | spar | vsync off|on]',
       immediate: true,
     })
 
@@ -817,6 +842,10 @@ export const register: Register = on => {
       })
     })
 
+    // A reload leaves the tune pane open with nothing behind it: it closes,
+    // and with it any preview this session had.
+    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === TUNE_PANE)) await $.ui.close({ id: TUNE_PANE }).catch(() => undefined)
+
     return next(e)
   })
 
@@ -1082,6 +1111,23 @@ export const register: Register = on => {
       }
     }
 
+    // The pane that tunes the sky, on the part of the day it is now.
+    if (word === 'tune') {
+      if (ghostty === null || ghostty.isLinux) return { text: TUNE_WORDS.notGhostty }
+      const settings = await readSettings($, ghostty)
+      const weights = phaseWeights(sceneAt(momentAt(now).ms, where.place))
+      const phase = PHASES.reduce((best, each) => (weights[each] > weights[best] ? each : best))
+      if (tuning.props === null) tuning.props = { start: { phase, row: 'brightness', tune: settings.tune, opened: settings.tune }, kept: 0 }
+      tuning.renew ??= $.clock.every(RENEW_MS, () => {
+        // A renewal changes nothing the sky shows, so it is not drawn again.
+        const [sky, state] = [ghostty, tuning.latest]
+        if (tuning.isPreviewing && sky !== null && state !== null) void inTurn(() => writePreview($, sky, state))
+      })
+      const opened = await $.ui.open({ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' })
+
+      return opened.isPlaced ? {} : { text: `Solar: the tune pane waits to be placed: ${opened.reason}.` }
+    }
+
     if (word === 'ghostty') {
       if (ghostty === null) return { text: NOT_GHOSTTY }
       const pt = stagePtOf(theme)
@@ -1206,7 +1252,7 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar theme <name>, /solar look, /solar full, /solar spar or /solar vsync off|on.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar theme <name>, /solar tune, /solar look, /solar full, /solar spar or /solar vsync off|on.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: LOOK_PANE }, async ($, e, next) => {
@@ -1235,6 +1281,70 @@ export const register: Register = on => {
         )}
       </Box>
     )
+  })
+
+  // The tune pane: its surface module draws it and takes the keys.
+  on('ui.render', { component: 'Pane', requestId: TUNE_PANE }, async ($, e, next) => {
+    if (e.surface !== 'terminal' || tuning.props === null) return next(e)
+    const { Client } = $.ui.resolve(e)
+
+    return <Client key="tune" module="./tune-pane.tsx" props={tuning.props} />
+  })
+
+  // What the pane posts: a preview, written once the moves have rested a
+  // PREVIEW_MS, the last of them winning; or the tune kept for every
+  // session, the preview gone, and the pane told so.
+  on('ui.message', { requestId: TUNE_PANE }, async ($, e, next) => {
+    const message = e.data as { state?: PaneState; action?: TuneAction } | null
+    const state = message?.state
+    if (ghostty === null || tuning.props === null || state === undefined || typeof state !== 'object') return next(e)
+    const sky = ghostty
+    // The pane is drawn again from where it is, should its module start over.
+    tuning.latest = state
+    tuning.props = { ...tuning.props, start: state }
+    if (message?.action === 'preview') {
+      tuning.due ??= $.clock.after(TUNE_PREVIEW_MS, () => {
+        tuning.due = null
+        const state = tuning.latest
+        if (state === null) return
+        void inTurn(async () => {
+          await writePreview($, sky, state)
+          tuning.isPreviewing = true
+          refreshSky?.()
+        })
+      })
+
+      return {}
+    }
+    if (message?.action !== 'keep') return {}
+    tuning.due?.cancel()
+    tuning.due = null
+    await inTurn(async () => {
+      await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: state.tune })).tune, preview: null })
+      tuning.isPreviewing = false
+      refreshSky?.()
+    })
+    tuning.props = { ...tuning.props, kept: tuning.props.kept + 1 }
+
+    return { props: tuning.props }
+  })
+
+  // The pane closed (Escape, its close mark, a reload): what was not kept
+  // is dropped, and the sky goes back to the real time and the saved tune.
+  on('ui.close', { id: TUNE_PANE }, async ($, e, next) => {
+    tuning.due?.cancel()
+    tuning.renew?.cancel()
+    Object.assign(tuning, { props: null, latest: null, due: null, renew: null })
+    const sky = ghostty
+    if (sky !== null && tuning.isPreviewing) {
+      await inTurn(async () => {
+        await writeSettings($, sky, { preview: null })
+        tuning.isPreviewing = false
+        refreshSky?.()
+      })
+    }
+
+    return next(e)
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {

@@ -12,7 +12,7 @@ import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
-import { asSettings, DEFAULT_TUNE } from './tune'
+import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TUNE_PANE, TUNE_WORDS } from './tune'
 import type { TuneSettings } from './tune'
 import { wallpaperPng } from './sky'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
@@ -1732,4 +1732,141 @@ test("iTerm2's wallpaper draws the tune saved in sky.json, never a preview", asy
   const shown = pictures.slice(1).map(picture => picture.png)
   expect(shown).toEqual(await paint(asSettings(settings).tune))
   expect(shown[0]).not.toBe((await paint(null))[0])
+})
+
+// The engine's panes, in memory: which are open, and what each open asked.
+function paneWorld(on: On) {
+  const open = new Set<string>()
+  const opened: object[] = []
+  on('ui.open', (_, e) => {
+    open.add(e.id)
+    opened.push({ ...e })
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_, e) => {
+    open.delete(e.id)
+    return { value: undefined }
+  })
+  on('ui.panes', () => ({ value: [...open].map(id => ({ id, title: id, isShown: true, isFocused: true, isPlaced: true })) }))
+
+  return { open, opened }
+}
+
+const TUNE_MOUNT = {
+  plugin: 'solar-clawd',
+  surface: 'terminal',
+  component: 'Pane',
+  requestId: TUNE_PANE,
+  props: { title: 'Solar tune', isFocused: true, bodyColumns: 72, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} },
+} as const
+
+// The pane closed through the mod's own ui.close hook. The kit cannot press
+// Escape or the close mark for the person, so the mod's own close stands in:
+// a session started again (a reload) finds the pane open and closes it, and
+// the hook that drops the preview is the one the person's close runs.
+const closeTune = async ($: Engine, panes: { open: Set<string> }) => {
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  expect(panes.open.has(TUNE_PANE)).toBe(false)
+}
+
+const solarSays = async ($: Engine, args: string) =>
+  ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text?: string }).text
+
+test('/solar tune outside Ghostty says so and opens nothing', async ($, on) => {
+  mock.clock(on, { now: Date.UTC(2026, 9, 21, 10, 30) })
+  mock.env(on, { ITERM_SESSION_ID: 'w0t0p0:0F8E2C1A-1111-4A4A-9B9B-123456789ABC', HOME: '/Users/test' })
+  mock.store(on)
+  const writes: string[] = []
+  on('fs.read', () => ({ deny: 'ENOENT' }))
+  on('fs.write', (_, e) => {
+    writes.push(e.path)
+    return { value: undefined }
+  })
+  on('fs.list', () => ({ value: [] }))
+  on('process.run', () => ({ value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }))
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  const panes = paneWorld(on)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  expect(await solarSays($, 'tune')).toBe(TUNE_WORDS.notGhostty)
+  expect(panes.open.size).toBe(0)
+  expect(panes.opened).toEqual([])
+  expect(writes.some(path => path.endsWith('sky.json') || path.includes('sky.json.'))).toBe(false)
+})
+
+test('the pane previews as you move, keeps on enter and forgets on escape', async ($, on) => {
+  const panes = paneWorld(on)
+  const { clock, world, shader } = await noonWorld($, on)
+  const saves = () => world.runs.filter(argv => argv[0] === '/bin/mv' && argv.at(-1) === SETTINGS).length
+  const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
+
+  // A dark blue pane that takes the keys, on the part of the day it is now.
+  expect(await solarSays($, 'tune')).toBeUndefined()
+  expect(panes.opened).toEqual([{ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' }])
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  expect(await ui.find({ type: 'Text', text: ' day ', in: 'tune' })).toMatchObject({ props: { backgroundColor: '#ff6fc0', color: '#10142a' } })
+  expect(await ui.find({ type: 'Text', text: '100 %', in: 'tune' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: TUNE_WORDS.hint, in: 'tune' })).toBeDefined()
+
+  // Three moves within 100 ms make one write, a PREVIEW_MS after the first,
+  // with the last of them, and the sky follows at once.
+  const before = saves()
+  for (let i = 0; i < 3; i++) {
+    await ui.key({ key: 'left' })
+    await clock.advance(30)
+  }
+  expect(saves()).toBe(before)
+  await clock.advance(PREVIEW_MS - 90)
+  expect(saves()).toBe(before + 1)
+  const written = clock.now()
+  expect(saved().preview).toEqual({ tune: { ...DEFAULT_TUNE, day: { ...DEFAULT_TUNE.day, brightness: 0.85 } }, phase: 'day', until: written + PREVIEW_LIFE_MS })
+  expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.0);')
+  expect(await ui.find({ type: 'Text', text: '85 %', in: 'tune' })).toBeDefined()
+  await clock.advance(PREVIEW_MS * 4)
+  expect(saves()).toBe(before + 1)
+
+  // While the pane is open the preview is renewed, never further ahead
+  // than its life.
+  await clock.advance(20_000)
+  expect(saved().preview?.until).toBeGreaterThan(written + PREVIEW_LIFE_MS)
+  expect(saved().preview!.until).toBeLessThanOrEqual(clock.now() + PREVIEW_LIFE_MS)
+
+  // Enter keeps it for every session, and the pane says so.
+  await ui.key({ key: 'return' })
+  expect(saved().tune.day.brightness).toBe(0.85)
+  expect(saved().preview).toBeNull()
+  expect(saved().pace).toBe('spar')
+  expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeDefined()
+  await ui.key({ key: 'down' })
+  expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeUndefined()
+  await closeTune($, panes)
+  await ui.unmount()
+
+  // Opened again, moved, and closed: the preview goes and the saved tune
+  // stays as it was kept.
+  await solarSays($, 'tune')
+  const again = await $.ui.mount(TUNE_MOUNT)
+  expect(await again.find({ type: 'Text', text: '85 %', in: 'tune' })).toBeDefined()
+  await again.key({ key: 'left' })
+  await clock.advance(PREVIEW_MS)
+  expect(saved().preview?.tune.day.brightness).toBe(0.8)
+  await closeTune($, panes)
+  expect(saved().tune.day.brightness).toBe(0.85)
+  expect(saved().preview).toBeNull()
+  await clock.advance(1)
+  expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.0);')
+  await again.unmount()
+
+  // A move closed before its write is never written, and nothing is renewed
+  // once the pane is closed.
+  await solarSays($, 'tune')
+  const third = await $.ui.mount(TUNE_MOUNT)
+  const quiet = saves()
+  await third.key({ key: 'left' })
+  await closeTune($, panes)
+  await third.unmount()
+  await clock.advance(60_000)
+  expect(saves()).toBe(quiet)
+  expect(saved().preview).toBeNull()
 })
