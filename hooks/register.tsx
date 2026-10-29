@@ -424,6 +424,10 @@ export const register: Register = on => {
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
   let site: { requestId: string; columns: number } | null = null
+  // The cells last handed to that site, so a tick that would draw the same
+  // band hands nothing on: with Clawd gone it changes with the minute, the
+  // words and the rain, not eight times a second.
+  let handed: { site: object; cells: string } | null = null
   // The band's room as last drawn, so /solar tune can say it waits for more.
   let bandRoom: { columns: number; maxRows: number } | null = null
   let viewport = { columns: 160, rows: 45 }
@@ -1064,13 +1068,10 @@ export const register: Register = on => {
 
         const drawn = site
         if (drawn === null) return
-        const result = await $.ui.blit({
-          requestId: drawn.requestId,
-          key: KEY,
-          cells: drawFrame(viewAt(now, drawn.columns)),
-          columns: drawn.columns,
-          rows: ROWS,
-        })
+        const cells = drawFrame(viewAt(now, drawn.columns))
+        if (handed?.site === drawn && handed.cells === cells) return
+        handed = { site: drawn, cells }
+        const result = await $.ui.blit({ requestId: drawn.requestId, key: KEY, cells, columns: drawn.columns, rows: ROWS })
         // Hidden, collapsed or resized: wait for the next draw to say where.
         if (result.deny && site === drawn) site = null
       })().catch(() => {
@@ -1637,12 +1638,14 @@ export const register: Register = on => {
     const { Box, Button, Client, Raster } = $.ui.resolve(e)
     if (!isTool || opened === null) {
       site = { requestId: e.requestId, columns }
+      handed = { site, cells: drawFrame(viewAt(now, columns)) }
 
-      return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
+      return <Raster key={KEY} columns={columns} rows={ROWS} cells={handed.cells} />
     }
     const weather = columns - TOOL_COLUMNS
     const isWeather = !hidden && weather >= WEATHER_MIN
     site = isWeather ? { requestId: e.requestId, columns: weather } : null
+    handed = site === null ? null : { site, cells: drawFrame(viewAt(now, weather)) }
     const shown = tabOf(tuning.latest ?? opened.start)
     // A tab pressed, or its digit typed in an empty prompt: the tool goes
     // there, under a new seq so its own state follows, and a part of the day
@@ -1668,7 +1671,7 @@ export const register: Register = on => {
         </Box>
         <Box flexDirection="row">
           <Client key={TUNE_KEY} module="./tune-band.tsx" props={opened} width={TOOL_COLUMNS} />
-          {isWeather ? <Raster key={KEY} columns={weather} rows={ROWS} cells={drawFrame(viewAt(now, weather))} /> : null}
+          {handed !== null ? <Raster key={KEY} columns={weather} rows={ROWS} cells={handed.cells} /> : null}
         </Box>
       </Box>
     )

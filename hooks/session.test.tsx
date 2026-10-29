@@ -1027,6 +1027,29 @@ async function paceWorld($: Engine, on: On, version: string | null, config: stri
 }
 const count = (text: string, line: string) => text.split('\n').filter(row => row === line).length
 
+test('the band hands Claude Code a new picture only when it has changed', async ($, on) => {
+  const blits: string[] = []
+  on('ui.blit', (_, e) => {
+    blits.push('cells' in e ? e.cells : '')
+    return { value: {} }
+  })
+  const { clock, solar } = await paceWorld($, on, '1.4.0')
+  await solar('ghostty')
+  const ui = await $.ui.mount(BAND)
+  await clock.advance(500)
+  // Within one minute and with the sky clear in Ghostty, the words stay as
+  // they are: forty ticks hand on no picture twice.
+  const before = blits.length
+  await clock.advance(5_000)
+  expect(new Set(blits.slice(before)).size).toBe(blits.length - before)
+  expect(blits.length - before).toBeLessThanOrEqual(1)
+  // The minute turns: the clock in the words moves, and the band with it.
+  const turned = blits.length
+  await clock.advance(60_000)
+  expect(blits.length).toBeGreaterThan(turned)
+  await ui.unmount()
+})
+
 test('/solar full and spar are saved for every session, and on Ghostty 1.3 say what 24 a second takes', async ($, on) => {
   const { world, solar } = await paceWorld($, on, '1.3.1')
   await solar('ghostty')
