@@ -1,11 +1,16 @@
-// The tune settings: their limits, what a settings file may say, and how a
-// saved tune and a saved pace keep each other.
+// The tune settings: their limits, what a settings file may say, how a
+// saved tune and a saved pace keep each other, the parts of the day they
+// follow, and the colour they make of the sky.
 
 import { expect, test } from 'claude-code/testing'
 
+import { STOCKHOLM } from './astro'
 import { withSettings } from './ghostty'
-import { asSettings, clampTune, DEFAULT_TUNE } from './tune'
-import type { TuneSettings } from './tune'
+import { luminance, mix, saturate } from './paint'
+import { sceneAt } from './shader'
+import { STOPS } from './sky'
+import { asSettings, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, PHASES, phaseWeights, tuneAt, tunedColour } from './tune'
+import type { Phase, TuneSettings, TuneValues } from './tune'
 
 test('settings from an older Solar, broken or out of range give defaults and limits', () => {
   const old = asSettings('{"pace":"full"}')
@@ -38,4 +43,58 @@ test('a tune saved keeps the pace and the pace kept keeps the tune', () => {
   expect(saved.pace).toBe('spar')
   expect(saved.tune).toEqual(T)
   expect(JSON.parse(withSettings('{"other":1}', { pace: 'full' }))).toEqual({ other: 1, pace: 'full' })
+})
+
+// A scene as sceneAt gives one: the sun's height, its way along the arc,
+// and whether it is the sun's arc or the moon's.
+const scene = (elevation: number, isDay: boolean, progress: number) => ({ elevation, isDay, progress })
+
+test('the phases follow the sun and blend without a jump', () => {
+  expect(phaseWeights(scene(30, true, 0.5)).day).toBe(1)
+  expect(phaseWeights(scene(-20, false, 0.5)).night).toBe(1)
+  expect(phaseWeights(scene(-2, false, 0.9)).dawn).toBe(1)
+  expect(phaseWeights(scene(-2, false, 0.1)).dusk).toBe(1)
+  // A whole Stockholm day, minute by minute, in autumn and at midwinter,
+  // when the sun stays below 12° at noon.
+  for (const day of [Date.UTC(2026, 9, 23, 22), Date.UTC(2026, 11, 20, 23)]) {
+    let before: Record<Phase, number> | null = null
+    for (let minute = 0; minute <= 24 * 60; minute++) {
+      const weights = phaseWeights(sceneAt(day + minute * 60_000, STOCKHOLM))
+      expect(Math.abs(PHASES.reduce((sum, phase) => sum + weights[phase], 0) - 1)).toBeLessThan(1e-9)
+      // Day and night each come in over 8° of the sun's height, and the
+      // scene has it to a tenth of a degree, so a minute may move a weight
+      // by up to 0.04: over brightness's range of 0.5, under 0.02 of
+      // brightness a minute. A jump would be most of 1.
+      if (before) for (const phase of PHASES) expect(Math.abs(weights[phase] - before[phase])).toBeLessThanOrEqual(0.04)
+      before = weights
+    }
+  }
+})
+
+test('a phase tuned leaves the others as they were', () => {
+  const settings: TuneSettings = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
+  expect(tuneAt(settings, scene(30, true, 0.5)).brightness).toBe(0.7)
+  expect(tuneAt(settings, scene(-20, false, 0.5)).brightness).toBe(1)
+})
+
+// Every stop colour of the sky's gradient: top, middle and horizon.
+const STOP_COLOURS = STOPS.flatMap(([, top, middle, horizon]) => [top, middle, horizon])
+
+test('no setting makes the sky lighter than today', () => {
+  const corners: TuneValues[] = []
+  for (const brightness of [LIMITS.brightness.min, LIMITS.brightness.max])
+    for (const shade of [LIMITS.shade.min, LIMITS.shade.max])
+      for (const colour of [LIMITS.colour.min, LIMITS.colour.max])
+        for (const warmth of [LIMITS.warmth.min, LIMITS.warmth.max]) corners.push({ brightness, shade, colour, warmth })
+  expect(corners.length).toBe(16)
+  for (const c of STOP_COLOURS)
+    for (const k of [1, 0.85])
+      for (const values of corners) {
+        expect(luminance(tunedColour(c, k, values))).toBeLessThanOrEqual(luminance(tunedColour(c, k, NEUTRAL)) + 0.005)
+      }
+})
+
+test("today's settings draw today's sky", () => {
+  for (const c of STOP_COLOURS)
+    for (const k of [1, 0.85]) expect(tunedColour(c, k, NEUTRAL)).toBe(saturate(mix(0, c, k), 1.35))
 })

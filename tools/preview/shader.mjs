@@ -10,6 +10,7 @@
 //   --p3 (the terminal in Display P3, as a Mac's Ghostty gives it to the shader)
 //   --unmarked (a tab Claude has not marked: the terminal as it is)   --unfocused (the window out of focus, iFocus 0)
 //   --light (the lighter sky of a Mac on battery or a person away: no clouds)
+//   --tune 0.72,1,1,0 (the tune's brightness, text shade, colour and warmth, the same at every part of the day)
 //   --tool command --agents 3 (what Claude is doing, in the tab's mark: none, command, edit, read, web or other, and 0 to 7 subagents)
 //   --market up|down (prices for a theme that shows them, fresh, every symbol's day up or down; NDX down 2.4 %)
 //   --zoom x,y,w,h (a window of the frame, 3x with no smoothing, as <out>-zoom.png beside the whole frame)
@@ -28,6 +29,7 @@ import { contextAt, EVENTS, eventsAt, shootingRate, specsOf } from '../../hooks/
 import { TOOLS } from '../../hooks/activity.ts'
 import { tabMark } from '../../hooks/mark.ts'
 import { shaderParams, skyShader } from '../../hooks/shader.ts'
+import { PHASES } from '../../hooks/tune.ts'
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
 import { NO_THEME } from '../../hooks/themes/check.ts'
 import { THEMES } from '../../hooks/themes/index.ts'
@@ -80,6 +82,15 @@ function sampleMarket(day) {
 
   return { quotes: prices.map((price, i) => ({ price: Number(price.toPrecision(5)), change: (day === 'up' ? up : down)[i] })), isFresh: true }
 }
+// --tune b,s,c,w: one tune for dawn, day, dusk and night alike, as given,
+// off the pane's steps if need be.
+function tuneOf(text) {
+  const [brightness, shade, colour, warmth] = text.split(',').map(Number)
+  if (![brightness, shade, colour, warmth].every(Number.isFinite)) throw new Error(`--tune: four numbers, brightness,shade,colour,warmth, not "${text}"`)
+  const values = { brightness, shade, colour, warmth }
+
+  return Object.fromEntries(PHASES.map(phase => [phase, values]))
+}
 const params = shaderParams(
   { ms, t: ms / 1000, place: STOCKHOLM, weather, kp: o.kp ? Number(o.kp) : null, isAuroraForced: !!o.aurora },
   {
@@ -97,6 +108,7 @@ const params = shaderParams(
     isLight: !!o.light,
     context: fish === undefined ? null : { fish: Number(fish), state: contextState(fishState) },
     market: o.market ? sampleMarket(String(o.market)) : null,
+    tune: o.tune ? tuneOf(String(o.tune)) : undefined,
   },
 )
 if (events.length > 0) console.log('events:', events.map(e => e.kind).join(', '))

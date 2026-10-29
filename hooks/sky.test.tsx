@@ -12,6 +12,7 @@ import { animationOf, WAITING_MS, WAITING_SWEEP_MS, WAITING_URGENT_MS, waitingAt
 import { elementsOf, issAt, issVisible } from './iss'
 import { asPace, AWAY_MS, canTick, FULL_STILL_MS, skyRules, versionOf } from './pace'
 import { staleFiles } from './tidy'
+import { DEFAULT_TUNE, NEUTRAL } from './tune'
 import { shaderParams, skyShader } from './shader'
 import { BASKET } from './glsl/basket'
 import { COMMON } from './glsl/common'
@@ -640,3 +641,19 @@ test('ticks need macOS, a known Ghostty, and on 1.3 the vsync line', () => {
   for (const text of ['', '{"pace":"fast"}', '{', 'null', '"full"']) expect(asPace(text)).toBe('spar')
 })
 
+
+test('the shader carries the tune of its moment, and a demo the tune of each scene', () => {
+  const noonInput = { ms: Date.UTC(2026, 9, 24, 11, 0), t: 0, place: STOCKHOLM, weather: null }
+  const tune = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
+  expect(skyShader(shaderParams(noonInput, { tune }), FYR)).toContain('const vec4 sky_TUNE = vec4(0.7, 1.0, 1.0, 0.0);')
+  expect(skyShader(shaderParams(noonInput, {}), FYR)).toContain('const vec4 sky_TUNE = vec4(1.0, 1.0, 1.0, 0.0);')
+  // The demo's day from local midnight: scene 48 is noon, 0 midnight.
+  const demo = skyShader(shaderParams(noonInput, { tune, demo: { seconds: 48 } }), FYR)
+  const array = /const vec4 sky_DEMO_TUNE\[(\d+)\] = vec4\[\d+\]\((.*)\);/.exec(demo)
+  expect(array?.[1]).toBe('96')
+  const brightness = [...(array?.[2] ?? '').matchAll(/vec4\(([^,]+),/g)].map(m => Number(m[1]))
+  expect(brightness.length).toBe(96)
+  expect(brightness[48]).toBe(0.7)
+  expect(brightness[0]).toBe(1)
+  expect(brightness[95]).toBe(1)
+})

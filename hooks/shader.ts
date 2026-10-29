@@ -25,6 +25,8 @@ import { BASKET } from './glsl/basket'
 import { MAIN } from './glsl/main'
 import type { Market } from './market'
 import { newYorkHour, newYorkOpen, newYorkTradingDay, newYorkWeekday } from './newyork'
+import { DEFAULT_TUNE, tuneAt } from './tune'
+import type { TuneSettings, TuneValues } from './tune'
 import { ENTRY_POINTS, themeEventIndex, uncommented } from './themes/theme'
 import type { Theme } from './themes/theme'
 
@@ -60,6 +62,9 @@ export type ShaderParams = {
   moon: { illumination: number; isWaxing: boolean; at: DomePoint | null }
   // A whole day for /solar demo: scenes evenly through it, played in `seconds`.
   demo: { scenes: Scene[]; seconds: number } | null
+  // The tune's four values (tune.ts) at the scene, and in a demo at each of
+  // its scenes, empty without one.
+  tune: { now: TuneValues; demo: TuneValues[] }
   // How grey the weather makes the sky, cloud cover and wind (m/s).
   cloudiness: number
   cover: number
@@ -185,6 +190,7 @@ export function shaderParams(
     stagePx?: number
     isLight?: boolean
     market?: Market | null
+    tune?: TuneSettings
   },
 ): ShaderParams {
   const { place, weather, kp, isAuroraForced } = input
@@ -209,6 +215,7 @@ export function shaderParams(
   // The clock as the scene has it, and Clawd's day by it.
   const time = localTime(ms, input.offsetMs)
   const activity = activityOn(time)
+  const tune = options.tune ?? DEFAULT_TUNE
 
   return {
     // In a demo the day plays from its table: a fixed scene keeps the text,
@@ -227,6 +234,7 @@ export function shaderParams(
     },
     moon: { illumination: round(moon.illumination, 0.01), isWaxing: moon.isWaxing, at: moon.elevation > 0 ? dome(domePoint(moon)) : null },
     demo,
+    tune: { now: tuneAt(tune, scene), demo: demo ? demo.scenes.map(s => tuneAt(tune, s)) : [] },
     cloudiness: round(greyness(weather), 0.01),
     cover: weather ? round(weather.cloudCover / 100, 0.01) : 0.3,
     wind: weather ? round(weather.wind, 0.5) : 3,
@@ -261,6 +269,10 @@ function rgb(c: number): string {
 
 function floats(values: number[]): string {
   return `float[${values.length}](${values.map(f).join(', ')})`
+}
+
+function vec4Of(v: TuneValues): string {
+  return `vec4(${f(v.brightness)}, ${f(v.shade)}, ${f(v.colour)}, ${f(v.warmth)})`
 }
 
 const PRECIPITATION = { none: 0, drizzle: 1, rain: 2, thunder: 3, snow: 4 } as const
@@ -421,6 +433,7 @@ function marketConstants(params: ShaderParams): string[] {
 export function skyShader(params: ShaderParams, theme: Theme): string {
   const { scene, moon, demo } = params
   const demoScenes = demo?.scenes ?? [scene]
+  const demoTunes = demo ? params.tune.demo : [params.tune.now]
   // The theme's previews are not drawn as events: the first of them up is
   // THEME_FORCE, its place in the manifest counted from 1. Of the rest,
   // the first four.
@@ -448,6 +461,10 @@ export function skyShader(params: ShaderParams, theme: Theme): string {
     `const float DEMO_ELEVATION[${demoScenes.length}] = ${floats(demoScenes.map(s => s.elevation))};`,
     `const float DEMO_PROGRESS[${demoScenes.length}] = ${floats(demoScenes.map(s => s.progress))};`,
     `const float DEMO_DAY[${demoScenes.length}] = ${floats(demoScenes.map(s => (s.isDay ? 1 : 0)))};`,
+    // The tune: brightness, text shade, colour and warmth, and in a demo
+    // the same for each of its scenes.
+    `const vec4 sky_TUNE = ${vec4Of(params.tune.now)};`,
+    `const vec4 sky_DEMO_TUNE[${demoTunes.length}] = vec4[${demoTunes.length}](${demoTunes.map(vec4Of).join(', ')});`,
     `const float STOP_AT[${STOPS.length}] = ${floats(STOPS.map(s => s[0]))};`,
     `const vec3 STOP_TOP[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[1])).join(', ')});`,
     `const vec3 STOP_MIDDLE[${STOPS.length}] = vec3[${STOPS.length}](${STOPS.map(s => rgb(s[2])).join(', ')});`,

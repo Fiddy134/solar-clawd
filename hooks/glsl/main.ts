@@ -151,7 +151,9 @@ bool isTextOnGlass(vec3 term, vec2 uv, out vec3 field, out vec3 text, out float 
 // rim round it washed it out. Claude Code's fields are not text: rimmed,
 // the sky under their glass went dark. Every pixel of the disc is looked
 // at: a few places only drew dotted copies of each glyph. Only on a dark
-// background: on a light one, dark pixels are the text.
+// background: on a light one, dark pixels are the text. The tune's text
+// shade (sky_tuneNow()'s y) strengthens SHADE and SHADE_NEAR alike, never
+// past a rim of SHADE_TINT itself; the radius stays.
 const float SHADE = 0.6;
 const float SHADE_NEAR = 0.85;
 // How much lighter than the sky text is for SHADE_NEAR, and for SHADE.
@@ -176,7 +178,7 @@ const vec3 SHADE_DISC[12] = vec3[12](
 
 // term and mask are the pixel's own: the terminal's colour there and how
 // much of it is not the background, as mainImage has them.
-float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky, vec3 term, float mask) {
+float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky, vec3 term, float mask, float strength) {
   if (luminance(iBackgroundColor) > 0.5) return 0.0;
   float radius = clamp(unit * SHADE_RADIUS, 1.5, 1.75);
   float near = mask;
@@ -189,7 +191,7 @@ float shade(vec2 fragCoord, vec3 linearBackground, float unit, vec3 sky, vec3 te
     if (text > 0.5) brightest = max(brightest, luminance(c));
   }
   float gap = brightest - luminance(sky);
-  return near * (gap < 0.0 ? SHADE : mix(SHADE_NEAR, SHADE, smoothstep(SHADE_GAP.x, SHADE_GAP.y, gap)));
+  return near * min(1.0, (gap < 0.0 ? SHADE : mix(SHADE_NEAR, SHADE, smoothstep(SHADE_GAP.x, SHADE_GAP.y, gap))) * strength);
 }
 
 // How dark a sky needs no rim, and how light one has all of it. Below
@@ -202,10 +204,10 @@ const vec2 SHADE_DARK = vec2(0.1, 0.2);
 
 // The sky with the rim laid over it, a stage like the others so the
 // preview's --without shaded can leave it out.
-vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit, vec3 term, float mask) {
+vec3 shaded(vec3 sky, vec2 fragCoord, vec3 linearBackground, float unit, vec3 term, float mask, float strength) {
   float lit = smoothstep(SHADE_DARK.x, SHADE_DARK.y, luminance(sky));
   if (lit == 0.0) return sky;
-  return mix(sky, SHADE_TINT, lit * shade(fragCoord, linearBackground, unit, sky, term, mask));
+  return mix(sky, SHADE_TINT, lit * shade(fragCoord, linearBackground, unit, sky, term, mask, strength));
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
@@ -273,7 +275,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   vec2 body = arcPoint(s.progress);
   if (s.isDay < 0.5 && MOON_UP > 0.5) sky = moonAt(sky, p, domeToPixel(MOON_AT), unit * 2.0, (0.35 + 0.65 * night) * (1.0 - CLOUDINESS * 0.8));
 
-  sky = tone(sky, k);
+  // The tune dims and colours the sky itself, its stars and its moon; the
+  // sun, the clouds, the events and the scenery keep k alone.
+  vec4 tune = sky_tuneNow();
+  sky = sky_tuned(sky, k, tune);
   if (s.isDay > 0.5) sky = sunAt(sky, p, body, unit * 1.9, 1.0 - CLOUDINESS * 0.85, pitch(unit), k, s.elevation);
   sky = events(sky, p, unit, k, true);
   if (ISS_UP > 0.5) sky = iss(sky, p, unit);
@@ -295,7 +300,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   sky = basket(sky, p, unit, k);
   // No rim under glass. Without glass, mask is still the terminal's own,
   // text on a coloured field being glass or else done with above.
-  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask);
+  if (pane == 0.0) sky = shaded(sky, fragCoord, linearBackground, unit, term.rgb, mask, tune.y);
 
   fragColor = vec4(mix(sky, ink, mask), 1.0);
 }

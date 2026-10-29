@@ -42,6 +42,46 @@ vec3 gradient(vec2 p, Scene s, out float k) {
   return mix(c, grey(c), CLOUDINESS * 0.5);
 }
 
+// --- The tune ----------------------------------------------------------------
+
+// The engine's own, and no theme's: a theme dims its things with k alone,
+// through tone() and lift(), and the tune never reaches it.
+
+// The tune now (brightness, text shade, colour, warmth); in a demo, its
+// scenes' played round as sceneNow plays them. Two scenes tuned alike give
+// their tune to the bit, so a demo of today's sky stays today's.
+vec4 sky_tuneNow() {
+  if (DEMO_COUNT == 0) return sky_TUNE;
+  float at = fract(iTime / DEMO_SECONDS) * float(DEMO_COUNT);
+  int i = int(floor(at)) % DEMO_COUNT;
+  int j = (i + 1) % DEMO_COUNT;
+  return sky_DEMO_TUNE[i] + (sky_DEMO_TUNE[j] - sky_DEMO_TUNE[i]) * fract(at);
+}
+
+// What full warmth and full coolness multiply the sky by, before it is
+// brought back to its own lightness.
+const vec3 sky_WARM = vec3(1.08, 1.0, 0.86);
+const vec3 sky_COOL = vec3(0.9, 0.98, 1.1);
+
+// The sky toned as tone() does, with the tune t (sky_tuneNow()) as well,
+// as tune.ts's tunedColour does: tinted warmer or cooler at its own
+// lightness, then dimmed by k and t's brightness and saturated by its
+// colour, and never lighter than tone() would have made it. The neutral
+// tune is the plain tone, taken as it is.
+vec3 sky_tuned(vec3 sky, float k, vec4 t) {
+  if (t == vec4(1.0, 1.0, 1.0, 0.0)) return tone(sky, k);
+  vec3 c = sky;
+  if (t.w != 0.0) {
+    vec3 tinted = c * mix(vec3(1.0), t.w > 0.0 ? sky_WARM : sky_COOL, abs(t.w));
+    float now = luminance(tinted);
+    c = clamp(now > 0.0 ? tinted * (luminance(c) / now) : tinted, 0.0, 1.0);
+  }
+  vec3 tuned = vivid(c * (k * t.x), SATURATION * t.z);
+  float today = luminance(tone(sky, k));
+  float lightness = luminance(tuned);
+  return lightness > today ? tuned * (today / lightness) : tuned;
+}
+
 // --- Aurora ----------------------------------------------------------------
 
 vec3 aurora(vec3 sky, vec2 p, float strength) {

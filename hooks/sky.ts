@@ -24,6 +24,8 @@ import {
   smoothstep,
   toBase64,
 } from './paint'
+import { NEUTRAL, SATURATION, tuneAt, tunedColour } from './tune'
+import type { TuneSettings } from './tune'
 
 // Now, where the place is: WMO weather code, °C, cloud cover in percent and
 // wind in metres per second.
@@ -92,13 +94,15 @@ export type SkyInput = {
   kp?: number | null
   isAuroraForced?: boolean
   moonTexture?: MoonTexture | null
+  // The tune the wallpaper's gradient is drawn with; today's sky without one.
+  tune?: TuneSettings | null
 }
 
 // --- Gradient -------------------------------------------------------------
 
 // The sky at a sun elevation, top / middle / horizon: deep navy at night,
 // violet and coral through twilight, peach at sunrise, clear blue by day.
-const STOPS: readonly [number, number, number, number][] = [
+export const STOPS: readonly [number, number, number, number][] = [
   [-90, 0x05070f, 0x0a0f22, 0x111a36],
   [-18, 0x070b1c, 0x0f1733, 0x1a2550],
   [-12, 0x0c1430, 0x1d2552, 0x3a3772],
@@ -654,7 +658,7 @@ export function paintBandSky(canvas: Canvas, input: SkyInput): void {
 // readable on a midday sky: the whole picture is scaled down together, then
 // given back some colour so a dimmed day stays blue rather than grey.
 const WALLPAPER_LUMINANCE = 0.8
-const WALLPAPER_SATURATION = 1.35
+const WALLPAPER_SATURATION = SATURATION
 
 // The still part of the wallpaper (gradient, aurora, stars, sun or moon),
 // already dimmed, kept between frames: only the clouds move.
@@ -677,6 +681,13 @@ export async function wallpaperPng(
   const cloudiness = greyness(weather)
   // Sizes follow the window: a unit is a sixtieth of its height.
   const unit = Math.max(4, Math.round(height / 60))
+  // The tune of the moment, which only the gradient (with its stars and
+  // moon) takes: the sun and the clouds keep today's light.
+  let tune = NEUTRAL
+  if (input.tune) {
+    const { progress, isDay } = bodyAt(ms, place)
+    tune = tuneAt(input.tune, { elevation: sun.elevation, progress, isDay })
+  }
 
   const key = [
     width,
@@ -688,6 +699,9 @@ export async function wallpaperPng(
     input.kp,
     input.isAuroraForced,
     !!input.moonTexture,
+    tune.brightness,
+    tune.colour,
+    tune.warmth,
   ].join('|')
   let still = cache.current
   if (!still || still.key !== key) {
@@ -708,7 +722,7 @@ export async function wallpaperPng(
     await pause()
 
     for (let i = 0; i < canvas.px.length; i++) {
-      canvas.px[i] = saturate(mix(0, canvas.px[i]!, k), WALLPAPER_SATURATION)
+      canvas.px[i] = tunedColour(canvas.px[i]!, k, tune)
     }
     // The sun goes on after the dimming, keeping half its light: it is small,
     // and a dull sun looks like a mistake.

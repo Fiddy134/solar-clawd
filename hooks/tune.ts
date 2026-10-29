@@ -2,9 +2,12 @@
 // shared sky.json beside the pace and the theme. Brightness only lowers the
 // sky from today's and shade only strengthens the rim, so the neutral values
 // are today's sky. This file knows the limits and what a settings file may
-// say; the shader, the sessions and the pane build on it.
+// say, how much of each part of the day a moment is, and the colour a tune
+// makes of the sky; the shader, the sessions and the pane build on it.
 
+import { clamp, luminance, mix, saturate, smoothstep } from './paint'
 import type { Pace } from './pace'
+import type { Scene } from './shader'
 
 export type Phase = 'dawn' | 'day' | 'dusk' | 'night'
 export const PHASES: readonly Phase[] = ['dawn', 'day', 'dusk', 'night']
@@ -77,4 +80,69 @@ export function asSettings(text: string): Settings {
       : null
 
   return { pace: file.pace === 'full' ? 'full' : 'spar', tune: tuneOf(file.tune), preview }
+}
+
+// How much of each part of the day a scene is. Day and night by the sun's
+// height, night as the sky's own nightness (from -5° to -13°); what lies
+// between is twilight, dawn before the day's middle and dusk after it, the
+// middle being where the sun's or the moon's arc is half crossed. Each
+// weight changes smoothly with the sun, so they sum to 1 at every moment
+// and no part of the day jumps in at sunrise, sunset, noon or midnight.
+export function phaseWeights(scene: Scene): Record<Phase, number> {
+  const day = smoothstep(4, 12, scene.elevation)
+  const night = smoothstep(-5, -13, scene.elevation)
+  const twilight = Math.max(0, 1 - day - night)
+  const half = smoothstep(0.35, 0.65, scene.progress)
+  const evening = scene.isDay ? half : 1 - half
+
+  return { dawn: twilight * (1 - evening), day, dusk: twilight * evening, night }
+}
+
+// The four values for a scene: each phase's own, weighted as the scene is
+// made of them, and rounded to a hundredth so the shader's text changes
+// only when a value does.
+export function tuneAt(settings: TuneSettings, scene: Scene): TuneValues {
+  const weights = phaseWeights(scene)
+  const out = { ...NEUTRAL }
+  for (const key of KEYS) {
+    const sum = PHASES.reduce((total, phase) => total + weights[phase] * settings[phase][key], 0)
+    out[key] = Math.round(sum * 100) / 100 || 0
+  }
+
+  return out
+}
+
+// The sky's saturation after its dimming, as the shader's SATURATION and
+// the wallpaper have it.
+export const SATURATION = 1.35
+
+// What full warmth and full coolness multiply a colour by, before it is
+// brought back to its own lightness.
+const WARM = [1.08, 1.0, 0.86] as const
+const COOL = [0.9, 0.98, 1.1] as const
+
+// The sky's colour c (packed RGB, as paint.ts has it) tuned and toned: tinted
+// warmer or cooler at its own lightness, then dimmed by k and the tune's
+// brightness together and saturated by the tune's colour. Never lighter
+// than today's tone of c: less saturation clips less of a bright horizon
+// and would lighten it. The neutral tune is the sky's plain tone, to the
+// bit.
+export function tunedColour(c: number, k: number, values: TuneValues): number {
+  const today = saturate(mix(0, c, k), SATURATION)
+  if (values.brightness === 1 && values.colour === 1 && values.warmth === 0) return today
+  let tinted = c
+  if (values.warmth !== 0) {
+    const tint = values.warmth > 0 ? WARM : COOL
+    const w = Math.abs(values.warmth)
+    const channels = [(c >> 16) & 0xff, (c >> 8) & 0xff, c & 0xff].map((v, i) => v * (1 + (tint[i]! - 1) * w))
+    const own = luminance(c) * 255
+    const now = 0.2126 * channels[0]! + 0.7152 * channels[1]! + 0.0722 * channels[2]!
+    const [r, g, b] = channels.map(v => Math.round(clamp(now > 0 ? (v * own) / now : v, 0, 255)))
+    tinted = (r! << 16) | (g! << 8) | b!
+  }
+
+  const tuned = saturate(mix(0, tinted, k * values.brightness), SATURATION * values.colour)
+  const lightness = luminance(tuned)
+
+  return lightness > luminance(today) ? mix(0, tuned, luminance(today) / lightness) : tuned
 }
