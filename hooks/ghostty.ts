@@ -495,12 +495,21 @@ export const VSYNC_OFF_LINE = 'window-vsync = false\n'
 // An include of the mod's vsync file, from any runtime folder.
 const VSYNC_INCLUDE = /^config-file\s*=\s*\??.*\/runtime\/vsync\.ghostty$/
 
-// A screen's scale as osascript or the scale file says it: a positive
-// number up to 4, null for anything else.
+// A screen's scale as osascript or the scale file says it (the file has
+// when it was asked after it): a positive number up to 4, null for
+// anything else.
 export function asScale(text: string): number | null {
-  const scale = Number(text.trim())
+  const first = text.trim().split(/\s+/)[0] ?? ''
+  const scale = Number(first)
 
-  return text.trim() !== '' && Number.isFinite(scale) && scale > 0 && scale <= 4 ? scale : null
+  return first !== '' && Number.isFinite(scale) && scale > 0 && scale <= 4 ? scale : null
+}
+
+// When the scale file's scale was asked, null where it does not say.
+export function scaleAskedAt(text: string): number | null {
+  const at = Number(text.trim().split(/\s+/)[1])
+
+  return Number.isFinite(at) && at > 0 ? at : null
 }
 
 // The sky's pace, as the settings file says it; spar for anything else.

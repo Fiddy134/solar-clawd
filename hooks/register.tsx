@@ -26,6 +26,7 @@ import {
   remark,
   restageGhostty,
   runtimeFolder,
+  scaleAskedAt,
   setVsync,
   shareWaiting,
   stagedPadding,
@@ -94,8 +95,9 @@ const FILL_MS = 30_000
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
 // While Ghostty is in front, the screen its front window is on is asked
-// this often, so the stage follows a window moved to another screen.
-const SCALE_MS = 30_000
+// this often, so the stage follows a window moved to another screen: by
+// one session for all of them, about 0.6 % of a core.
+const SCALE_MS = 10_000
 // How often to ask whether the Mac runs on battery.
 const BATTERY_MS = 60_000
 
@@ -136,16 +138,15 @@ async function stageOf($: EngineInterface, ghostty: Ghostty, pt: number): Promis
 }
 
 // The scale of the screen the front Ghostty window is on, asked of the
-// window server, and put in the runtime folder's scale file for every
-// session to draw the stage by: windows on two screens share one shader,
-// which fits the one in front. An answer that is no positive number counts
-// as 1.
+// window server, and put in the runtime folder's scale file with when it
+// was asked, for every session to draw the stage by: windows on two screens
+// share one shader, which fits the one in front. An answer that is no
+// positive number counts as 1.
 async function askScale($: EngineInterface, ghostty: Ghostty): Promise<number> {
   if (ghostty.isLinux) return 1
   const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
   const scale = asScale(answer?.stdout ?? '') ?? 1
-  const path = `${ghostty.folder}/scale`
-  if (asScale(await $.fs.read(path).catch(() => '')) !== scale) await writeWhole($, path, `${scale}\n`, ghostty.id).catch(() => undefined)
+  await writeWhole($, `${ghostty.folder}/scale`, `${scale} ${await $.clock.now()}\n`, ghostty.id).catch(() => undefined)
 
   return scale
 }
@@ -617,14 +618,19 @@ export const register: Register = on => {
       fetchMarket()
       $.clock.every(MARKET_MS, fetchMarket)
       // The screen's scale, asked only of a sky in Ghostty's config and with
-      // Ghostty in front: a window moved to a screen of another scale takes
-      // its stage within half a minute, every session at its next update.
+      // Ghostty in front, and by one session for all: one that finds it
+      // asked within the interval takes the answer. A window moved to a
+      // screen of another scale takes its stage within SCALE_MS.
       $.clock.every(SCALE_MS, () => {
         void (async () => {
           if (isOnLinux || !sky.isIncluded || (await read($, isHidden))) return
           if ((await isGhosttyInFront($, isOnLinux)) !== true) return
           const before = sky.stagePx
-          sky.stagePx = sky.stagePt * (await askScale($, sky))
+          const text = await $.fs.read(`${sky.folder}/scale`).catch(() => '')
+          const askedAt = scaleAskedAt(text)
+          const shared = asScale(text)
+          const isFresh = askedAt !== null && shared !== null && (await $.clock.now()) - askedAt < SCALE_MS - 1_000
+          sky.stagePx = sky.stagePt * (isFresh ? shared : await askScale($, sky))
           if (sky.stagePx !== before) refreshSky?.()
         })().catch(() => undefined)
       })

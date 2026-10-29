@@ -538,7 +538,7 @@ test('the shader is told the stage strip in pixels: points times the screen scal
   expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 480.0;')
 })
 
-test('the stage follows the screen the front Ghostty window is on within half a minute, and every session draws it from the shared scale', async ($, on) => {
+test('the stage follows the screen the front Ghostty window is on within ten seconds, asked by one session for all', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
   const world = ghosttyWorld(on, { value: 1 })
@@ -547,25 +547,35 @@ test('the stage follows the screen the front Ghostty window is on within half a 
   world.answers.set('/usr/bin/osascript', '2\n')
   const runtime = await startGhostty($, on, clock, world)
   const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  const scale = () => world.files.get(`${runtime}/scale`)?.text.split(' ')[0]
   const asked = () => world.runs.filter(argv => argv.includes('JavaScript')).length
   expect(shader()).toContain('const float STAGE_PX = 480.0;')
-  expect(world.files.get(`${runtime}/scale`)?.text).toBe('2\n')
+  expect(scale()).toBe('2')
   // Behind another app, the screen is not asked.
   world.answers.set('/usr/bin/osascript', '1\n')
-  const before = asked()
+  let before = asked()
   await clock.advance(61_000)
   expect(asked()).toBe(before)
   expect(shader()).toContain('const float STAGE_PX = 480.0;')
-  // In front, on a screen of scale 1: the stage takes it.
+  // In front, on a screen of scale 1: the stage takes it within ten seconds.
   world.front.value = 'com.mitchellh.ghostty'
-  await clock.advance(31_000)
-  expect(world.files.get(`${runtime}/scale`)?.text).toBe('1\n')
-  expect(shader()).toContain('const float STAGE_PX = 240.0;')
-  // Another session asked and found scale 2: this one draws it too.
-  world.front.value = 'com.apple.Safari'
-  world.files.set(`${runtime}/scale`, { text: '2\n', mtimeMs: clock.now() })
   await clock.advance(10_100)
+  expect(scale()).toBe('1')
+  expect(shader()).toContain('const float STAGE_PX = 240.0;')
+  // Another session has just asked and found scale 2: this one takes its
+  // answer without asking.
+  world.answers.set('/usr/bin/osascript', '1\n')
+  before = asked()
+  for (let i = 0; i < 3; i++) {
+    world.files.set(`${runtime}/scale`, { text: `2 ${clock.now()}\n`, mtimeMs: clock.now() })
+    await clock.advance(10_000)
+  }
+  expect(asked()).toBe(before)
   expect(shader()).toContain('const float STAGE_PX = 480.0;')
+  // Once no other session asks, this one does again.
+  await clock.advance(20_100)
+  expect(asked()).toBeGreaterThan(before)
+  expect(shader()).toContain('const float STAGE_PX = 240.0;')
 })
 
 test('/solar ghostty asks the screen scale for the stage it has just added', async ($, on) => {
