@@ -114,7 +114,7 @@ scene y-up same - 20 $DAY --y-up $S
 scene diff-p3 same - 20 $DAY --diff --p3 $S
 scene light same - 20 $DAY --light $S
 scene unmarked same - 20 $DAY --unmarked $S
-scene band-keeper same L 20 --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4 $S
+scene band-keeper same L 20 --at 2026-10-24T15:35 --band $S
 
 # The sixteen scenes of the first harness, as they were.
 scene dolphin same - 20 --at 2026-10-24T15:35 --event dolphin --beacon asking --basket 6
@@ -132,7 +132,7 @@ scene fish same - 20 --at 2026-10-24T15:35 --fish 6
 scene catch same - 20 --at 2026-10-24T15:35 --fish 7,catch
 scene grill same - 20 --at 2026-10-24T15:35 --fish 9,grill
 scene embers same - 20 --at 2026-10-24T15:35 --fish 0,embers
-scene band same - 20 --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4
+scene band same - 20 --at 2026-10-24T15:35 --band
 
 if [ "$mode" = twice ]; then
   [ "$twice_status" = 0 ] && echo "all deterministic" || echo "some scenes differ between two runs" >&2

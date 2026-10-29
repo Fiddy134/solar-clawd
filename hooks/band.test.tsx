@@ -1,10 +1,10 @@
-// The band above the prompt: Clawd, his reactions and his things.
+// The band above the prompt: the words, and the sky behind them.
 
 import { expect, test } from 'claude-code/testing'
 
 import { localTime, STOCKHOLM, swedishOffsetMs } from './astro'
 import { swedish } from './test-kit'
-import { chaseAt, clawdRows, drawFrame, nextPassing, ROWS, skyGained, toolKind, workKind } from './clawd'
+import { drawFrame, ROWS } from './clawd'
 import { activityAt, activityOn } from './hours'
 import { tabMark } from './mark'
 import { fromBase64, isPrintable } from './paint'
@@ -36,51 +36,34 @@ test('control characters never reach a cell', () => {
   for (let i = 0; i < words.length; i += 3) expect(isPrintable(words[i]!) || words[i] === 0x2580 || words[i] === 0x2584).toBe(true)
 })
 
+// The cells' characters, row by row: each cell is three words, its
+// character first.
+const rowsOf = (frame: string, columns: number) => {
+  const bytes = fromBase64(frame)
+  const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
+  const chars = [...words.filter((_, i) => i % 3 === 0)].map(code => String.fromCharCode(code)).join('')
+
+  return [...Array(ROWS).keys()].map(row => chars.slice(row * columns, (row + 1) * columns))
+}
+
+test('the band draws the words and no figure, at any hour', () => {
+  // A clear band with no weather paints nothing but its words: any half
+  // block would be a pixel of a figure, a hat or a basket.
+  for (const hour of [3, 8, 13, 20]) {
+    const view = { columns: 80, ms: Date.UTC(2026, 9, 24, hour), t: 3, mode: 'live' as const, place: STOCKHOLM, isClear: true }
+    expect(rowsOf(drawFrame(view), 80).join('')).not.toMatch(/[\u2580\u2584]/)
+  }
+})
+
+test("the words reach the band's right edge", () => {
+  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, isClear: true }
+  const [first = ''] = rowsOf(drawFrame(view), 80)
+  expect(first.trimEnd().length).toBeGreaterThanOrEqual(79)
+})
+
 test('a soft hyphen is no printable character', () => {
   expect(isPrintable(0xad)).toBe(false)
   expect(isPrintable(0xe5)).toBe(true)
-})
-
-test("looking up, Clawd's eyes sit in the top row of his head", () => {
-  expect(clawdRows('up', 'right-up', 'stand')[0]).toContain('K')
-  expect(clawdRows('up', 'right-up', 'stand')[1]).not.toContain('K')
-  expect(clawdRows('open', 'down', 'stand')[0]).not.toContain('K')
-  expect(clawdRows('open', 'down', 'stand')[1]).toContain('K')
-})
-
-test('Clawd looks up when something new comes into the sky, once', () => {
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 10), t: 3, mode: 'live' as const, place: STOCKHOLM }
-  expect(drawFrame({ ...view, reaction: { kind: 'lookUp', age: 1 } })).not.toBe(drawFrame({ ...view, reaction: null }))
-  expect(skyGained([], ['comet'])).toBe(true)
-  expect(skyGained(['comet'], ['comet'])).toBe(false)
-  expect(skyGained(['comet', 'iss'], ['comet'])).toBe(false)
-  expect(skyGained(['comet'], ['comet', 'waiting'])).toBe(true)
-})
-
-test('Clawd reads while every open call reads, and works otherwise', () => {
-  expect(toolKind('Read')).toBe('read')
-  expect(toolKind('Grep')).toBe('read')
-  expect(toolKind('Edit')).toBe('write')
-  expect(toolKind('Bash')).toBe('write')
-  expect(toolKind('Agent')).toBeNull()
-  expect(workKind([])).toBe('working')
-  expect(workKind(['read', 'read'])).toBe('reading')
-  expect(workKind(['read', 'write'])).toBe('working')
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM }
-  expect(drawFrame({ ...view, reaction: { kind: 'reading', age: 0 } })).not.toBe(drawFrame({ ...view, reaction: { kind: 'working', age: 0 } }))
-})
-
-test('the wastebasket fills with the context window, a ball at a time, and burns when compacted', () => {
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM }
-  const none = drawFrame({ ...view, paper: null })
-  expect(drawFrame({ ...view, paper: 0 })).toBe(none)
-  const half = drawFrame({ ...view, paper: 50 })
-  const full = drawFrame({ ...view, paper: 100 })
-  expect(half).not.toBe(none)
-  expect(full).not.toBe(half)
-  expect(drawFrame({ ...view, paper: 50, reaction: { kind: 'toss', age: 0.4 } })).not.toBe(half)
-  expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'burn', age: 2 } })).not.toBe(drawFrame({ ...view, paper: 90 }))
-  expect(drawFrame({ ...view, paper: 90, reaction: { kind: 'embers', age: 1 } })).not.toBe(drawFrame({ ...view, paper: 90 }))
 })
 
 test("in Ghostty the context window hangs on the keeper's line, each tab's own carried in its mark", () => {
@@ -96,10 +79,6 @@ test("in Ghostty the context window hangs on the keeper's line, each tab's own c
   expect(tabMark({ fish: 0, state: 'embers' })).toEqual([2, 0, 1])
   expect(tabMark({ fish: 7, state: 'catch' })).toEqual([3, 7, 1])
   expect(tabMark(null)).toEqual([0, 0, 1])
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60 }
-  // The band keeps no wastebasket of its own then.
-  expect(drawFrame({ ...view, isContextInSky: true })).not.toBe(drawFrame(view))
-  expect(drawFrame({ ...view, isContextInSky: true })).toBe(drawFrame({ ...view, paper: 10, isContextInSky: true }))
 })
 
 test("the keeper's catch reads the tab's mark, and the shader's tab test lets every state of it through", () => {
@@ -114,47 +93,6 @@ test("the keeper's catch reads the tab's mark, and the shader's tab test lets ev
   // (activity.test.tsx); 32 is no mark of ours.
   expect(MAIN).toContain('iPalette[16].r > 31.5 / 255.0')
   expect(Math.max(...(['idle', 'grill', 'embers', 'catch'] as const).map(state => tabMark({ fish: 10, state })[0]))).toBe(3)
-})
-
-test("with the keeper's line in the sky Clawd looks round at the catch and smells the grill, and throws nothing", () => {
-  // Over his coffee, his eyes on the room: at his screen he looks right anyway.
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 8), t: 3, mode: 'live' as const, place: STOCKHOLM, paper: 60, isContextInSky: true }
-  // The cells' characters: each cell is three words, its character first.
-  const chars = (frame: string) => {
-    const bytes = fromBase64(frame)
-    const words = new Uint32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength / 4)
-
-    return [...words.filter((_, i) => i % 3 === 0)].map(code => String.fromCharCode(code)).join('')
-  }
-  const still = drawFrame(view)
-  // A tenth filled: a look to the right for as long as the catch, the same
-  // the whole while (no ball in the air); without the sky, a throw.
-  const glance = drawFrame({ ...view, reaction: { kind: 'toss', age: 0.2 } })
-  expect(glance).not.toBe(still)
-  expect(drawFrame({ ...view, reaction: { kind: 'toss', age: 1.2 } })).toBe(glance)
-  expect(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'toss', age: 0.2 } })).not.toBe(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'toss', age: 1.2 } }))
-  // Compacting: two wisps drift in from the band's right edge; no match.
-  const smells = [0.2, 0.9, 1.6].map(age => chars(drawFrame({ ...view, reaction: { kind: 'burn', age } })))
-  for (const cells of smells) expect(cells.split('~').length - 1).toBe(2)
-  expect(new Set(smells).size).toBe(3)
-  expect(chars(drawFrame({ ...view, isContextInSky: false, reaction: { kind: 'burn', age: 0.9 } }))).not.toContain('~')
-  expect(chars(still)).not.toContain('~')
-})
-
-test('a throw at the wastebasket stops a chase after his hat', () => {
-  const windy = { temperature: 8, code: 3, cloudCover: 60, wind: 12 }
-  const view = { columns: 80, ms: Date.UTC(2026, 9, 24, 12), mode: 'live' as const, place: STOCKHOLM, weather: windy, paper: 50 }
-  // A moment he is off chasing it.
-  const t = [...Array(400).keys()].map(i => i * 0.25).find(at => chaseAt(at) !== null)!
-  expect(drawFrame({ ...view, t, reaction: { kind: 'toss', age: 0.4 } })).not.toBe(drawFrame({ ...view, t, reaction: null }))
-})
-
-test('a reaction under way is not cut short by looking up', () => {
-  const cheer = { kind: 'cheer' as const, at: 1000 }
-  expect(nextPassing(cheer, 2000, true)).toBe(cheer)
-  expect(nextPassing(cheer, 5000, true)).toEqual({ kind: 'lookUp', at: 5000 })
-  expect(nextPassing(null, 2000, true)).toEqual({ kind: 'lookUp', at: 2000 })
-  expect(nextPassing(cheer, 2000, false)).toBe(cheer)
 })
 
 test("activityOn keeps the band's own rules", () => {

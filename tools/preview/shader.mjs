@@ -142,13 +142,11 @@ ${source}
 void main() { mainImage(outColor, ${o['y-up'] ? 'gl_FragCoord.xy' : 'vec2(gl_FragCoord.x, iResolution.y - gl_FragCoord.y)'}); }
 `
 
-// --band: Clawd's band above the prompt as the mod draws it, the sky
-// showing through it (with --paper, --reaction kind,age, --sky-context;
-// --cell 16 for a Retina window's cells, 8 by default).
+// --band: the band above the prompt as the mod draws it, the sky showing
+// through it (--cell 16 for a Retina window's cells, 8 by default).
 const CELL = o.cell ? Number(o.cell) : 8
 const bandColumns = Math.floor(width / CELL)
 const bandTop = height - 120 - ROWS * CELL * 2 - 8
-const [reactionKind, reactionAge] = o.reaction ? String(o.reaction).split(',') : []
 const bandSvg = o.band
   ? `<svg xmlns="http://www.w3.org/2000/svg" width="${bandColumns * CELL}" height="${ROWS * CELL * 2}" font-family="Menlo" shape-rendering="crispEdges">${cellsSvg(
       drawFrame({
@@ -159,9 +157,6 @@ const bandSvg = o.band
         place: STOCKHOLM,
         weather,
         isClear: true,
-        paper: o.paper === undefined ? null : Number(o.paper),
-        isContextInSky: !!(o['sky-context'] ?? o['sky-basket']),
-        reaction: reactionKind ? { kind: reactionKind, age: Number(reactionAge ?? 0) } : null,
         event: null,
       }),
       bandColumns,

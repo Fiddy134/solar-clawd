@@ -25,7 +25,7 @@ const STAGED = '# Solar Clawd: the sky while a Claude session runs, and a stage 
 const UNSTAGED = '# Solar Clawd: the sky while a Claude session runs.'
 const RUNTIME = '/Users/test/Library/Application Support/solar-clawd/runtime'
 
-test('the band is one Raster of cells, Clawd among them, and /solar hides it', async ($, on) => {
+test('the band is one Raster of cells, and /solar hides it', async ($, on) => {
   mock.clock(on, { now: Date.UTC(2026, 9, 24, 17, 30) })
   on('command.register', () => ({ value: { command: 'solar' } }))
   // Not in iTerm2, and nothing to read: the mod draws its own sky.

@@ -1,6 +1,6 @@
 # Solar Clawd
 
-A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a pixel Clawd lives in a band above the prompt through his day — early birdin', coffee sesh, workin', vibin', night owl, sleep sesh — cheering when Claude finishes and facepalming when a tool fails.
+A Claude Code mod that puts a living sky behind your terminal while Claude works. It follows the real sun, moon and weather where you are, and a band above the prompt tells the time and what the hour is for — early birdin', coffee sesh, workin', vibin', night owl, sleep sesh — with the place, its weather, the sun and the moon.
 
 ![A low sun over the sea, the lighthouse lit, a dolphin, the keeper landing a fish onto the line of the context window and then grilling them, and Clawd at work above the prompt](assets/demo.gif)
 
@@ -13,7 +13,7 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 - **The real sky** — sun and moon positions and phases, bright stars and constellations, the ISS on its actual visible passes, aurora from NOAA's Kp index, and the weather from Open-Meteo (clouds, rain, snow, wind).
 - **Small, rare events** — hot-air balloons, now and then a flying saucer among the clouds, migrating birds, planes with contrails, kites on windy days, autumn leaves, cherry blossom, a comet every couple of months, a dolphin leaping by the lighthouse (now and then a pink one), rainbows after rain, shooting stars (more during the Perseids and Geminids).
 - **Swedish days** — Easter witches, the flag on National Day, a maypole at Midsummer, a Lucia procession, the Christmas star and Santa's sleigh, New Year's fireworks.
-- **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. In Ghostty the context window hangs by the lighthouse, a fish for each tenth on a line from the tower to the hammock's post: as another tenth fills the keeper lands one, and when the conversation is compacted or cleared he grills the catch on the rocks, and Clawd in the band looks round at the smell. Where there is no shader a wire wastebasket stands in the band behind Clawd instead: he tosses a ball of paper into it for each tenth, and when the conversation is compacted or cleared he throws in a match and the context burns away. He reads a book while Claude only reads, and types while it edits or runs commands.
+- **Claude's state** — a lighthouse far off on the horizon lights up and sweeps when Claude is waiting for you (orange for a question, white when done), and confetti falls after a long piece of work. In Ghostty the context window hangs by the lighthouse, a fish for each tenth on a line from the tower to the hammock's post: as another tenth fills the keeper lands one, and when the conversation is compacted or cleared he grills the catch on the rocks. Where there is no shader the context window is not shown.
 - **The keeper** — in Ghostty the lighthouse is three times larger, and a small Clawd lives there: he fishes on the rocks, walks round the gallery, surfs a wave now and then, stargazes at night, and sleeps in a hammock from 03 to 06. When Claude waits for you he stands by the lit lantern, and every so often a UFO beams him up in a green light and kicks him out again a quarter of a minute later (`/solar event ufo abduction` and `/solar event surf` preview them).
 - **Glass** — in Ghostty, Claude Code's own dark fields (a diff's red and green rows, your prompt's row, a shell command's row) let the sky through, tinted, as coloured glass would; text and everything else stay solid. Only on a dark background.
 
@@ -142,9 +142,9 @@ What differs from macOS:
 | `/solar events` | List the events |
 | `/solar event <name>` | Play an event for 90 seconds |
 | `/solar aurora` | Toggle a forced aurora |
-| `/solar storm` | Toggle a storm |
-| `/solar catch` | The keeper lands a fish, as when another tenth of the context window fills (without the shader, Clawd throws a ball of paper in the wastebasket) |
-| `/solar grill` | The keeper grills his catch for a while, as on `/compact` or `/clear`, or without the shader the wastebasket burns (the conversation is not touched) |
+| `/solar storm` | Toggle a storm, to see the wind |
+| `/solar catch` | The keeper lands a fish, as when another tenth of the context window fills (Ghostty's sky) |
+| `/solar grill` | The keeper grills his catch for a while, as on `/compact` or `/clear` (Ghostty's sky; the conversation is not touched) |
 | `/solar ghostty` | Add the sky to Ghostty's config |
 | `/solar theme <name>` | Draw the sky with another theme in every session: fyr, built in, or a folder of [`themes/`](themes/README.md) (floor, terminal). The stage takes the theme's width where the margin is the mod's own; a padding you set stays yours. `/solar theme` alone says which there are (Ghostty) |
 | `/solar tune` | A pane above the prompt that tunes the sky for each part of the day, dawn, day, dusk and night: brightness only darkens it, text shade only strengthens the dark rim around the text, colour and warmth are to taste. ↑ ↓ pick a row, ← → move it, tab or `]` and `[` change the part of the day (the sky shows that part while you tune it), ⏎ keeps it for every session, `r` puts the row back to its default, `u` undoes everything since the pane opened, Escape closes it and drops what was not kept. After night comes a tab for Ghostty's text (see [Ghostty's text](#ghosttys-text)). Click the pane once to give it the keys. With the sky hidden or not yet in Ghostty's config the command says that the sliders change nothing you can see (Ghostty on a Mac) |

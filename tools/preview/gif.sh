@@ -2,8 +2,7 @@
 # A short loop of the sky for the README, rendered frame by frame by
 # shader.mjs and joined by ffmpeg: a low sun over the sea, a dolphin, and
 # the keeper's catch, the tab's context window, in two scenes. In the
-# first a tenth fills and he lands a fish (Clawd in the band glancing out
-# at it), and it hangs on his line with the rest. In the second the
+# first a tenth fills and he lands a fish, and it hangs on his line with the rest. In the second the
 # lighthouse is lit, asking, and the conversation compacts: he grills the
 # catch, the smoke going up past the gallery, and the embers glow under
 # two skeletons. A cross-fade joins the scenes and the loop, as a cut
@@ -17,7 +16,7 @@ rm -rf "$frames"
 mkdir -p "$frames/catch" "$frames/grill"
 
 # scene <name> <frames> <first second of the story>: its frames, 8 a
-# second, the tab's mark and Clawd's reaction to it second by second.
+# second, and the tab's mark second by second.
 scene() {
   name=$1
   count=$2
@@ -26,11 +25,10 @@ scene() {
   while [ $i -lt "$count" ]; do
     t=$(awk "BEGIN { print $from + $i / 8 }")
     fish=$(awk "BEGIN { print ($t < 2.5 ? \"6,catch\" : $t < 5 ? \"6\" : $t < 9 ? \"6,grill\" : \"0,embers\") }")
-    reaction=$(awk "BEGIN { print ($t < 1.8 ? \"toss,\" $t : $t < 5 ? \"reading,0\" : $t < 9 ? \"burn,\" ($t - 5) : \"embers,\" ($t - 9)) }")
     beacon=$(awk "BEGIN { print ($t < 5 ? \"\" : \"--beacon asking\") }")
     time=$(awk "BEGIN { print 3 + $t }")
     "$root/tools/preview/run.sh" shader --at 2026-10-24T15:35 --event dolphin $beacon --fish "$fish" \
-      --band --paper 60 --sky-context --reaction "$reaction" --time "$time" --out "gif/$name/f$(printf %03d $i)" >/dev/null
+      --band --time "$time" --out "gif/$name/f$(printf %03d $i)" >/dev/null
     i=$((i + 1))
   done
 }

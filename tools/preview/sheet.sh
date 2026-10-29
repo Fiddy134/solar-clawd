@@ -152,7 +152,7 @@ if [ "$sheet" = theme ]; then
   frame 28-diff-p3 20 $DAY --diff --p3
   frame 29-light 20 $DAY --light
   frame 30-unmarked 20 $DAY --unmarked
-  frame 31-band 20 --at 2026-10-24T15:35 --band --paper 70 --sky-context --reaction toss,0.4
+  frame 31-band 20 --at 2026-10-24T15:35 --band
   # What Claude is doing, and the market, open and closed.
   frame 32-tool-command 20 $DAY --tool command
   frame 33-tool-edit-agents 20 $DAY --tool edit --agents 3

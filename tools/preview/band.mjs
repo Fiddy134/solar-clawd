@@ -1,8 +1,8 @@
 // The band above the prompt as a PNG: `frames` frames `dt` seconds apart,
-// stacked, so a sprite's motion reads at a glance.
+// stacked, so the rain's or the fireworks' motion reads at a glance.
 //
 //   tools/preview/run.sh band --at 2026-10-24T09:00 --columns 80 --frames 4 --dt 0.5
-//   --weather 61,8,4,90   rain (code,°C,wind,cloud %)   --reaction cheer   --clear   --paper 85
+//   --weather 61,8,4,90   rain (code,°C,wind,cloud %)   --clear
 
 import { drawFrame, ROWS } from '../../hooks/clawd.ts'
 import { STOCKHOLM } from '../../hooks/astro.ts'
@@ -27,11 +27,6 @@ const view = {
   moonTexture: moonTexture(),
   isClear: !!o.clear,
   track: o.track === undefined || o.track === true ? null : o.track,
-  // --paper 85: the context window's fill, Clawd's pile of paper.
-  paper: o.paper === undefined ? null : Number(o.paper),
-  // --sky-context (--sky-basket the old name): the context window shows in
-  // Ghostty's sky; he looks round at it instead of throwing.
-  isContextInSky: !!(o['sky-context'] ?? o['sky-basket']),
 }
 // The event the band names: --event balloon forces one, as /solar event does.
 const context = contextAt(ms, STOCKHOLM, view.weather, null)
@@ -44,8 +39,7 @@ const gap = cell
 let body = ''
 for (let f = 0; f < frames; f++) {
   const t = view.t + f * Number(o.dt)
-  const reaction = o.reaction ? { kind: o.reaction, age: f * Number(o.dt) } : null
-  body += cellsSvg(drawFrame({ ...view, t, reaction }), columns, ROWS, cell, f * (height + gap))
+  body += cellsSvg(drawFrame({ ...view, t }), columns, ROWS, cell, f * (height + gap))
 }
 
 console.log(svgToPng(body, columns * cell, frames * (height + gap) - gap, o.out ?? 'band'))

@@ -5,8 +5,8 @@ import { activityKindOf, HOLD_MS, heldTool, wantedTool } from './activity'
 import type { Call, Shown, Work } from './activity'
 import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './waiting'
-import { drawFrame, nextPassing, REACTION_SECONDS, ROWS, skyGained, toolKind, workKind } from './clawd'
-import type { Mode, Reaction } from './clawd'
+import { drawFrame, ROWS } from './clawd'
+import type { Mode } from './clawd'
 import { contextAt, EVENTS, eventsAt, kindOf, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
 import type { Forced } from './events'
 import {
@@ -96,7 +96,7 @@ const KEY = 'sky'
 const MOON_SIZE = 256
 // Pixels per point of the window: Retina.
 const BACKING_SCALE = 2
-// Eight frames a second: Clawd's sprites step, they do not glide.
+// Eight frames a second for the band: its rain and snow step, they do not glide.
 const TICK_MS = 125
 // A whole day in this long, for /solar demo.
 const DEMO_MS = 48_000
@@ -113,14 +113,15 @@ const ACTIVITY_MS = 3_000
 // Weather and aurora are asked for this often, music this often.
 const WEATHER_MS = 15 * 60_000
 const MUSIC_MS = 10_000
-// How long /solar grill plays the keeper's grill (the wastebasket's fire
-// in a band without the sky).
+// How long /solar grill plays the keeper's grill.
 const GRILL_SHOWN_MS = 8_000
 // How long the keeper's catch shows once another tenth of the context
 // window has filled.
 const CATCH_MS = 2_500
+// How long the embers glow after the keeper's grill.
+const EMBERS_MS = 3_000
 // How often the context window's fill is asked (it costs nothing), for the
-// keeper's fish and the pile of paper by Clawd.
+// keeper's fish.
 const FILL_MS = 30_000
 
 // How often the sky is looked at: a new scene, the person away or back.
@@ -206,8 +207,8 @@ async function askScale($: EngineInterface, ghostty: Ghostty): Promise<number> {
   return scale
 }
 
-// How full the context window is, 0 to 100, for the keeper's fish and
-// Clawd's pile of paper; null when it could not say.
+// How full the context window is, 0 to 100, for the keeper's fish; null
+// when it could not say.
 async function contextFill($: EngineInterface): Promise<number | null> {
   const usage = await $.session.usage().catch(() => null)
 
@@ -221,22 +222,22 @@ function showCatch($: EngineInterface, refresh: () => void): void {
   void $.clock.sleep(CATCH_MS).then(refresh).catch(() => undefined)
 }
 
-// The keeper grills his catch for a while and the embers glow after
-// (where there is no sky, the wastebasket burns): /solar grill plays it,
-// and a /clear, which empties the context at once, leaves the line bare.
-type Grilled = { grillShownUntil: number; passing: { kind: Reaction; at: number } | null; fill: number | null }
+// The keeper grills his catch for a while and the embers glow after:
+// /solar grill plays it, and a /clear, which empties the context at once,
+// leaves the line bare.
+type Grilled = { grillShownUntil: number; embersAt: number | null; fill: number | null }
 function playGrill($: EngineInterface, claude: Grilled, refresh: () => void, now: number, isCleared: boolean): void {
   claude.grillShownUntil = now + GRILL_SHOWN_MS
   refresh()
   void $.clock
     .sleep(GRILL_SHOWN_MS)
     .then(() => {
-      claude.passing = { kind: 'embers', at: now + GRILL_SHOWN_MS }
+      claude.embersAt = now + GRILL_SHOWN_MS
       if (isCleared) claude.fill = null
       refresh()
     })
     .catch(() => undefined)
-  void $.clock.sleep(GRILL_SHOWN_MS + REACTION_SECONDS.embers * 1000 + 200).then(refresh).catch(() => undefined)
+  void $.clock.sleep(GRILL_SHOWN_MS + EMBERS_MS + 200).then(refresh).catch(() => undefined)
 }
 
 // What /solar says of the sky's pace and Ghostty's vsync.
@@ -359,13 +360,11 @@ export const register: Register = on => {
   // A theme sky.json names that could not be drawn: not tried again until
   // the file names another.
   let refusedTheme: string | null = null
-  // Claude's state as Clawd shows it: a turn running, waiting on the person,
-  // and the last passing reaction.
+  // Claude's state as the sky shows it: a turn running, and when the
+  // keeper's embers began to glow.
   const claude = {
     isWorking: false,
-    passing: null as { kind: Reaction; at: number } | null,
-    // The main conversation's calls now running that read or write, by id.
-    open: new Map<string, 'read' | 'write'>(),
+    embersAt: null as number | null,
     // The context window: how full it is, 0 to 100, as last asked; when the
     // conversation began clearing it (compacting), while it does; and until
     // when the keeper's catch shows another tenth just filled.
@@ -448,13 +447,11 @@ export const register: Register = on => {
   }
 
   // How full the context window is now: another tenth filled, the keeper
-  // lands a fish (and where there is no sky, Clawd throws a ball of paper
-  // in his basket). Whether one did.
+  // lands a fish. Whether one did.
   const takeFill = (fill: number | null, now: number): boolean => {
     const before = claude.fill
     claude.fill = fill ?? before
     if (before !== null && fill !== null && claude.clearingSince === null && Math.floor(fill / 10) > Math.floor(before / 10)) {
-      claude.passing = { kind: 'toss', at: now }
       claude.catchUntil = now + CATCH_MS
 
       return true
@@ -466,28 +463,12 @@ export const register: Register = on => {
   // what is happening to it. The grill and its embers outrank the catch;
   // the embers leave the line bare.
   const catchAt = (now: number): ShaderParams['context'] => {
-    const isEmbers = claude.passing?.kind === 'embers' && now - claude.passing.at < REACTION_SECONDS.embers * 1000
+    const isEmbers = claude.embersAt !== null && now - claude.embersAt < EMBERS_MS
     const isGrill = claude.clearingSince !== null || now < claude.grillShownUntil
     const state = isGrill ? 'grill' : isEmbers ? 'embers' : now < claude.catchUntil ? 'catch' : 'idle'
     const fish = (claude.fill === null ? 0 : Math.floor(claude.fill / 10)) + (now < claude.fishShownUntil ? 1 : 0)
 
     return { fish: state === 'embers' ? 0 : fish, state }
-  }
-
-  const reactionAt = (now: number) => {
-    if (claude.clearingSince !== null) return { kind: 'burn' as const, age: (now - claude.clearingSince) / 1000 }
-    if (now < claude.grillShownUntil) return { kind: 'burn' as const, age: (now - (claude.grillShownUntil - GRILL_SHOWN_MS)) / 1000 }
-    const { passing } = claude
-    // Looking up at the sky gives way to a question and to work.
-    const isBusy = waiting?.mode === 'asking' || claude.isWorking
-    if (passing && !(passing.kind === 'lookUp' && isBusy)) {
-      const age = (now - passing.at) / 1000
-      if (age < REACTION_SECONDS[passing.kind]) return { kind: passing.kind, age }
-    }
-    if (waiting?.mode === 'asking') return { kind: 'wave' as const, age: 0 }
-    if (claude.isWorking) return { kind: workKind(claude.open.values()), age: 0 }
-
-    return null
   }
 
   // The sky's events at a moment: those due then, and those forced, which
@@ -532,9 +513,6 @@ export const register: Register = on => {
       moonTexture,
       // Clear where a wallpaper or Ghostty's sky shows through the band.
       isClear: iterm !== null || isInGhosttySky(),
-      reaction: reactionAt(now),
-      paper: claude.fill,
-      isContextInSky: isInGhosttySky(),
       track,
       event: events.length > 0 ? wordsOf(theme)[events[0]!.kind] : issNow(now, mode) ? 'ISS' : shower,
     }
@@ -570,27 +548,19 @@ export const register: Register = on => {
   })
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
-  // What was in the Ghostty sky last time it was drawn; null before the first.
-  let lastSky: string[] | null = null
-
   const shaderAt = (now: number, { settings, ...extras }: SkyExtras) => {
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
 
     const iss = issNow(now, mode)
-    // Something new up there: Clawd looks up at it.
-    const sky = [...events.map(event => event.kind as string), ...(iss ? ['iss'] : []), ...(extras.waiting ? ['waiting'] : [])]
-    if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
-    lastSky = sky
 
     // The saved tune, or a preview while one lasts: the part of the day it
     // shows, at today's moment of it, with that part's values whatever the
     // sun, so every session draws the same and the pane shows exactly what
     // it changes. The preview shows the whole scene at that moment: the
     // sun, moon and stars, the theme's scenery for that part of the day,
-    // the market's flags, and Clawd asleep at night. What keeps the real
-    // moment is what is reckoned apart from the scene: the events, Clawd's
-    // look up at something passing, the ISS, the catch, the waiting light,
+    // the market's flags, and the keeper asleep at night. What keeps the real
+    // moment is what is reckoned apart from the scene: the events, the ISS, the catch, the waiting light,
     // the tab's mark, the heartbeat, and the band.
     const { tune, phase } = activeTune(settings, now)
     const shown = phase === null ? ms : previewMoment(phase, now, where.place)
@@ -1052,13 +1022,10 @@ export const register: Register = on => {
     return next(e)
   })
 
-  // Clawd follows the main conversation: busy while a turn runs, cheering
-  // when it ends, a hand to his face when a tool fails, waving when Claude
-  // waits on the person.
+  // The main conversation: busy while a turn runs, done when it ends.
   on('turn.start', async ($, e, next) => {
     if (e.agentId === undefined) {
       claude.isWorking = true
-      claude.open.clear()
       if (waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
       // The ticks stop before Claude writes.
       else refreshSky?.()
@@ -1072,11 +1039,9 @@ export const register: Register = on => {
     if (e.agentId !== undefined && work.agents.delete(e.agentId)) remarkSky?.()
     if (e.agentId === undefined) {
       claude.isWorking = false
-      claude.open.clear()
       const now = await $.clock.now()
       if (takeFill(await contextFill($), now)) showCatch($, () => refreshSky?.())
       if (e.reason === 'answer') {
-        claude.passing = { kind: 'cheer', at: now }
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
         // A long piece of work done: confetti over the sky.
         if (e.durationMs > MILESTONE_MS) forced.push({ kind: 'milestone', at: now })
@@ -1106,8 +1071,6 @@ export const register: Register = on => {
     const asked = isQuestion ? { mode: 'asking' as const, since: startedAt } : null
     const isOpen = waiting?.mode === 'asking' && askingCalls.size > 0
     if ((isQuestion || (e.agentId === undefined && !isOpen)) && waitFor(asked)) await shareWaiting($, ghostty, waiting, refreshSky)
-    const kind = e.agentId === undefined ? toolKind(e.tool) : null
-    if (kind && e.tool_use_id) claude.open.set(e.tool_use_id, kind)
     // What Claude is doing, in any loop: a subagent not heard starting
     // counts from its first call.
     const doing = activityKindOf(e.tool)
@@ -1121,7 +1084,6 @@ export const register: Register = on => {
       remarkSky?.()
     }
     const result = await next(e).finally(() => {
-      claude.open.delete(e.tool_use_id)
       if (work.open.delete(e.tool_use_id)) remarkSky?.()
     })
     // Answered: the question's own call, or the last call that asked for a
@@ -1133,10 +1095,6 @@ export const register: Register = on => {
       (wasAsking && askingCalls.size === 0) ||
       (!wasAsking && askingCalls.size === 0 && e.agentId === undefined && (waiting?.since ?? -Infinity) >= startedAt)
     if (waiting?.mode === 'asking' && isAnswered && waitFor(null)) await shareWaiting($, ghostty, waiting, refreshSky)
-    if (result.isError && e.agentId === undefined) {
-      claude.passing = { kind: 'facepalm', at: await $.clock.now() }
-    }
-
     return result
   })
 
@@ -1153,8 +1111,7 @@ export const register: Register = on => {
   })
 
   // The conversation compacting (not ahead of time): the keeper grills his
-  // catch while it runs (where there is no sky, Clawd throws a match in his
-  // basket and the context burns); embers after, unless it was skipped,
+  // catch while it runs; embers after, unless it was skipped,
   // the line bare, and then hung with what the new reading says.
   on('session.compact', async ($, e, next) => {
     if (e.agentId !== undefined || e.trigger === 'precompute') return next(e)
@@ -1164,12 +1121,12 @@ export const register: Register = on => {
       const result = await next(e)
       if (!('skip' in result)) {
         const now = await $.clock.now()
-        claude.passing = { kind: 'embers', at: now }
+        claude.embersAt = now
         claude.clearingSince = null
         claude.fill = null
         takeFill(await contextFill($), now)
         // Embers now, and the line as it is once they are out.
-        void $.clock.sleep(REACTION_SECONDS.embers * 1000 + 200).then(() => refreshSky?.()).catch(() => undefined)
+        void $.clock.sleep(EMBERS_MS + 200).then(() => refreshSky?.()).catch(() => undefined)
       }
 
       return result
@@ -1394,23 +1351,21 @@ export const register: Register = on => {
     }
 
     // The context window, played: the keeper's catch, a fish on his line
-    // for a while, or his grill. Where there is no sky, Clawd's wastebasket:
-    // a ball of paper thrown in, or the context burnt.
+    // for a while, or his grill; they show only in Ghostty's sky.
     if (word === 'catch') {
-      claude.passing = { kind: 'toss', at: now }
       claude.catchUntil = now + CATCH_MS
       claude.fishShownUntil = now + PREVIEW_MS
       showCatch($, () => refreshSky?.())
       void $.clock.sleep(PREVIEW_MS + 100).then(() => refreshSky?.()).catch(() => undefined)
 
-      return { text: isInGhosttySky() ? 'Solar: the keeper lands a fish, as when another tenth of the context window fills.' : 'Solar: Clawd tosses a ball of paper into the wastebasket.' }
+      return { text: isInGhosttySky() ? 'Solar: the keeper lands a fish, as when another tenth of the context window fills.' : "Solar: the keeper's catch shows in the sky in Ghostty." }
     }
 
     if (word === 'grill') {
       playGrill($, claude, () => refreshSky?.(), now, false)
-      const what = isInGhosttySky() ? 'the keeper grills his catch' : 'the wastebasket burns'
+      if (!isInGhosttySky()) return { text: "Solar: the keeper's grill shows in the sky in Ghostty." }
 
-      return { text: `Solar: ${what} for ${GRILL_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
+      return { text: `Solar: the keeper grills his catch for ${GRILL_SHOWN_MS / 1000} seconds, as on /compact (the conversation is not touched).` }
     }
 
     if (word === 'aurora') {
@@ -1422,7 +1377,7 @@ export const register: Register = on => {
     if (word === 'storm') {
       isWindForced = !isWindForced
 
-      return { text: isWindForced ? 'Solar: a storm, to see Clawd chase his hat.' : 'Solar: the wind as it really is.' }
+      return { text: isWindForced ? 'Solar: a storm, to see the wind.' : 'Solar: the wind as it really is.' }
     }
 
     if (word === 'place' || word.startsWith('place ')) {
