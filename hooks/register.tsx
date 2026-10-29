@@ -20,6 +20,7 @@ import {
   includeVsync,
   isIncluded,
   isVsyncOff,
+  readGhosttyText,
   readSettings,
   readThemeName,
   reloadGhostty,
@@ -35,6 +36,7 @@ import {
   ttyOf,
   updateGhosttySky,
   writeSettings,
+  writeText,
   writeWhole,
 } from './ghostty'
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
@@ -59,8 +61,23 @@ import { BASE_THEME, THEMES } from './themes/index'
 import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
-import { activeTune, asSettings, PHASES, phaseWeights, PREVIEW_LIFE_MS, PREVIEW_MS as TUNE_PREVIEW_MS, previewMoment, RENEW_MS, TUNE_PANE, TUNE_WORDS } from './tune'
-import type { PanePost, PaneState } from './tune'
+import {
+  activeTune,
+  asSettings,
+  fontsOf,
+  ownTextOf,
+  PHASES,
+  phaseWeights,
+  PREVIEW_LIFE_MS,
+  PREVIEW_MS as TUNE_PREVIEW_MS,
+  previewMoment,
+  RENEW_MS,
+  TEXT_WORDS,
+  TUNE_PANE,
+  TUNE_WORDS,
+} from './tune'
+import type { PanePost, PaneState, TextValues } from './tune'
+import type { TextWritten } from './ghostty'
 import type { TunePaneProps } from './tune-pane'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
@@ -215,6 +232,33 @@ async function writePreview($: EngineInterface, ghostty: Ghostty, state: PaneSta
   await writeSettings($, ghostty, { preview: { tune, phase, until: (await $.clock.now()) + PREVIEW_LIFE_MS } })
 }
 
+// What the tune pane says of Ghostty's text as last written: nothing once
+// it is written, else why not.
+function noteOf(written: TextWritten): string | null {
+  if (written === 'written' || written === 'same') return null
+  if (typeof written === 'object') return TEXT_WORDS.refused(written.refused)
+
+  return { 'no-app': TEXT_WORDS.noApp, 'no-include': TEXT_WORDS.noInclude, unreadable: TEXT_WORDS.unreadable }[written]
+}
+
+// Ghostty's text as the tune pane has it, written where Ghostty reads it,
+// the padding line at the theme's stage `pt` only where the gap moved; what
+// came of it shown in the pane while it is open, a refusal by its key.
+async function writeTuneText(
+  $: EngineInterface,
+  sky: Ghostty,
+  text: TextValues,
+  tuning: { props: TunePaneProps | null; gap: number | null },
+  pt: number,
+): Promise<void> {
+  const written = await writeText($, sky, text, text.gap === tuning.gap ? null : pt).catch((): TextWritten => 'unreadable')
+  if (written === 'written' || written === 'same') tuning.gap = text.gap
+  const note = noteOf(written)
+  if (tuning.props === null || tuning.props.note === note) return
+  tuning.props = { ...tuning.props, note }
+  $.ui.invalidate('ui.render')
+}
+
 // The notifications that ask the person something.
 const ASKING = ['permission_prompt', 'elicitation_dialog']
 
@@ -224,15 +268,20 @@ export const register: Register = on => {
   const looking: LookState = { look: { pictures: [], notes: [] }, signature: null, watch: null }
   // The tune pane while it is open: the props it is drawn with, the last
   // state it posted, whether this session has a preview in sky.json, the
-  // write waiting for its PREVIEW_MS, the timer renewing the preview, and
-  // the settings writes in the order they were asked for, so a close never
-  // lands before a preview asked earlier.
+  // write waiting for its PREVIEW_MS, the timer renewing the preview, the
+  // text's write waiting likewise, and the writes in the order they were
+  // asked for, the text's among them, so a close never lands before a
+  // preview or a text asked earlier.
   const tuning = {
     props: null as TunePaneProps | null,
     latest: null as PaneState | null,
     isPreviewing: false,
     due: null as { cancel: () => void } | null,
     renew: null as { cancel: () => void } | null,
+    textDue: null as { cancel: () => void } | null,
+    // The gap last written to Ghostty's padding line, the saved one as the
+    // pane opened; null where not known, after a reload of the mod.
+    gap: null as number | null,
     writes: Promise.resolve(),
   }
   const inTurn = (work: () => Promise<void>) => (tuning.writes = tuning.writes.then(work).catch(() => undefined))
@@ -550,6 +599,7 @@ export const register: Register = on => {
         hidden: `${folder}/hidden`,
         settings: `${folder.slice(0, -'/runtime'.length)}/sky.json`,
         vsync: `${folder}/vsync.ghostty`,
+        text: `${folder}/text.ghostty`,
         market: theme.manifest.market === true ? `${folder}/market.json` : null,
         version: versionOf((await $.env.get('TERM_PROGRAM_VERSION')) ?? undefined),
         home,
@@ -586,8 +636,10 @@ export const register: Register = on => {
       // An include the mod added before, to its own folder: moved here, and
       // the old file emptied so Ghostty draws no second sky from it.
       let isMarginNew = false
+      // The tune pane's gap goes with any stage the mod writes.
+      const { gap } = (await readSettings($, ghostty)).text
       if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
-        const added = await includeInGhostty($, ghostty, stagePtOf(theme))
+        const added = await includeInGhostty($, ghostty, stagePtOf(theme), gap)
         ghostty.isIncluded = added !== null
         isMarginNew = added?.isMarginNew ?? false
         const old = `${$.plugin.root}/runtime/solar-clawd.ghostty`
@@ -596,7 +648,7 @@ export const register: Register = on => {
       const isOurs = await hasOurInclude($, ghostty)
       // An include from before there was a stage gets it, once: after that
       // the margin is the person's, changed or taken away as they like.
-      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty, stagePtOf(theme)))?.isMarginNew ?? false
+      if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty, stagePtOf(theme), gap))?.isMarginNew ?? false
       if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${stagePtOf(theme)}-point margin on the right of Ghostty's windows; new windows show it.`)
       // The screen's scale costs a moment of osascript: asked only for a sky
       // that shows.
@@ -689,7 +741,8 @@ export const register: Register = on => {
         sky.market = chosen.manifest.market === true ? `${sky.folder}/market.json` : null
         fetchMarket()
         const pt = stagePtOf(chosen)
-        const staged = (await hasOurInclude($, sky)) ? await restageGhostty($, sky, pt) : ({ theirs: null } as const)
+        const { gap } = (await readSettings($, sky)).text
+        const staged = (await hasOurInclude($, sky)) ? await restageGhostty($, sky, pt, gap) : ({ theirs: null } as const)
         await stageOf($, sky, pt)
         refreshSky?.()
 
@@ -1117,7 +1170,19 @@ export const register: Register = on => {
       const settings = await readSettings($, ghostty)
       const weights = phaseWeights(sceneAt(momentAt(now).ms, where.place))
       const phase = PHASES.reduce((best, each) => (weights[each] > weights[best] ? each : best))
-      if (tuning.props === null) tuning.props = { start: { phase, row: 'brightness', tune: settings.tune, opened: settings.tune }, kept: 0 }
+      if (tuning.props === null) {
+        // Ghostty's own text and its fonts, asked once as the pane opens.
+        const { showConfig, fonts } = await readGhosttyText($)
+        const { text, tune } = settings
+        tuning.gap = text.gap
+        tuning.props = {
+          start: { phase, row: 'brightness', tune, opened: tune, isOnText: false, textRow: 'size', text, textOpened: text },
+          kept: 0,
+          own: ownTextOf(showConfig, text),
+          fonts: fontsOf(fonts),
+          note: null,
+        }
+      }
       tuning.renew ??= $.clock.every(RENEW_MS, () => {
         // A renewal changes nothing the sky shows, so it is not drawn again.
         const [sky, state] = [ghostty, tuning.latest]
@@ -1131,10 +1196,12 @@ export const register: Register = on => {
     if (word === 'ghostty') {
       if (ghostty === null) return { text: NOT_GHOSTTY }
       const pt = stagePtOf(theme)
-      // Already there: the stage as wide as the theme asks, where the line
-      // is the mod's own; a padding of the person's own stays theirs.
+      const { gap } = (await readSettings($, ghostty)).text
+      // Already there: the stage as wide as the theme asks and the tune's
+      // gap beside it, where the line is the mod's own; a padding of the
+      // person's own stays theirs.
       if (await isIncluded($, ghostty)) {
-        const staged = await restageGhostty($, ghostty, pt)
+        const staged = await restageGhostty($, ghostty, pt, gap)
         if (staged === 'unreadable') return { text: UNREADABLE_CONFIG }
         if (staged === 'restaged') {
           await stageOf($, ghostty, pt)
@@ -1148,7 +1215,7 @@ export const register: Register = on => {
 
         return { text: `Solar: Ghostty already shows the sky.${wanted}` }
       }
-      const added = await includeInGhostty($, ghostty, pt)
+      const added = await includeInGhostty($, ghostty, pt, gap)
       if (added === null) return { text: UNREADABLE_CONFIG }
       const { line, config } = added
       ghostty.isIncluded = true
@@ -1300,22 +1367,41 @@ export const register: Register = on => {
     const state = message?.state
     if (ghostty === null || tuning.props === null || typeof state !== 'object' || state === null) return next(e)
     const sky = ghostty
-    // The pane is drawn again from where it is, should its module start over.
-    tuning.latest = state
-    tuning.props = { ...tuning.props, start: state }
+    // The pane is drawn again from where it is, should its module start
+    // over; what the post leaves out stays as it was.
+    const latest: PaneState = { ...tuning.props.start, ...state }
+    tuning.latest = latest
+    tuning.props = { ...tuning.props, start: latest }
     const keeps = message?.keeps
     const keptTune = message?.keptTune
+    const keptText = message?.keptText
     let answer = {}
     if (typeof keeps === 'number' && keeps > tuning.props.kept && typeof keptTune === 'object' && keptTune !== null) {
       tuning.due?.cancel()
-      tuning.due = null
+      tuning.textDue?.cancel()
+      Object.assign(tuning, { due: null, textDue: null })
+      // The text kept with the tune; a post that says none leaves the text
+      // as it was.
+      const text = typeof keptText === 'object' && keptText !== null ? asSettings(JSON.stringify({ text: keptText })).text : null
       await inTurn(async () => {
-        await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: keptTune })).tune, preview: null })
+        await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: keptTune })).tune, preview: null, ...(text === null ? {} : { text }) })
         tuning.isPreviewing = false
         refreshSky?.()
+        if (text !== null) await writeTuneText($, sky, text, tuning, stagePtOf(theme))
       })
+      if (tuning.props === null) return answer
       tuning.props = { ...tuning.props, kept: keeps }
       answer = { props: tuning.props }
+    }
+    // Ghostty's text, written once the moves have rested a PREVIEW_MS, the
+    // last of them winning, in the same turn as the sky's writes.
+    if (message?.action === 'text') {
+      tuning.textDue ??= $.clock.after(TUNE_PREVIEW_MS, () => {
+        tuning.textDue = null
+        const shown = tuning.latest
+        if (shown === null) return
+        void inTurn(() => writeTuneText($, sky, asSettings(JSON.stringify({ text: shown.text })).text, tuning, stagePtOf(theme)))
+      })
     }
     if (message?.action === 'preview') {
       tuning.due ??= $.clock.after(TUNE_PREVIEW_MS, () => {
@@ -1340,11 +1426,17 @@ export const register: Register = on => {
   on('ui.close', { id: TUNE_PANE }, async ($, e, next) => {
     tuning.due?.cancel()
     tuning.renew?.cancel()
-    Object.assign(tuning, { props: null, latest: null, due: null, renew: null })
+    tuning.textDue?.cancel()
+    Object.assign(tuning, { props: null, latest: null, due: null, renew: null, textDue: null })
     // Its turn comes after any write already asked for, and decides then.
+    // Ghostty's text goes back to the text saved in sky.json, last kept or
+    // as the pane opened: nothing unkept stays, also where a reload of the
+    // mod left the pane with nothing behind it.
     const sky = ghostty
     await inTurn(async () => {
-      if (sky === null || !tuning.isPreviewing) return
+      if (sky === null) return
+      await writeTuneText($, sky, (await readSettings($, sky)).text, tuning, stagePtOf(theme))
+      if (!tuning.isPreviewing) return
       await writeSettings($, sky, { preview: null })
       tuning.isPreviewing = false
       refreshSky?.()

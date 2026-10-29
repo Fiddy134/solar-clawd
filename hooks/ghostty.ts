@@ -7,8 +7,8 @@ import type { Work } from './activity'
 import { markOf, UNMARK_TAB } from './mark'
 import { canTick, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
-import { asSettings } from './tune'
-import type { Settings } from './tune'
+import { asSettings, TEXT_LIMITS, textLines } from './tune'
+import type { Settings, TextValues } from './tune'
 import type { ShaderParams } from './shader'
 import { STAGE_WIDTHS } from './themes/theme'
 import { staleFiles } from './tidy'
@@ -61,6 +61,9 @@ export type Ghostty = {
   // apart from the sky's and nothing but /solar vsync empties.
   settings: string
   vsync: string
+  // The file with Ghostty's text settings the tune pane writes, included
+  // beside the sky's and never emptied by the mod: they are the person's.
+  text: string
   // The market's snapshot every session shares (net.ts, refreshMarket), for
   // a theme that shows prices; null for one that does not, which reads none.
   market: string | null
@@ -158,11 +161,27 @@ export async function ttyOf($: EngineInterface): Promise<string | null> {
 // (`ghostty --version`, `+validate-config`), whose end SIGUSR2 would be.
 const GHOSTTY_APP = /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/
 
-export function ghosttyAppPids(ps: string): number[] {
+// Ghostty's apps as ps lists them: each one's pid and the path of its
+// binary, which is also Ghostty's command line.
+export function ghosttyApps(ps: string): { pid: number; path: string }[] {
   return ps.split('\n').flatMap(line => {
     const [pid = '', ppid = '', ...comm] = line.trim().split(/\s+/)
-    return ppid === '1' && GHOSTTY_APP.test(comm.join(' ')) && /^\d+$/.test(pid) ? [Number(pid)] : []
+    const path = comm.join(' ')
+    return ppid === '1' && GHOSTTY_APP.test(path) && /^\d+$/.test(pid) ? [{ pid: Number(pid), path }] : []
   })
+}
+
+export function ghosttyAppPids(ps: string): number[] {
+  return ghosttyApps(ps).map(app => app.pid)
+}
+
+// The binary of the Ghostty app that runs, for its command line (+show-config,
+// +list-fonts, +validate-config): the app's own, so its answers are those
+// of the Ghostty that draws; null where ps finds none.
+export async function ghosttyAppPath($: EngineInterface): Promise<string | null> {
+  const ps = await $.process.run(['/bin/ps', '-axo', 'pid=,ppid=,comm='], { timeoutMs: 5_000 }).catch(() => null)
+
+  return ghosttyApps(ps?.stdout ?? '')[0]?.path ?? null
 }
 
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
@@ -525,8 +544,11 @@ export async function endGhosttySky($: EngineInterface, ghostty: Ghostty, reason
 // every tab and window opened while it is there.
 export const VSYNC_OFF_LINE = 'window-vsync = false\n'
 
-// An include of the mod's vsync file, from any runtime folder.
+// An include of the mod's vsync file, or of its text file, from any
+// runtime folder: the files the mod includes beside the sky's.
 const VSYNC_INCLUDE = /^config-file\s*=\s*\??.*\/runtime\/vsync\.ghostty$/
+const TEXT_INCLUDE = /^config-file\s*=\s*\??.*\/runtime\/text\.ghostty$/
+const isBesideInclude = (row: string) => VSYNC_INCLUDE.test(row.trim()) || TEXT_INCLUDE.test(row.trim())
 
 // A screen's scale as osascript or the scale file says it (the file has
 // when it was asked after it): a positive number up to 4, null for
@@ -603,6 +625,15 @@ export async function isVsyncOff($: EngineInterface, ghostty: Ghostty): Promise<
 // Nothing is written to a config that cannot be read, nor to one without
 // the sky's include.
 export async function includeVsync($: EngineInterface, ghostty: Ghostty): Promise<'added' | 'there' | 'unreadable' | 'no-include'> {
+  return includeBeside($, ghostty, ghostty.vsync, VSYNC_INCLUDE)
+}
+
+// The same for the text file.
+export async function includeText($: EngineInterface, ghostty: Ghostty): Promise<'added' | 'there' | 'unreadable' | 'no-include'> {
+  return includeBeside($, ghostty, ghostty.text, TEXT_INCLUDE)
+}
+
+async function includeBeside($: EngineInterface, ghostty: Ghostty, file: string, pattern: RegExp): Promise<'added' | 'there' | 'unreadable' | 'no-include'> {
   for (const path of ghostty.configs) {
     if (!(await $.fs.exists(path).catch(() => false))) continue
     const text = await $.fs.read(path).catch(() => null)
@@ -610,8 +641,8 @@ export async function includeVsync($: EngineInterface, ghostty: Ghostty): Promis
     const rows = text.split('\n')
     const at = rows.findIndex(row => OUR_LINES[1]!.test(row.trim()))
     if (at < 0) continue
-    if (rows.some(row => VSYNC_INCLUDE.test(row.trim()))) return 'there'
-    rows.splice(at + 1, 0, `config-file = ?${ghostty.vsync}`)
+    if (rows.some(row => pattern.test(row.trim()))) return 'there'
+    rows.splice(at + 1, 0, `config-file = ?${file}`)
     await $.fs.write(path, rows.join('\n'))
 
     return 'added'
@@ -645,12 +676,14 @@ const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??.*\/runtime\/solar
 const PADDING = /^window-padding-x\s*=\s*(\d+)\s*(?:,\s*(\d+))?$/
 
 // Whether a config's line is a stage padding the mod could have written:
-// the right side one of the widths a theme may ask. A person's own at one
-// of them reads as the mod's too.
+// the right side one of the widths a theme may ask, plus a gap the tune
+// pane may add. A person's own at one of them reads as the mod's too.
 function isOurPadding(row: string): boolean {
   const right = PADDING.exec(row.trim())?.[2]
+  const { min, max, step } = TEXT_LIMITS.gap
+  const isGap = (gap: number) => gap >= min && gap <= max && (gap - min) % step === 0
 
-  return right !== undefined && (STAGE_WIDTHS as readonly number[]).includes(Number(right))
+  return right !== undefined && STAGE_WIDTHS.some(width => isGap(Number(right) - width))
 }
 const isOurs = (row: string, withPadding: boolean) => OUR_LINES.some(pattern => pattern.test(row.trim())) || (withPadding && isOurPadding(row))
 
@@ -663,15 +696,18 @@ export function rightPaddingOf(text: string): number | null {
   return last ? Number(last[2] ?? last[1]) : null
 }
 
-// A config with the mod's own stage line, the one right under its include,
-// at `pt` points; null where the line there is none of the mod's (the
-// person's own, or nothing), which stays as it is.
+// A config with the mod's own stage line, the one right under its include
+// (past the includes the mod puts beside it), at `pt` points; null where
+// the line there is none of the mod's (the person's own, or nothing),
+// which stays as it is.
 export function restaged(text: string, pt: number): string | null {
   const rows = text.split('\n')
-  const at = rows.findIndex(row => OUR_LINES[1]!.test(row.trim()))
-  const below = rows[at + 1]
-  if (at < 0 || below === undefined || !isOurPadding(below)) return null
-  rows[at + 1] = `window-padding-x = ${PADDING.exec(below.trim())![1]},${pt}`
+  const include = rows.findIndex(row => OUR_LINES[1]!.test(row.trim()))
+  let at = include + 1
+  while (include >= 0 && at < rows.length && isBesideInclude(rows[at]!)) at++
+  const below = rows[at]
+  if (include < 0 || below === undefined || !isOurPadding(below)) return null
+  rows[at] = `window-padding-x = ${PADDING.exec(below.trim())![1]},${pt}`
 
   return rows.join('\n')
 }
@@ -686,19 +722,24 @@ export async function stagedPadding($: EngineInterface, ghostty: Ghostty): Promi
   return null
 }
 
-// Gives the stage the theme's width, in the config that includes the sky:
-// `same` where it has it, `restaged` where the mod's own line said another
-// and now says `pt`, or the person's own padding, left as it is (null for
-// none), or `unreadable`.
-export async function restageGhostty($: EngineInterface, ghostty: Ghostty, pt: number): Promise<'same' | 'restaged' | 'unreadable' | { theirs: number | null }> {
+// Gives the stage the theme's width and the tune's gap beside it, in the
+// config that includes the sky: `same` where it has them, `restaged` where
+// the mod's own line said another and now says `pt` plus `gap`, or the
+// person's own padding, left as it is (null for none), or `unreadable`.
+export async function restageGhostty(
+  $: EngineInterface,
+  ghostty: Ghostty,
+  pt: number,
+  gap = 0,
+): Promise<'same' | 'restaged' | 'unreadable' | { theirs: number | null }> {
   for (const path of ghostty.configs) {
     if (!(await $.fs.exists(path).catch(() => false))) continue
     const text = await $.fs.read(path).catch(() => null)
     if (text === null) return 'unreadable'
     if (!text.split('\n').some(row => OUR_LINES[1]!.test(row.trim()))) continue
     const right = rightPaddingOf(text)
-    if (right === pt) return 'same'
-    const changed = restaged(text, pt)
+    if (right === pt + gap) return 'same'
+    const changed = restaged(text, pt + gap)
     if (changed === null) return { theirs: right }
     await $.fs.write(path, changed)
 
@@ -742,16 +783,17 @@ export function runtimeFolder(home: string, isOnLinux: boolean, xdgState: string
 // Adds the one include line, under the mod's comment, to the config Ghostty
 // reads first, in place of any the mod added before; `?` keeps Ghostty quiet
 // should the file ever be missing. A config not yet given the stage gets
-// its padding after the include, `pt` points (the theme's), keeping the
-// left number of the person's own window-padding-x (the last, which is the
-// one Ghostty uses; else 2); one given it before keeps its padding lines as
-// the person left them.
+// its padding after the include, `pt` points (the theme's) and the tune's
+// `gap`, keeping the left number of the person's own window-padding-x (the
+// last, which is the one Ghostty uses; else 2); one given it before keeps
+// its padding lines as the person left them.
 // Answers the line, the file, and whether the margin is new to the config;
 // null when the config is there but cannot be read: never written over.
 export async function includeInGhostty(
   $: EngineInterface,
   ghostty: Ghostty,
   pt: number = STAGE_PT,
+  gap = 0,
 ): Promise<{ line: string; config: string; isMarginNew: boolean } | null> {
   let config = ghostty.configs[0]!
   // On Linux the file that is there, config.ghostty if neither is.
@@ -772,10 +814,85 @@ export async function includeInGhostty(
   const rows = read.split('\n').filter(row => !isOurs(row, !isStaged))
   const text = rows.join('\n')
   const own = rows.map(row => /^window-padding-x\s*=\s*(\d+)/.exec(row.trim())).findLast(found => found !== null)
-  const padding = isStaged ? '' : `window-padding-x = ${own ? own[1] : '2'},${pt}\n`
+  const padding = isStaged ? '' : `window-padding-x = ${own ? own[1] : '2'},${pt + gap}\n`
   const line = `config-file = ?${ghostty.include}`
-  const gap = text === '' || text.endsWith('\n') ? '' : '\n'
-  await $.fs.write(config, `${text}${gap}${STAGED}\n${line}\n${padding}`)
+  const joint = text === '' || text.endsWith('\n') ? '' : '\n'
+  await $.fs.write(config, `${text}${joint}${STAGED}\n${line}\n${padding}`)
 
   return { line, config, isMarginNew: !isStaged && !hadMargin }
+}
+
+// What writing the text came to: written (or already so), refused by
+// Ghostty for the key it names, or not tried: no Ghostty app to check it
+// with, no sky in Ghostty's config to put it beside, or a config that
+// could not be read.
+export type TextWritten = 'written' | 'same' | 'no-app' | 'no-include' | 'unreadable' | { refused: string }
+
+// Ghostty's font size reset in every terminal of the app, as JXA: a window
+// whose size was changed by hand (cmd-plus, cmd-minus) keeps it over any
+// reload until then.
+const RESET_FONT_SIZE = [
+  '-l',
+  'JavaScript',
+  '-e',
+  "const app = Application('com.mitchellh.ghostty'); app.terminals().forEach(terminal => app.performAction('reset_font_size', { on: terminal }))",
+]
+
+// Writes the tune pane's text where Ghostty reads it: the touched rows
+// (textLines) in the text file, included beside the sky's, and, given the
+// theme's stage `pt` where the gap may have changed, the gap on the mod's
+// own padding line at `pt` plus it (null leaves the padding as it is). Each new
+// text is checked first with the app's own `+validate-config` against a
+// file of this session's own, never one Ghostty reads, its answer piped:
+// a text Ghostty refuses is not written, so its error window never opens.
+// The check's file is then moved into place, and Ghostty reloads once for
+// whatever changed. A change of size resets the size of every terminal,
+// not waited on: macOS asks the person once whether Solar may.
+export async function writeText($: EngineInterface, ghostty: Ghostty, text: TextValues, pt: number | null): Promise<TextWritten> {
+  const wanted = textLines(text).map(line => `${line}\n`).join('')
+  const onDisk = await $.fs.read(ghostty.text).catch(() => '')
+  let isChanged = false
+  if (wanted !== onDisk) {
+    const included = await includeText($, ghostty)
+    if (included === 'unreadable' || included === 'no-include') return included
+    const temp = `${ghostty.text}.tmp-${ghostty.id}`
+    if (wanted !== '') {
+      const app = await ghosttyAppPath($)
+      if (app === null) return 'no-app'
+      await $.fs.write(temp, wanted)
+      const check = await $.process.run([app, '+validate-config', `--config-file=${temp}`], { timeoutMs: 10_000 }).catch(() => null)
+      if (check?.exitCode !== 0) {
+        await $.process.run(['/bin/rm', '-f', temp]).catch(() => undefined)
+        const key = /:\d+:([\w-]+):/.exec(check?.stdout ?? '')?.[1]
+
+        return { refused: key ?? 'the text' }
+      }
+    } else await $.fs.write(temp, wanted)
+    const { exitCode } = await $.process.run(['/bin/mv', '-f', temp, ghostty.text])
+    if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
+    isChanged = true
+  }
+  if (pt !== null && (await restageGhostty($, ghostty, pt, text.gap)) === 'restaged') isChanged = true
+  if (!isChanged) return 'same'
+  await reloadGhostty($, ghostty)
+  const sizeOf = (lines: string) => lines.split('\n').find(line => line.startsWith('font-size = ')) ?? null
+  if (sizeOf(wanted) !== sizeOf(onDisk)) void $.process.run(['/usr/bin/osascript', ...RESET_FONT_SIZE], { timeoutMs: 60_000 }).catch(() => undefined)
+
+  return 'written'
+}
+
+// The person's own text and the fonts, as the running Ghostty says them:
+// its +show-config, everything included, and its +list-fonts, read once
+// as the tune pane opens; empty where there is no app to ask.
+export async function readGhosttyText($: EngineInterface): Promise<{ showConfig: string; fonts: string }> {
+  const app = await ghosttyAppPath($)
+  if (app === null) return { showConfig: '', fonts: '' }
+  const run = (argv: string[]) =>
+    $.process
+      .run([app, ...argv], { timeoutMs: 10_000 })
+      .then(answer => (answer.exitCode === 0 ? answer.stdout : ''))
+      .catch(() => '')
+  const [showConfig, fonts] = await Promise.all([run(['+show-config', '--changes-only=false', '--no-pager']), run(['+list-fonts'])])
+
+  return { showConfig, fonts }
 }

@@ -12,7 +12,7 @@ import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
-import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TUNE_PANE, TUNE_WORDS } from './tune'
+import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TEXT_WORDS, TUNE_PANE, TUNE_WORDS } from './tune'
 import type { TuneSettings } from './tune'
 import { wallpaperPng } from './sky'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
@@ -1916,4 +1916,224 @@ test('a keep the pane posted together with a later move is kept, and the move pr
   expect(saved().preview?.tune.day.brightness).toBe(0.8)
   await closeTune($, panes)
   await ui.unmount()
+})
+
+// Ghostty's +show-config as it prints the text keys on a config that sets
+// none of them, and +list-fonts.
+const SHOW_CONFIG = 'font-family = \nfont-size = 13\nfont-thicken = false\nfont-thicken-strength = 255\nadjust-cell-height = \nwindow-padding-x = 2,240\nfaint-opacity = 0.5\n'
+const LIST_FONTS = 'Andale Mono\n  Andale Mono\n\nMenlo\n  Menlo Bold\n  Menlo Regular\n'
+const TEXT = `${RUNTIME}/text.ghostty`
+const TEXT_INCLUDE = `config-file = ?${TEXT}`
+const GHOSTTY_APP = '/Applications/Ghostty.app/Contents/MacOS/ghostty'
+const RESETS = (runs: string[][]) =>
+  runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv[1] === '-l' && argv[2] === 'JavaScript' && argv.join(' ').includes('reset_font_size')).length
+
+// A Ghostty 1.4 session on a Mac with the sky in its config, the tune pane
+// open on its text tab; Ghostty's app as ps lists it, and its command line
+// as the kit models it.
+async function textWorld($: Engine, on: On, before?: (world: ReturnType<typeof ghosttyWorld>) => void) {
+  const panes = paneWorld(on)
+  const { clock, world, solar, config, runtime } = await paceWorld($, on, '1.4.0')
+  world.answers.set('/bin/ps', MAC_PS)
+  world.cli.showConfig = SHOW_CONFIG
+  world.cli.fonts = LIST_FONTS
+  await solar('ghostty')
+  before?.(world)
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  const isOnText = async () => (await ui.find({ type: 'Text', text: /^ text $/, in: 'tune' }))?.props.backgroundColor === '#ff6fc0'
+  for (let i = 0; i < 5 && !(await isOnText()); i++) await ui.key({ key: 'tab' })
+  expect(await isOnText()).toBe(true)
+
+  return { panes, clock, world, solar, config, runtime, ui, kills: () => KILLS(world.runs).length }
+}
+
+test('a text change is validated, written to its own include and reloaded', async ($, on) => {
+  const { panes, clock, world, config, ui, kills } = await textWorld($, on)
+  // The person's own values, dimmed, with own; the gap says where it shows.
+  expect(await ui.find({ type: 'Text', text: '13 pt', in: 'tune' })).toMatchObject({ props: { dimColor: true } })
+  expect(await ui.find({ type: 'Text', text: TEXT_WORDS.builtIn, in: 'tune' })).toBeDefined()
+  expect((await ui.findAll({ type: 'Text', text: /^\s*own$/, in: 'tune' })).length).toBe(5)
+  expect(await ui.find({ type: 'Text', text: TEXT_WORDS.newWindows, in: 'tune' })).toBeDefined()
+  // +show-config and +list-fonts were read once, as the pane opened.
+  const shows = () => world.runs.filter(argv => argv[0] === GHOSTTY_APP && argv[1] === '+show-config').length
+  const lists = () => world.runs.filter(argv => argv[0] === GHOSTTY_APP && argv[1] === '+list-fonts').length
+  expect([shows(), lists()]).toEqual([1, 1])
+
+  // Two moves within a PREVIEW_MS make one write, with the last of them.
+  const from = world.runs.length
+  const reloads = kills()
+  await ui.key({ key: 'right' })
+  await clock.advance(50)
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14\n')
+  expect(await ui.find({ type: 'Text', text: '14 pt', in: 'tune' })).toBeDefined()
+  const runs = world.runs.slice(from).map(argv => argv.join(' '))
+  const validated = runs.findIndex(run => run.startsWith(`${GHOSTTY_APP} +validate-config --config-file=${TEXT}.tmp-`))
+  const moved = runs.findIndex(run => run.startsWith('/bin/mv') && run.endsWith(` ${TEXT}`))
+  expect(validated).toBeGreaterThanOrEqual(0)
+  expect(moved).toBeGreaterThan(validated)
+  expect(runs.filter(run => run.includes('+validate-config')).length).toBe(1)
+  expect(kills()).toBe(reloads + 1)
+  // Its include sits beside the sky's, once; the sky's settings know nothing yet.
+  const rows = config().split('\n')
+  expect(rows.filter(row => row === TEXT_INCLUDE).length).toBe(1)
+  expect(rows[rows.indexOf(TEXT_INCLUDE) - 1]).toBe(`config-file = ?${RUNTIME}/solar-clawd.ghostty`)
+  expect(asSettings(world.files.get(SETTINGS)?.text ?? '').text.size).toBeNull()
+  // Nothing more is read or written while the moves rest, the sky's ten
+  // seconds included.
+  await clock.advance(11_000)
+  expect([shows(), lists()]).toEqual([1, 1])
+  expect(world.runs.filter(argv => argv.join(' ').includes('+validate-config')).length).toBe(1)
+
+  // Escape writes the text the pane opened with back, and Ghostty reloads.
+  const beforeClose = kills()
+  await closeTune($, panes)
+  expect(world.files.get(TEXT)?.text).toBe('')
+  expect(kills()).toBeGreaterThan(beforeClose)
+  await ui.unmount()
+})
+
+test('the text kept stays once the pane is closed, and u goes back to how it opened', async ($, on) => {
+  const { panes, clock, world, solar, ui } = await textWorld($, on)
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'return' })
+  expect(asSettings(world.files.get(SETTINGS)!.text).text.size).toBe(13.5)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  await closeTune($, panes)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  await ui.unmount()
+  // Opened again on what was kept: a move, then u, is the kept text again.
+  await solar('tune')
+  const again = await $.ui.mount(TUNE_MOUNT)
+  for (let i = 0; i < 5 && (await again.find({ type: 'Text', text: /^ text $/, in: 'tune' }))?.props.backgroundColor !== '#ff6fc0'; i++) await again.key({ key: 'tab' })
+  expect(await again.find({ type: 'Text', text: '13.5 pt', in: 'tune' })).toMatchObject({ props: { dimColor: false } })
+  await again.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14\n')
+  await again.key({ key: 'u' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  // r leaves the size untouched, the person's own: no line for it.
+  await again.key({ key: 'r' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('')
+  await closeTune($, panes)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  await again.unmount()
+})
+
+test('a text change Ghostty refuses is not written', async ($, on) => {
+  const { panes, clock, world, ui, kills } = await textWorld($, on)
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  // The font Ghostty will not take: the file as it was, no reload, and the
+  // pane names the key.
+  world.cli.refuses.add('font-family')
+  const reloads = kills()
+  await ui.key({ key: 'down' })
+  await ui.key({ key: 'down' })
+  await ui.key({ key: 'down' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  expect(kills()).toBe(reloads)
+  expect([...world.files.keys()].some(path => path.startsWith(`${TEXT}.tmp-`))).toBe(false)
+  expect(await ui.find({ type: 'Text', text: TEXT_WORDS.refused('font-family'), in: 'tune' })).toBeDefined()
+  // Taken again once the font is one Ghostty takes.
+  world.cli.refuses.clear()
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\nfont-family = ""\nfont-family = Menlo\n')
+  expect(await ui.find({ type: 'Text', text: TEXT_WORDS.refused('font-family'), in: 'tune' })).toBeUndefined()
+  await closeTune($, panes)
+  await ui.unmount()
+})
+
+test('a change of size resets the font size of every terminal', async ($, on) => {
+  const { panes, clock, world, ui } = await textWorld($, on)
+  expect(RESETS(world.runs)).toBe(0)
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(RESETS(world.runs)).toBe(1)
+  const reset = world.runs.find(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('reset_font_size'))!
+  expect(reset.join(' ')).toContain('com.mitchellh.ghostty')
+  expect(reset.join(' ')).toContain('terminals()')
+  // A change of weight is drawn again in every window as it is.
+  await ui.key({ key: 'down' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\nfont-thicken = true\nfont-thicken-strength = 0\n')
+  expect(RESETS(world.runs)).toBe(1)
+  // The close takes the size away again: that is a change of size too.
+  await closeTune($, panes)
+  expect(RESETS(world.runs)).toBe(2)
+  await ui.unmount()
+})
+
+test('the gap widens the padding line for new windows', async ($, on) => {
+  const { panes, clock, world, solar, config, runtime, ui, kills } = await textWorld($, on, world => {
+    seedThemes(world)
+    world.answers.set('/usr/bin/osascript', '2\n')
+  })
+  const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  expect(await solar('theme harbour')).toBe("Solar: the sky is harbour now, in every session. Its stage is 400 points wide; Ghostty's new windows show it.")
+  expect(config()).toContain('\nwindow-padding-x = 2,400\n')
+  // The sky drawn with the new theme first.
+  await clock.advance(100)
+  // Two steps of the gap: 16 points more padding, and Ghostty reads it.
+  const reloads = kills()
+  await ui.key({ key: 'up' })
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'right' })
+  expect(await ui.find({ type: 'Text', text: '16 pt', in: 'tune' })).toBeDefined()
+  await clock.advance(PREVIEW_MS)
+  expect(config()).toContain('\nwindow-padding-x = 2,416\n')
+  expect(config()).not.toContain('2,400')
+  expect(kills()).toBe(reloads + 1)
+  // The gap writes no text line, and the stage stays the theme's width.
+  expect(world.files.get(TEXT)?.text ?? '').toBe('')
+  await clock.advance(11_000)
+  expect(shader()).toContain('const float STAGE_PX = 800.0;')
+  // Kept, it goes with every theme the mod stages, and /solar ghostty finds it so.
+  await ui.key({ key: 'return' })
+  expect(asSettings(world.files.get(SETTINGS)!.text).text.gap).toBe(16)
+  expect(await solar('ghostty')).toBe('Solar: Ghostty already shows the sky.')
+  expect(await solar('theme fyr')).toBe("Solar: the sky is fyr now, in every session. Its stage is 240 points wide; Ghostty's new windows show it.")
+  expect(config()).toContain('\nwindow-padding-x = 2,256\n')
+  await closeTune($, panes)
+  expect(config()).toContain('\nwindow-padding-x = 2,256\n')
+  await ui.unmount()
+})
+
+test('a gap not kept goes back at the close', async ($, on) => {
+  const { panes, clock, config, ui } = await textWorld($, on)
+  await ui.key({ key: 'up' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(config()).toContain('\nwindow-padding-x = 2,248\n')
+  await closeTune($, panes)
+  expect(config()).toContain('\nwindow-padding-x = 2,240\n')
+  await ui.unmount()
+})
+
+test('hiding the sky keeps the text include', async ($, on) => {
+  const { panes, clock, world, solar, config, ui } = await textWorld($, on)
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'return' })
+  await clock.advance(PREVIEW_MS)
+  await closeTune($, panes)
+  await ui.unmount()
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  // The sky hidden, then the last session gone: the person's text stays.
+  await solar('')
+  await clock.advance(11_000)
+  expect(world.files.get(`${RUNTIME}/solar-clawd.ghostty`)?.text).toBe('')
+  expect(config()).toContain(`\n${TEXT_INCLUDE}\n`)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
+  expect(config()).toContain(`\n${TEXT_INCLUDE}\n`)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
 })

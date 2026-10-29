@@ -9,8 +9,35 @@ import { withSettings } from './ghostty'
 import { luminance, mix, saturate } from './paint'
 import { sceneAt } from './shader'
 import { STOPS } from './sky'
-import { activeTune, asSettings, barOf, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, onPaneKey, onTuneKey, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, TUNE_ROWS, TUNE_WORDS, tuneAt, tunedColour, valueText } from './tune'
-import type { PaneLocal, PaneState, Phase, TuneSettings, TuneValues } from './tune'
+import {
+  activeTune,
+  asSettings,
+  barOf,
+  clampTune,
+  DEFAULT_TEXT,
+  DEFAULT_TUNE,
+  fontsOf,
+  LIMITS,
+  NEUTRAL,
+  onPaneKey,
+  onTuneKey,
+  ownTextOf,
+  PHASES,
+  phaseWeights,
+  PREVIEW_LIFE_MS,
+  previewMoment,
+  TEXT_LIMITS,
+  TEXT_ROWS,
+  TEXT_WORDS,
+  textLines,
+  textValueText,
+  TUNE_ROWS,
+  TUNE_WORDS,
+  tuneAt,
+  tunedColour,
+  valueText,
+} from './tune'
+import type { OwnText, PaneLocal, PaneState, Phase, TextValues, TuneSettings, TuneValues } from './tune'
 
 test('settings from an older Solar, broken or out of range give defaults and limits', () => {
   const old = asSettings('{"pace":"full"}')
@@ -102,7 +129,7 @@ test("today's settings draw today's sky", () => {
 test('a preview counts until its time, and only a time at most a minute ahead', () => {
   const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
   const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until } })
+  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT })
   expect(activeTune(settings(100_000), 50_000)).toEqual({ tune, phase: 'dusk' })
   expect(activeTune(settings(100_000), 100_000)).toEqual({ tune: saved, phase: null })
   // A minute ahead and the second its write took count; anything further is
@@ -141,7 +168,9 @@ test("a preview's moment is today's sunrise, noon, sunset or midnight, and now w
 // The pane opened on the day with brightness chosen, the saved tune as it
 // opened; keys pressed in turn.
 const OPENED: TuneSettings = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-const press = (keys: string[], from: PaneState = { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED }) =>
+// The text tab as the pane opened it: nothing touched.
+const TEXT_TAB = { isOnText: false, textRow: 'size' as const, text: DEFAULT_TEXT, textOpened: DEFAULT_TEXT }
+const press = (keys: string[], from: PaneState = { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED, ...TEXT_TAB }) =>
   keys.reduce<{ state: PaneState; action: string }>(({ state }, key) => onTuneKey(state, key), { state: from, action: 'none' })
 
 test('keys move, clamp, reset, undo and keep', () => {
@@ -171,9 +200,15 @@ test('keys move, clamp, reset, undo and keep', () => {
   expect(press([']']).state.phase).toBe('dusk')
   expect(press(['[']).state.phase).toBe('dawn')
   expect(press(['tab']).action).toBe('preview')
-  const night = { phase: 'night' as Phase, row: 'brightness' as const, tune: OPENED, opened: OPENED }
-  expect(press(['tab'], night).state.phase).toBe('dawn')
-  expect(press(['['], { ...night, phase: 'dawn' }).state.phase).toBe('night')
+  // After night comes the text tab, which leaves the sky on the part of
+  // the day it showed, and then dawn again.
+  const night = { phase: 'night' as Phase, row: 'brightness' as const, tune: OPENED, opened: OPENED, ...TEXT_TAB }
+  expect(press(['tab'], night).state).toMatchObject({ phase: 'night', isOnText: true })
+  expect(press(['tab'], night).action).toBe('none')
+  expect(press(['tab', 'tab'], night).state).toMatchObject({ phase: 'dawn', isOnText: false })
+  expect(press(['tab', 'tab'], night).action).toBe('preview')
+  expect(press(['['], { ...night, phase: 'dawn' }).state).toMatchObject({ phase: 'dawn', isOnText: true })
+  expect(press(['[', '['], { ...night, phase: 'dawn' }).state).toMatchObject({ phase: 'night', isOnText: false })
   // Enter keeps; u still goes back to the tune the pane opened with, and
   // Enter again would keep that.
   const kept = press(['left', 'return'])
@@ -212,7 +247,7 @@ test('the pane shows each value as the mock-up does, and no number in it reads a
 })
 
 test('each key starts from the last, and a keep travels in every post after it', () => {
-  const start: PaneLocal = { pane: { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED }, keeps: 0, keptTune: null, isKeptLast: false }
+  const start: PaneLocal = { pane: { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED, ...TEXT_TAB }, keeps: 0, keptTune: null, keptText: null, isKeptLast: false }
   const keys = (list: string[]) => list.reduce(({ local }, key) => onPaneKey(local, key), { local: start, post: null as ReturnType<typeof onPaneKey>['post'] })
   // Two lefts in a row are two steps.
   expect(keys(['left', 'left']).local.pane.tune.day.brightness).toBe(0.9)
@@ -222,10 +257,152 @@ test('each key starts from the last, and a keep travels in every post after it',
   // Enter counts a keep and carries what it kept; a move after it, posted
   // in the same frame in its place, still carries the keep.
   const kept = keys(['left', 'return'])
-  expect(kept.post).toEqual({ state: kept.local.pane, action: 'keep', keeps: 1, keptTune: kept.local.pane.tune })
+  expect(kept.post).toEqual({ state: kept.local.pane, action: 'keep', keeps: 1, keptTune: kept.local.pane.tune, keptText: DEFAULT_TEXT })
   expect(kept.local.isKeptLast).toBe(true)
   const after = keys(['left', 'return', 'left'])
   expect(after.post).toMatchObject({ action: 'preview', keeps: 1, keptTune: kept.local.pane.tune })
   expect(after.post?.state.tune.day.brightness).toBe(0.9)
   expect(after.local.isKeptLast).toBe(false)
+})
+
+test('text values clamp, snap and stay untouched as null', () => {
+  // An older sky.json says nothing of the text: every row untouched, no gap.
+  expect(asSettings('{"pace":"full"}').text).toEqual({ size: null, weight: null, lineHeight: null, font: null, faint: null, gap: 0 })
+  expect(DEFAULT_TEXT).toEqual({ size: null, weight: null, lineHeight: null, font: null, faint: null, gap: 0 })
+  expect(asSettings('{"text":{"size":40}}').text.size).toBe(28)
+  expect(asSettings('{"text":{"lineHeight":-5}}').text.lineHeight).toBe(0)
+  // A font the list does not know is kept as the text it is.
+  expect(asSettings('{"text":{"font":"Iosevka"}}').text.font).toBe('Iosevka')
+  const text = asSettings('{"text":{"size":14.3,"weight":100,"faint":0.73,"gap":13,"lineHeight":12}}').text
+  expect(text).toEqual({ size: 14.5, weight: 96, lineHeight: 10, font: null, faint: 0.7, gap: 16 })
+  // The top of a range is reachable even off its steps; nothing goes past it.
+  expect(asSettings('{"text":{"weight":255}}').text.weight).toBe(255)
+  expect(asSettings('{"text":{"weight":250}}').text.weight).toBe(255)
+  expect(asSettings('{"text":{"faint":0.2,"gap":500}}').text).toMatchObject({ faint: 0.5, gap: 120 })
+  // What is no number, or no font name that fits on one line, is untouched.
+  for (const value of ['"x"', 'null', 'true', '[]']) expect(asSettings(`{"text":{"size":${value}}}`).text).toEqual(DEFAULT_TEXT)
+  for (const value of ['5', 'null', 'true', '[]']) expect(asSettings(`{"text":{"font":${value}}}`).text).toEqual(DEFAULT_TEXT)
+  expect(asSettings('{"text":{"font":"   "}}').text.font).toBeNull()
+  expect(asSettings('{"text":{"font":"Menlo\\nfont-size = 99"}}').text.font).toBeNull()
+  expect(asSettings('{"text":{"gap":null}}').text.gap).toBe(0)
+  expect(asSettings('{"text":5}').text).toEqual(DEFAULT_TEXT)
+})
+
+test('textLines writes only what was touched, the font list cleared first', () => {
+  expect(textLines(DEFAULT_TEXT)).toEqual([])
+  expect(textLines({ ...DEFAULT_TEXT, font: 'Iosevka' })).toEqual(['font-family = ""', 'font-family = Iosevka'])
+  // The gap is the padding line's, never the include's.
+  expect(textLines({ ...DEFAULT_TEXT, gap: 16 })).toEqual([])
+  expect(textLines({ size: 14.5, weight: 128, lineHeight: 10, font: 'JetBrains Mono', faint: 0.8, gap: 16 })).toEqual([
+    'font-size = 14.5',
+    'font-thicken = true',
+    'font-thicken-strength = 128',
+    'adjust-cell-height = 10%',
+    'font-family = ""',
+    'font-family = JetBrains Mono',
+    'faint-opacity = 0.8',
+  ])
+  // A weight of 0 still thickens, at its least.
+  expect(textLines({ ...DEFAULT_TEXT, weight: 0 })).toEqual(['font-thicken = true', 'font-thicken-strength = 0'])
+})
+
+// Ghostty's +show-config as it prints the text keys, and +list-fonts.
+const SHOW_CONFIG = 'font-family = \nfont-size = 13\nfont-thicken = false\nfont-thicken-strength = 255\nadjust-cell-height = \nwindow-padding-x = 2,240\nfaint-opacity = 1\n'
+const LIST_FONTS = 'Andale Mono\n  Andale Mono\n\nMenlo\n  Menlo Bold\n  Menlo Regular\n\nPT Mono\n  PT Mono\n  PT Mono Bold\n'
+
+test("the person's own text comes from Ghostty's +show-config, and the fonts from +list-fonts", () => {
+  expect(fontsOf(LIST_FONTS)).toEqual(['Andale Mono', 'Menlo', 'PT Mono'])
+  expect(fontsOf('')).toEqual([])
+  expect(ownTextOf(SHOW_CONFIG, DEFAULT_TEXT)).toEqual({ size: 13, weight: 'off', lineHeight: 0, font: '', faint: 1 })
+  const theirs = 'font-family = Iosevka\nfont-family = Symbols Nerd Font\nfont-size = 15\nfont-thicken = true\nfont-thicken-strength = 200\nadjust-cell-height = 12%\nfaint-opacity = 0.5\n'
+  expect(ownTextOf(theirs, DEFAULT_TEXT)).toEqual({ size: 15, weight: 200, lineHeight: 12, font: 'Iosevka', faint: 0.5 })
+  // A line height in pixels, or a key it does not print, is not known.
+  expect(ownTextOf('adjust-cell-height = 2\n', DEFAULT_TEXT)).toEqual({ size: null, weight: null, lineHeight: null, font: null, faint: null })
+  // Where the mod's own include sets a row, +show-config says the mod's
+  // value, not the person's: theirs is not known.
+  expect(ownTextOf(theirs, { ...DEFAULT_TEXT, size: 14.5, font: 'Menlo' })).toMatchObject({ size: null, font: null, weight: 200 })
+})
+
+test('the text tab moves its rows, the font through the list, r leaves a row untouched and u goes back to how the pane opened', () => {
+  const own: OwnText = { size: 13, weight: 'off', lineHeight: 0, font: '', faint: 0.5 }
+  const world = { own, fonts: ['Andale Mono', 'Menlo', 'PT Mono'] }
+  const opened: TextValues = { ...DEFAULT_TEXT, faint: 0.8 }
+  const at: PaneState = { phase: 'day', row: 'brightness', tune: OPENED, opened: OPENED, isOnText: true, textRow: 'size', text: opened, textOpened: opened }
+  const keys = (list: string[], from = at) =>
+    list.reduce<{ state: PaneState; action: string }>(({ state }, key) => onTuneKey(state, key, world), { state: from, action: 'none' })
+  // Size from the person's own 13, half a point a step; the sky's tune untouched.
+  expect(keys(['right']).state.text.size).toBe(13.5)
+  expect(keys(['right']).action).toBe('text')
+  expect(keys(['right']).state.tune).toEqual(OPENED)
+  expect(keys(['left', 'left']).state.text.size).toBe(12)
+  expect(keys(Array(60).fill('left')).state.text.size).toBe(TEXT_LIMITS.size.min)
+  // The rows, wrapping.
+  expect(keys(['down']).state.textRow).toBe('weight')
+  expect(keys(['up']).state.textRow).toBe('gap')
+  expect(TEXT_ROWS).toEqual(['size', 'weight', 'lineHeight', 'font', 'faint', 'gap'])
+  // Weight from off: right thickens at the least, left leaves it off.
+  expect(keys(['down', 'right']).state.text.weight).toBe(0)
+  expect(keys(['down', 'right', 'right']).state.text.weight).toBe(32)
+  expect(keys(['down', 'left'])).toMatchObject({ action: 'none' })
+  expect(keys(['down', 'left']).state.text.weight).toBeNull()
+  expect(keys(['down', ...Array(12).fill('right')]).state.text.weight).toBe(255)
+  // Line height and faint text only go up from today's.
+  expect(keys(['down', 'down', 'left']).state.text.lineHeight).toBe(0)
+  expect(keys(['down', 'down', 'right']).state.text.lineHeight).toBe(5)
+  expect(keys(['up', 'up', 'right']).state.text.faint).toBe(0.9)
+  expect(keys(['up', 'up', 'left', 'left', 'left', 'left']).state.text.faint).toBe(0.5)
+  // The font: from the built-in one into the list, round it both ways.
+  expect(keys(['down', 'down', 'down', 'right']).state.text.font).toBe('Andale Mono')
+  expect(keys(['down', 'down', 'down', 'left']).state.text.font).toBe('PT Mono')
+  expect(keys(['down', 'down', 'down', 'right', 'right', 'right', 'right']).state.text.font).toBe('Andale Mono')
+  expect(onTuneKey({ ...at, textRow: 'font' }, 'right', { ...world, fonts: [] }).action).toBe('none')
+  // The gap in steps of eight points.
+  expect(keys(['up', 'right', 'right']).state.text.gap).toBe(16)
+  // r leaves the row untouched again; the gap back at none.
+  expect(keys(['right', 'r']).state.text.size).toBeNull()
+  expect(keys(['up', 'right', 'r']).state.text.gap).toBe(0)
+  expect(keys(['up', 'up', 'r']).state.text.faint).toBeNull()
+  // u takes every row back to how the pane opened, the sky's tune as it is.
+  const moved = keys(['right', 'down', 'right', 'up', 'up', 'r', 'tab', 'left', 'tab', 'tab', 'tab', 'tab'])
+  expect(moved.state.isOnText).toBe(true)
+  expect(moved.state.text).not.toEqual(opened)
+  const undone = onTuneKey(moved.state, 'u', world)
+  expect(undone).toMatchObject({ action: 'text', state: { text: opened } })
+  expect(undone.state.tune).toEqual(moved.state.tune)
+  expect(undone.state.tune).not.toEqual(OPENED)
+  // Enter keeps from the text tab too.
+  expect(keys(['right', 'return']).action).toBe('keep')
+})
+
+test('the text tab shows each value, and no value a row can reach reads as a meme', () => {
+  expect(textValueText('size', 14.5)).toBe('14.5 pt')
+  expect(textValueText('size', 13)).toBe('13 pt')
+  expect(textValueText('weight', 128)).toBe('128')
+  expect(textValueText('weight', 'off')).toBe(TEXT_WORDS.off)
+  expect(textValueText('lineHeight', 0)).toBe('0 %')
+  expect(textValueText('lineHeight', 10)).toBe('+10 %')
+  expect(textValueText('font', 'Menlo')).toBe('Menlo')
+  expect(textValueText('font', '')).toBe(TEXT_WORDS.builtIn)
+  expect(textValueText('faint', 0.8)).toBe('0.8')
+  expect(textValueText('faint', 1)).toBe('1.0')
+  expect(textValueText('gap', 16)).toBe('16 pt')
+  expect(TEXT_WORDS.own).toBe('own')
+  expect(TEXT_WORDS.newWindows).toBe('new windows')
+  // Every value each numeric row can take, on its steps, and its top.
+  const seen: Record<string, string[]> = {}
+  for (const row of ['size', 'weight', 'lineHeight', 'faint', 'gap'] as const) {
+    const { min, max, step } = TEXT_LIMITS[row]
+    const values = new Set<number>()
+    for (let i = 0; min + i * step <= max + step; i++) {
+      const value = asSettings(JSON.stringify({ text: { [row]: min + i * step } })).text[row]
+      if (typeof value === 'number') values.add(value)
+    }
+    seen[row] = [...values].map(value => textValueText(row, value))
+    for (const shown of seen[row]!) for (const meme of ['67', '42', '69', '420']) expect(shown.includes(meme)).toBe(false)
+  }
+  expect(seen.weight).toEqual(['0', '32', '64', '96', '128', '160', '192', '224', '255'])
+  expect(seen.gap).toContain('64 pt')
+  expect(seen.gap).toContain('72 pt')
+  expect(seen.size).toHaveLength(41)
+  expect(seen.faint).toEqual(['0.5', '0.6', '0.7', '0.8', '0.9', '1.0'])
 })

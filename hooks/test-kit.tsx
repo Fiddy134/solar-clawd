@@ -42,6 +42,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   const front = { value: 'com.apple.Safari' }
   // The session's terminal, as ps names it.
   answers.set('sh', 'ttys004\n')
+  // Ghostty's own command line, run as the app's binary: what +show-config
+  // and +list-fonts print, and the keys +validate-config refuses in the
+  // file it is given, each named as Ghostty names it.
+  const cli = { showConfig: '', fonts: '', refuses: new Set<string>() }
   let now = 0
   // The session's environment: Ghostty's own variables, the home folder.
   const env = new Map([['TERM_PROGRAM', 'ghostty'], ['HOME', '/Users/test']])
@@ -86,6 +90,21 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     const [command] = e.argv
     if (command && denied.has(command)) return { deny: 'denied in a test' }
     if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
+    if (command && /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/.test(command)) {
+      const [action] = e.argv.slice(1)
+      let [exitCode, out] = [0, '']
+      if (action === '+show-config') out = cli.showConfig
+      if (action === '+list-fonts') out = cli.fonts
+      if (action === '+validate-config') {
+        const path = e.argv.find(arg => arg.startsWith('--config-file='))?.slice('--config-file='.length) ?? ''
+        const refused = (files.get(path)?.text ?? '').split('\n').flatMap((line, i) => {
+          const [key = '', ...value] = line.split('=')
+          return cli.refuses.has(key.trim()) ? [`${path}:${i + 1}:${key.trim()}: invalid value "${value.join('=').trim()}"\n`] : []
+        })
+        ;[exitCode, out] = [refused.length > 0 ? 1 : 0, refused.join('')]
+      }
+      return { value: { exitCode, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
     if (command === '/usr/bin/pmset') stdout = power.text
@@ -133,7 +152,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, reads, runs, writes, failing, denied, toasts, answers, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
+  return { files, reads, runs, writes, failing, denied, toasts, answers, cli, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
     helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
     tick: (ms: number) => (now = ms),
   }
