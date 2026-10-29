@@ -1,10 +1,10 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 förmiddag, session `9d832978` (Opus 5.5, auto mode) → nästa. På `main` (**0.9.2**, `971417c`): allt i 0.9.0 plus `/solar look`, omladdning med SIGUSR2 på Mac, processguiden för teman, researchen om text och tune-designens och planens textflik. **Pushat är 0.9.0 (`741ad68`); 0.9.1, 0.9.2 och dokumenten därefter är inte pushade.** Spegeln kopierar `themes/`.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 förmiddag, session `9d832978` (Opus 5.5, auto mode) → nästa. På `main` (**0.9.2**, `971417c`): allt i 0.9.0 plus `/solar look`, omladdning med SIGUSR2 på Mac, processguiden för teman, researchen om text och tune-designens och planens textflik. **Allt är pushat** (`741ad68..854b3e6`, 2026-10-29, som `Fiddy134`). Spegeln kopierar `themes/`.
 
 ## Läge
 
-- **Nytt 2026-10-29 förmiddag, på `main`, inte pushat, inte provat live genom spegeln:**
+- **Nytt 2026-10-29 förmiddag, på `main` och pushat, men inte provat live genom spegeln:**
   - **`/solar look`** (0.9.1, `c6474b4`): en ruta (pane) bredvid samtalet som visar PNG:erna i sessionens `.preview/checkpoint/` sida vid sida eller under varandra, med `.md`/`.txt` under, omritad inom 1 s när mappen ändras. `hooks/look.tsx` (layout, läsning, bevakning), krokarna i `register.tsx`. `tools/preview/checkpoint.sh [--whole] [--stage 400] a.png b.png` lägger bilder där, beskurna till staget. Idén kom från [claude-inline-images](https://github.com/kbrianps/claude-inline-images): mod-API:t har `Image` (Kitty graphics, Claude Code håller bilden vid omritning). Lärdomar om API:t: `on` får inte skickas till en hjälpare vars värde behålls, och `$` får bara skickas till funktioner på toppnivå eller importerade; `$.fs` gör relativa sökvägar absoluta mot arbetsmappen.
   - **SIGUSR2 på Mac** (0.9.2, `c5deff9`): `reloadGhostty` skickar `kill -USR2` till Ghosttys app (ur `ps -axo pid=,ppid=,comm=`, föräldern 1, så aldrig en `ghostty` körd från ett skal), för Ghostty 1.2+, och AppleScript bara där det inte går. Vincent provade signalen live: Ghosttys logg sa `reloading configuration in response to SIGUSR2`, utan fönster framme och utan behörighetsfråga.
   - **`tools/preview/show.py`**: samma bilder i ett eget Ghostty-fönster med Kitty graphics (en split är för smal, eftersom varje split får hela marginalen). Reserv för små detaljer.
@@ -144,7 +144,7 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - 0.9.0 är pushat. `/solar theme floor` fungerade live genom spegeln 2026-10-29.
    - Steg-för-steg-guiden finns nu: `docs/THEME-PROCESS.md` (se Läge). Kvar att gå igenom med Vincent: steg 5–9.
 5. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet, uppgifterna 1–7 med 5b (textfliken). Börja med steg 1 (skriptet, sedan Vincents mätning, med en och två flikar öppna).
-   - **Före det, om Vincent vill:** pusha 0.9.1–0.9.2 (som `Fiddy134`, efter hans ja) och prova `/solar look` och SIGUSR2-omladdningen live när han armerat spegeln.
+   - **Före det:** Vincent provar `/solar look` och SIGUSR2-omladdningen live när han armerat spegeln. floors skisser, beskurna till staget, ligger redan i `.preview/checkpoint/`.
 6. **Senare:**
    - runda 3 av F7 om guiden ska bevisas
    - markeringsrundan
