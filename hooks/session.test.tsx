@@ -1684,6 +1684,77 @@ test('/solar event shares what it plays with every session, and keeps the rest o
   expect(saved.theme).toBe('fyr')
 })
 
+const windIn = (text: string) => Number(/const float WIND = (-?[\d.]+);/.exec(text)?.[1])
+// Open-Meteo's answer, a wind of 4 m/s, for worlds that start offline.
+const meteo = (on: On) =>
+  on('http.fetch', async (_, e) => {
+    if (!e.url.includes('open-meteo')) return { deny: 'offline' }
+    const current = { temperature_2m: 9, weather_code: 3, cloud_cover: 80, wind_speed_10m: 4 }
+    return { value: { status: 200, ok: true, headers: {}, text: JSON.stringify({ current, utc_offset_seconds: 3600 }), requestId: 'r', key: 'k' } }
+  })
+
+test('the weather this session fetches is shared, and the newest fetch of any session is the one drawn', async ($, on) => {
+  meteo(on)
+  const { clock, world, runtime, shader } = await noonWorld($, on)
+  const own = JSON.parse(world.files.get(`${runtime}/weather.json`)!.text)
+  expect(own.weather.wind).toBe(4)
+  expect(own.place.name).toBe('Stockholm')
+  expect(windIn(shader())).toBe(4)
+  // Another session fetched after this one: its weather is drawn here too,
+  // rather than this one writing its own back.
+  world.files.set(`${runtime}/weather.json`, { text: JSON.stringify({ ...own, weather: { ...own.weather, wind: 9 }, at: clock.now() }), mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(windIn(shader())).toBe(9)
+  // One older than what this session has is not taken.
+  world.files.set(`${runtime}/weather.json`, { text: JSON.stringify({ ...own, weather: { ...own.weather, wind: 2 }, at: own.at - 1 }), mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(windIn(shader())).toBe(9)
+})
+
+test('a place chosen in another session is followed here', async ($, on) => {
+  meteo(on)
+  const { clock, world, runtime } = await noonWorld($, on)
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+  const own = JSON.parse(world.files.get(`${runtime}/weather.json`)!.text)
+  const lisbon = { name: 'Lisbon', lat: 38.72, lon: -9.14 }
+  world.files.set(`${runtime}/weather.json`, { text: JSON.stringify({ ...own, place: lisbon, isChosen: true, at: clock.now() }), mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(await solar('place')).toContain('Lisbon')
+})
+
+test("another live session's storm, aurora, pinned time or demo is drawn here, and goes with that session", TICKING, async ($, on) => {
+  const { clock, world, runtime, shader } = await noonWorld($, on)
+  const wind = windIn(shader())
+  const moment = { by: 'other', pinnedAt: null, demoFrom: null, isWindForced: true, isAuroraForced: false }
+  world.files.set(`${runtime}/alive-other`, { text: String(clock.now()), mtimeMs: clock.now() })
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', moment }), mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(windIn(shader())).toBe(12)
+  // That session's heartbeat stops: the wind as it really is again.
+  world.files.set(`${runtime}/alive-other`, { text: String(clock.now() - 10 * 60_000), mtimeMs: clock.now() - 10 * 60_000 })
+  await clock.advance(10_100)
+  expect(windIn(shader())).toBe(wind)
+})
+
+test('/solar storm, aurora, a pinned time, demo and now share what they set, with this session as its keeper', async ($, on) => {
+  const { world } = await noonWorld($, on, { pace: 'spar' })
+  const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const moment = () => JSON.parse(world.files.get(SETTINGS)!.text).moment
+  await solar('storm')
+  expect(moment()).toMatchObject({ isWindForced: true, isAuroraForced: false, pinnedAt: null, demoFrom: null })
+  expect(typeof moment().by).toBe('string')
+  await solar('aurora')
+  expect(moment()).toMatchObject({ isWindForced: true, isAuroraForced: true })
+  await solar('12:30')
+  expect(typeof moment().pinnedAt).toBe('number')
+  await solar('now')
+  expect(moment()).toMatchObject({ pinnedAt: null, demoFrom: null, isWindForced: true })
+  await solar('demo')
+  expect(typeof moment().demoFrom).toBe('number')
+  expect(JSON.parse(world.files.get(SETTINGS)!.text).pace).toBe('spar')
+})
+
 test('a preview shows while its session lives and goes within a minute of its last word', async ($, on) => {
   const { start, clock, world, shader } = await noonWorld($, on)
   const preview = (until: number) =>

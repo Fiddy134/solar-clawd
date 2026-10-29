@@ -380,6 +380,7 @@ const ghosttyOf = (id: string): Ghostty => ({
   heartbeat: `/runtime/alive-${id}`,
   waiting: `/runtime/waiting-${id}`,
   hidden: '/runtime/hidden',
+  weather: '/runtime/weather.json',
   settings: '/sky.json',
   vsync: '/runtime/vsync.ghostty',
   text: '/runtime/text.ghostty',

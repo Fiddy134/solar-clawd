@@ -189,7 +189,9 @@ export type Where = {
   lastRainAt: number | null
 }
 
-export async function refreshWeather($: EngineInterface, where: Where): Promise<void> {
+// Fetches the weather where the sky is, and the Kp index; whether the
+// weather came.
+export async function refreshWeather($: EngineInterface, where: Where): Promise<boolean> {
   const [fetched, kp] = await Promise.all([fetchWeather($, where.place), fetchKp($)])
   if (fetched) {
     where.weather = fetched.weather
@@ -198,10 +200,58 @@ export async function refreshWeather($: EngineInterface, where: Where): Promise<
     if (sky === 'drizzle' || sky === 'rain' || sky === 'thunder') where.lastRainAt = await $.clock.now()
   }
   if (kp !== null) where.kp = kp
+
+  return fetched !== null
 }
 
-// A chosen place wins; else a recent guess; else a new guess.
-export async function settlePlace($: EngineInterface, where: Where): Promise<void> {
+// The place and its weather as a session last fetched them, kept beside the
+// sky (weather.json): the sky's shader is one file for every session, so
+// each draws the newest fetch of any of them rather than its own.
+export type SharedWhere = Omit<Where, 'weather'> & { weather: Weather; at: number }
+
+function asWeather(value: unknown): Weather | null {
+  const [temperature, code, cloudCover, wind] = ['temperature', 'code', 'cloudCover', 'wind'].map(key => number(field(value, key)))
+
+  return temperature != null && code != null && cloudCover != null && wind != null ? { temperature, code, cloudCover, wind } : null
+}
+
+export function asSharedWhere(text: string): SharedWhere | null {
+  let value: unknown
+  try {
+    value = JSON.parse(text)
+  } catch {
+    return null
+  }
+  const place = asPlace(field(value, 'place'))
+  const weather = asWeather(field(value, 'weather'))
+  const at = number(field(value, 'at'))
+  if (place === null || weather === null || at === null) return null
+
+  return {
+    place,
+    isChosen: field(value, 'isChosen') === true,
+    weather,
+    offsetMs: number(field(value, 'offsetMs')) ?? undefined,
+    kp: number(field(value, 'kp')),
+    lastRainAt: number(field(value, 'lastRainAt')),
+    at,
+  }
+}
+
+// Writes where the sky is and its weather, fetched at `at`, for every
+// session; nothing before the first weather has come.
+export async function shareWhere($: EngineInterface, path: string, id: string, where: Where, at: number): Promise<void> {
+  if (where.weather === null) return
+  await writeWhole($, path, JSON.stringify({ ...where, at }), id).catch(() => undefined)
+}
+
+export async function readWhere($: EngineInterface, path: string): Promise<SharedWhere | null> {
+  return asSharedWhere(await $.fs.read(path).catch(() => ''))
+}
+
+// A chosen place wins; else a recent guess; else a new guess. Whether the
+// weather there came.
+export async function settlePlace($: EngineInterface, where: Where): Promise<boolean> {
   const chosen = asPlace(await $.store.get(CHOSEN_PLACE))
   where.isChosen = chosen !== null
   if (chosen) {
@@ -221,7 +271,8 @@ export async function settlePlace($: EngineInterface, where: Where): Promise<voi
       }
     }
   }
-  await refreshWeather($, where)
+
+  return refreshWeather($, where)
 }
 
 export function placeText({ place, isChosen, weather }: Where): string {

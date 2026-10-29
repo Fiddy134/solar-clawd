@@ -138,7 +138,7 @@ test("today's settings draw today's sky", () => {
 test('a preview counts until its time, and only a time at most a minute ahead', () => {
   const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
   const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null, isGapDrafted: false, forced: [] })
+  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null, isGapDrafted: false, forced: [], moment: null })
   expect(activeTune(settings(100_000), 50_000)).toEqual({ tune, phase: 'dusk' })
   expect(activeTune(settings(100_000), 100_000)).toEqual({ tune: saved, phase: null })
   // A minute ahead and the second its write took count; anything further is

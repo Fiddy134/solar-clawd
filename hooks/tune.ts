@@ -72,6 +72,19 @@ export type Settings = {
   // session to draw: the sky's shader is one file, and a session that did
   // not know of them would write the sky without them back.
   forced: Forced[]
+  // The sky's moment and weather as a session set them (/solar HH:MM,
+  // demo, now, storm, aurora), with that session's id: they hold for
+  // every session while it lives, as they held for it alone before.
+  moment: Moment | null
+}
+
+export type Moment = { by: string; pinnedAt: number | null; demoFrom: number | null; isWindForced: boolean; isAuroraForced: boolean }
+
+function asMoment(value: unknown): Moment | null {
+  if (!isObject(value) || typeof value.by !== 'string') return null
+  const at = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+
+  return { by: value.by, pinnedAt: at(value.pinnedAt), demoFrom: at(value.demoFrom), isWindForced: value.isWindForced === true, isAuroraForced: value.isAuroraForced === true }
 }
 
 const KEYS = Object.keys(LIMITS) as (keyof TuneValues)[]
@@ -158,6 +171,7 @@ export function asSettings(text: string): Settings {
           isObject(event) && typeof event.kind === 'string' && typeof event.at === 'number' && Number.isFinite(event.at) ? [{ kind: event.kind, at: event.at }] : [],
         )
       : [],
+    moment: asMoment(file.moment),
   }
 }
 

@@ -17,7 +17,7 @@ Everything is printed in a risograph style: a handful of inks, halftone screens 
 - **The keeper** — in Ghostty the lighthouse is three times larger, and a small Clawd lives there: he fishes on the rocks, walks round the gallery, surfs a wave now and then, stargazes at night, and sleeps in a hammock from 03 to 06. When Claude waits for you he stands by the lit lantern, and every so often a UFO beams him up in a green light and kicks him out again a quarter of a minute later (`/solar event ufo abduction` and `/solar event surf` preview them).
 - **Glass** — in Ghostty, Claude Code's own dark fields (a diff's red and green rows, your prompt's row, a shell command's row) let the sky through, tinted, as coloured glass would; text and everything else stay solid. Only on a dark background.
 
-Events are a pure function of the time and the sky, so every session shows the same sky without keeping any state.
+Events are a pure function of the time and the sky, and what a session plays or sets (an event, a storm, a pinned time, the place and its weather) lies in files beside the sky that every session reads, so every session shows the same sky. A storm, an aurora, a pinned time or a demo holds while the session that set it lives.
 
 ## What it costs
 

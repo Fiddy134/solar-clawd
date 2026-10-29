@@ -10,7 +10,7 @@ import { markOf, UNMARK_TAB } from './mark'
 import { canTick, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
 import { asSettings, TEXT_LIMITS, textLines } from './tune'
-import type { Settings, TextValues } from './tune'
+import type { Moment, Settings, TextValues } from './tune'
 import type { ShaderParams } from './shader'
 import { STAGE_WIDTHS } from './themes/theme'
 import { staleFiles } from './tidy'
@@ -58,6 +58,9 @@ export type Ghostty = {
   waiting: string
   // Present while the sky is hidden: /solar in any session hides it for all.
   hidden: string
+  // Where the sky is and its weather, as the newest fetch of any session
+  // left them (net.ts, SharedWhere).
+  weather: string
   // The sky's pace for every session (sky.json, beside the runtime folder),
   // and the file with Ghostty's vsync line, which Ghostty's config includes
   // apart from the sky's and nothing but /solar vsync empties.
@@ -598,9 +601,24 @@ export function scaleAskedAt(text: string): number | null {
 }
 
 // The settings the file says (pace, tune, preview); defaults, and full, for
-// anything else.
+// anything else. A moment set by another session holds only while that
+// session's heartbeat is fresh.
 export async function readSettings($: EngineInterface, ghostty: Ghostty): Promise<Settings> {
-  return asSettings(await $.fs.read(ghostty.settings).catch(() => ''))
+  const settings = asSettings(await $.fs.read(ghostty.settings).catch(() => ''))
+  const { moment } = settings
+  if (moment === null || moment.by === ghostty.id) return settings
+  const now = await $.clock.now()
+  const entries = await $.fs.list(ghostty.folder).catch(() => [])
+  const beat = entries.find(entry => entry.name === `alive-${moment.by}`)?.mtimeMs
+
+  return beat !== undefined && now - beat < ALIVE_MS ? settings : { ...settings, moment: null }
+}
+
+// Writes the sky's moment and weather as this session sets them, for every
+// session while it lives.
+export async function shareMoment($: EngineInterface, ghostty: Ghostty | null, moment: Omit<Moment, 'by'>): Promise<void> {
+  if (ghostty === null) return
+  await writeSettings($, ghostty, { moment: { by: ghostty.id, ...moment } }).catch(() => undefined)
 }
 
 // The theme the settings file names (/solar theme): null where it names

@@ -31,6 +31,7 @@ import {
   scaleAskedAt,
   setVsync,
   shareForced,
+  shareMoment,
   shareWaiting,
   stagedPadding,
   themeNameOf,
@@ -53,8 +54,8 @@ import { MARKET_MS } from './market'
 import { GAP, layout, LOOK_FOLDER, LOOK_PANE, pictureRows, watchLook } from './look'
 import type { LookState } from './look'
 import { markOf } from './mark'
-import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshMarket, refreshWeather, settlePlace } from './net'
-import type { Where } from './net'
+import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, readWhere, refreshMarket, refreshWeather, settlePlace, shareWhere } from './net'
+import type { SharedWhere, Where } from './net'
 import { fromBase64 } from './paint'
 import { sceneAt, shaderParams, skyShader } from './shader'
 import type { ShaderParams } from './shader'
@@ -86,7 +87,7 @@ import {
   TUNE_WORDS,
   WEATHER_MIN,
 } from './tune'
-import type { PanePost, PaneState, Settings, TextValues } from './tune'
+import type { Moment, PanePost, PaneState, Settings, TextValues } from './tune'
 import type { TextWritten } from './ghostty'
 import type { TuneBandProps } from './tune-band'
 import type { SolarClawdCarried } from '../types'
@@ -154,6 +155,15 @@ const AGENT_AT_WORK = ['pending', 'running', 'waiting']
 // Drops the subagents the engine lists as ended, and those heard nothing
 // of for AGENT_SILENT_MS that it does not list as at work (a workflow's
 // agents are not listed at all); whether any went.
+// After a fetch here: where the sky is and its weather, for every session
+// to draw; when they were fetched.
+async function sharedWhereNow($: EngineInterface, ghostty: Ghostty | null, where: Where): Promise<number> {
+  const now = await $.clock.now()
+  if (ghostty !== null) await shareWhere($, ghostty.weather, ghostty.id, where, now)
+
+  return now
+}
+
 async function prunedAgents($: EngineInterface, agents: Map<string, number>, now: number): Promise<boolean> {
   const listed = await $.agent.list().catch(() => [])
   const atWork = new Set(listed.filter(agent => AGENT_AT_WORK.includes(agent.status)).map(agent => agent.id))
@@ -443,6 +453,9 @@ export const register: Register = on => {
   let isWindForced = false
   let track: string | null = null
   const where: Where = { place: STOCKHOLM, isChosen: false, weather: null, offsetMs: undefined, kp: null, lastRainAt: null }
+  // When this session's place and weather were fetched, here or by the
+  // session it took them from (SharedWhere).
+  let whereAt = -Infinity
   // Events played on request (/solar event) or earned (a long turn done).
   let forced: Forced[] = []
   // What the sky's engine draws its world with: its scenery, who lives
@@ -580,6 +593,22 @@ export const register: Register = on => {
     const words = wordsOf(theme)
     forced = mergeForced(forced, shared, kind => Object.hasOwn(words, kind))
   }
+  // The place and weather another session fetched after this one did.
+  const takeWhere = (shared: SharedWhere | null) => {
+    if (shared === null || shared.at <= whereAt) return
+    const { at, ...taken } = shared
+    Object.assign(where, taken)
+    whereAt = at
+  }
+  // The moment and weather a live session set, this one's or another's;
+  // as they really are when none did (readSettings).
+  const takeMoment = (moment: Moment | null) => {
+    pinnedAt = moment?.pinnedAt ?? null
+    demoFrom = moment?.demoFrom ?? null
+    isWindForced = moment?.isWindForced ?? false
+    isAuroraForced = moment?.isAuroraForced ?? false
+  }
+  const momentNow = () => ({ pinnedAt, demoFrom, isWindForced, isAuroraForced })
 
   // Whether Ghostty's sky shows through the band, and with it the context
   // window on the keeper's line.
@@ -649,6 +678,7 @@ export const register: Register = on => {
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   const shaderAt = (now: number, { settings, ...extras }: SkyExtras) => {
     takeForced(settings.forced)
+    takeMoment(settings.moment)
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
 
@@ -764,6 +794,7 @@ export const register: Register = on => {
         heartbeat: `${folder}/alive-${id}`,
         waiting: `${folder}/waiting-${id}`,
         hidden: `${folder}/hidden`,
+        weather: `${folder}/weather.json`,
         settings: `${folder.slice(0, -'/runtime'.length)}/sky.json`,
         vsync: `${folder}/vsync.ghostty`,
         text: `${folder}/text.ghostty`,
@@ -844,7 +875,11 @@ export const register: Register = on => {
 
     if (ghostty !== null) {
       const sky = ghostty
-      const update = () => updateGhosttySky($, sky, shaderAt, skyState).then(() => keepCarried($, carriedNow(), carriedLast))
+      const update = () =>
+        readWhere($, sky.weather)
+          .then(takeWhere)
+          .then(() => updateGhosttySky($, sky, shaderAt, skyState))
+          .then(() => keepCarried($, carriedNow(), carriedLast))
       // Whether the person is here, the power and the pace, before the
       // first sky.
       const idle = await idleMs($, isOnLinux)
@@ -934,7 +969,9 @@ export const register: Register = on => {
     }
 
     // The network is not waited on: the sky starts in Stockholm.
-    void settlePlace($, where).catch(() => undefined)
+    void (async () => {
+      if (await settlePlace($, where)) whereAt = await sharedWhereNow($, ghostty, where)
+    })().catch(() => undefined)
     const fetchIss = async () => {
       issOrbit = (await issElements($)) ?? issOrbit
     }
@@ -946,7 +983,11 @@ export const register: Register = on => {
     void readFill()
     $.clock.every(FILL_MS, () => void readFill())
     $.clock.every(ISS_MS / 24, () => void fetchIss().catch(() => undefined))
-    $.clock.every(WEATHER_MS, () => void refreshWeather($, where).catch(() => undefined))
+    $.clock.every(WEATHER_MS, () =>
+      void (async () => {
+        if (await refreshWeather($, where)) whereAt = await sharedWhereNow($, ghostty, where)
+      })().catch(() => undefined),
+    )
     // Away from the computer, or iTerm2 behind other windows: the wallpaper
     // stands still and the music is not asked after.
     $.clock.every(ACTIVITY_MS, () => {
@@ -963,6 +1004,8 @@ export const register: Register = on => {
           const settings = await readSettings($, ghostty)
           activity.pace = settings.pace
           takeForced(settings.forced)
+          takeMoment(settings.moment)
+          takeWhere(await readWhere($, ghostty.weather))
           // A text draft whose tool stopped marking it live, a session killed
           // with the tune tool open after this one started: the kept text is
           // written back, checked as the tool writes it, and the kept gap
@@ -1277,6 +1320,7 @@ export const register: Register = on => {
 
     if (word === 'demo') {
       demoFrom = now
+      await shareMoment($, ghostty, momentNow())
       await update($, isHidden, () => false)
 
       return { text: 'Solar: a whole day in 48 seconds.' }
@@ -1285,6 +1329,7 @@ export const register: Register = on => {
     if (word === 'now') {
       demoFrom = null
       pinnedAt = null
+      await shareMoment($, ghostty, momentNow())
 
       return { text: 'Solar: following the sun again.' }
     }
@@ -1482,12 +1527,14 @@ export const register: Register = on => {
 
     if (word === 'aurora') {
       isAuroraForced = !isAuroraForced
+      await shareMoment($, ghostty, momentNow())
 
       return { text: isAuroraForced ? 'Solar: aurora on, to see how it looks.' : 'Solar: aurora only when there is one.' }
     }
 
     if (word === 'storm') {
       isWindForced = !isWindForced
+      await shareMoment($, ghostty, momentNow())
 
       return { text: isWindForced ? 'Solar: a storm, to see the wind.' : 'Solar: the wind as it really is.' }
     }
@@ -1499,7 +1546,7 @@ export const register: Register = on => {
       if (name.toLowerCase() === 'auto') {
         await $.store.delete(CHOSEN_PLACE)
         await $.store.delete(GUESSED_PLACE)
-        await settlePlace($, where)
+        if (await settlePlace($, where)) whereAt = await sharedWhereNow($, ghostty, where)
 
         return { text: `Solar: following where you are again, ${placeText(where)}.` }
       }
@@ -1509,7 +1556,7 @@ export const register: Register = on => {
       await $.store.set(CHOSEN_PLACE, found)
       where.place = found
       where.isChosen = true
-      await refreshWeather($, where)
+      if (await refreshWeather($, where)) whereAt = await sharedWhereNow($, ghostty, where)
 
       return { text: `Solar: the sky is now over ${placeText(where)}.` }
     }
@@ -1525,6 +1572,7 @@ export const register: Register = on => {
           : localMidnight(now, where.offsetMs)
         demoFrom = null
         pinnedAt = day + (hour * 60 + minute) * 60_000
+        await shareMoment($, ghostty, momentNow())
         await update($, isHidden, () => false)
 
         return { text: `Solar: pinned at ${at[1] ? `${at[1]}-${at[2]}-${at[3]} ` : ''}${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}.` }
