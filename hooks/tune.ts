@@ -342,7 +342,7 @@ export function tunedColour(c: number, k: number, values: TuneValues): number {
 }
 
 // The tool, /solar tune, in the band above the prompt: its Client's key,
-// the rows and columns it needs (the tabs, the six text rows and the hint;
+// the rows and columns it needs (its tabs, the six text rows and the hint;
 // the hint's width), how often a session writes what it shows (at most,
 // the last state winning), and how often it renews the preview while open,
 // well within PREVIEW_LIFE_MS.
@@ -361,7 +361,7 @@ export const TUNE_WORDS = {
   hidden: 'Solar: the sky is hidden, so the sliders change nothing you can see until /solar brings it back.',
   kept: 'kept',
   // Only the keys known to reach the tool in the band; tab and Enter may too.
-  hint: 'click the sliders   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close',
+  hint: 'click the tool   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close',
   waits: `Solar: the tune tool opens in the band once the window has ${TOOL_COLUMNS} columns and room for ${TOOL_ROWS} rows above the prompt.`,
   closed: 'Solar: tune closed.',
 }
@@ -388,6 +388,24 @@ export const TEXT_WORDS = {
 // The tabs: the four parts of the day, then the text.
 export const TAB_TEXT = 'text'
 export const TABS: readonly (Phase | typeof TAB_TEXT)[] = [...PHASES, TAB_TEXT]
+
+// The digit of the tab under a column of the tool's top row, where the
+// tabs are drawn a space apart; null between them and past the last.
+export function tabAt(x: number): string | null {
+  let left = 0
+  for (const [i, tab] of TABS.entries()) {
+    if (x >= left && x < left + tab.length) return String(i + 1)
+    left += tab.length + 1
+  }
+
+  return null
+}
+
+// A digit 1 to 5 typed into an empty prompt is the tab's while the tool is
+// open; anything else is the person's text.
+export function tabKeyOf(edit: { text: string; inputText: string }): string | null {
+  return edit.text === '' && /^[1-5]$/.test(edit.inputText) ? edit.inputText : null
+}
 
 // The pane as the person has it: the part of the day and the row chosen,
 // the tune they are making, and the saved tune as the pane opened, which u

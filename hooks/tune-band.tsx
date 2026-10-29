@@ -1,21 +1,22 @@
-// The tune tool's surface module, in the band above the prompt, under the
-// tabs the band draws itself (they answer 1 to 5 from the prompt): it takes
-// the keys while it has the focus (once clicked), keeps the tool's state as
-// the person moves it, draws it in the riso inks on dark blue, and posts
-// each change to the hooks module, which writes the preview, keeps the tune
-// and closes the tool on q. It runs on the drawing thread with no $; what it
-// knows of the world comes in its props.
+// The tune tool's surface module, in the band above the prompt, its tabs
+// on its top row: it takes the keys while it has the focus (once clicked,
+// a tab or anywhere else in it; the band cannot hand it the focus), keeps
+// the tool's state as the person moves it, draws it in the riso inks on
+// dark blue, and posts each change to the hooks module, which writes the
+// preview, keeps the tune and closes the tool on q. It runs on the drawing
+// thread with no $; what it knows of the world comes in its props.
 
 import type { ClientModule, ClientSurface } from 'claude-code'
 
-import { BAR, barOf, onPaneKey, ROW_LABELS, TEXT_LABELS, TEXT_ROWS, TEXT_WORDS, textBarOf, textValueText, TUNE_ROWS, TUNE_WORDS, valueText } from './tune'
+import { BAR, barOf, onPaneKey, ROW_LABELS, TABS, tabAt, tabOf, TEXT_LABELS, TEXT_ROWS, TEXT_WORDS, textBarOf, textValueText, TUNE_ROWS, TUNE_WORDS, valueText } from './tune'
 import type { OwnText, PaneLocal, PaneState } from './tune'
 
 // What the hooks module hands it: the state to open on, and again under a
-// new seq where the band moved the tab (its 1 to 5); how many keeps it has
-// written since the tool opened, the person's own text and the fonts
-// as Ghostty said them when the pane opened, and what it has to say of the
-// text as last written (a key Ghostty refused), null for nothing.
+// new seq where the band moved the tab (a digit in an empty prompt); how
+// many keeps it has written since the tool opened, the person's own text
+// and the fonts as Ghostty said them when the pane opened, and what it has
+// to say of the text as last written (a key Ghostty refused), null for
+// nothing.
 export type TuneBandProps = { start: PaneState; seq: number; kept: number; own: OwnText; fonts: string[]; note: string | null }
 
 const INK = { body: '#10142a', pink: '#ff6fc0', yellow: '#ffe800', blue: '#9fd3ff' }
@@ -37,11 +38,18 @@ const TuneBand: ClientModule<TuneBandProps, PaneLocal & { seq: number }> = (prop
 
   // Each key starts from the state the last one left, which may not be
   // drawn yet: two keys can come in one frame.
-  surface.onKey(event => {
-    if (event.ctrl || event.meta) return
-    const { local: next, post } = onPaneKey(now(), event.key, world)
+  const onKey = (key: string) => {
+    const { local: next, post } = onPaneKey(now(), key, world)
     surface.setState({ ...next, seq: props.seq })
     if (post !== null) surface.post(post)
+  }
+  surface.onKey(event => {
+    if (!event.ctrl && !event.meta) onKey(event.key)
+  })
+  // A click on a tab is its digit.
+  surface.onPointer(event => {
+    const digit = event.type === 'down' && event.button === 'left' && event.y === 0 ? tabAt(event.x) : null
+    if (digit !== null) onKey(digit)
   })
 
   // Kept once the hooks module has written the last keep, until the next key.
@@ -69,8 +77,17 @@ const TuneBand: ClientModule<TuneBandProps, PaneLocal & { seq: number }> = (prop
     )
   }
 
+  const shown = tabOf(pane)
+
   return (
     <Box flexDirection="column">
+      <Box flexDirection="row" gap={1}>
+        {TABS.map(tab => (
+          <Text color={tab === shown ? INK.yellow : INK.pink} bold={tab === shown} dimColor={tab !== shown}>
+            {tab}
+          </Text>
+        ))}
+      </Box>
       {pane.isOnText
         ? TEXT_ROWS.map(key => {
             // An untouched row shows the person's own value, where Ghostty

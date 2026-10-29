@@ -22,6 +22,8 @@ import {
   onPaneKey,
   onTuneKey,
   ownTextOf,
+  tabAt,
+  tabKeyOf,
   tabOf,
   PHASES,
   phaseWeights,
@@ -239,6 +241,20 @@ test('keys move, clamp, reset, undo and keep', () => {
   expect(press(['x'])).toEqual({ state: press([]).state, action: 'none' })
 })
 
+test('a click on a tab in the tool is its digit, and a digit typed into an empty prompt is too', () => {
+  // The tabs read dawn day dusk night text, a space between each.
+  expect([0, 3, 5, 7, 9, 12, 14, 18, 20, 23].map(tabAt)).toEqual(['1', '1', '2', '2', '3', '3', '4', '4', '5', '5'])
+  expect([4, 8, 13, 19, 24, 60].map(tabAt)).toEqual([null, null, null, null, null, null])
+  expect(tabKeyOf({ text: '', inputText: '3' })).toBe('3')
+  expect(tabKeyOf({ text: '', inputText: '5' })).toBe('5')
+  // Anything else is the person's text: a digit after text, 6 to 0, a paste.
+  expect(tabKeyOf({ text: 'room ', inputText: '3' })).toBe(null)
+  expect(tabKeyOf({ text: '', inputText: '6' })).toBe(null)
+  expect(tabKeyOf({ text: '', inputText: '0' })).toBe(null)
+  expect(tabKeyOf({ text: '', inputText: '12' })).toBe(null)
+  expect(tabKeyOf({ text: '', inputText: 'q' })).toBe(null)
+})
+
 test('the pane shows each value as the mock-up does, and no number in it reads as a meme', () => {
   expect(valueText('brightness', 0.85)).toBe('85 %')
   expect(valueText('shade', 1)).toBe('normal')
@@ -261,7 +277,7 @@ test('the pane shows each value as the mock-up does, and no number in it reads a
   expect(TUNE_WORDS.notGhostty).toBe('Solar: tune is for the sky in Ghostty on a Mac.')
   expect(TUNE_WORDS.kept).toBe('kept')
   // Only keys known to reach the tool in the band; it fits its width.
-  expect(TUNE_WORDS.hint).toBe('click the sliders   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close')
+  expect(TUNE_WORDS.hint).toBe('click the tool   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close')
   expect(TUNE_WORDS.hint.length).toBeLessThan(TOOL_COLUMNS)
   expect(TUNE_WORDS.closed).toBe('Solar: tune closed.')
 })

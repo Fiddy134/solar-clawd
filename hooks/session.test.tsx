@@ -1806,8 +1806,11 @@ test('the band tool previews as you move, keeps on enter and forgets on q', asyn
   expect(panes.opened).toEqual([])
   const ui = await $.ui.mount(TUNE_MOUNT)
   expect((await ui.find({ type: 'Raster', key: 'sky' }))?.props).toMatchObject({ columns: 156 - TOOL_COLUMNS, rows: ROWS })
-  expect(await ui.find({ type: 'Button', key: 'tab-day' })).toMatchObject({ props: { dimColor: false } })
+  expect(await ui.find({ type: 'Text', text: 'day', in: 'tune' })).toMatchObject({ props: { dimColor: false } })
   expect(await ui.find({ type: 'Text', text: '100 %', in: 'tune' })).toBeDefined()
+  // The tabs are the tool's own, so a click on one gives it the keys: the
+  // band draws no Button of its own.
+  expect(await ui.find({ type: 'Button' })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.hint, in: 'tune' })).toBeDefined()
 
   // Three moves within 100 ms make one write, a PREVIEW_MS after the first,
@@ -1948,7 +1951,7 @@ test('a question hides the tool and keeps it open', async ($, on) => {
   expect((await asking.find({ type: 'Text' }))?.text).toBe('engine')
   await asking.unmount()
   const after = await $.ui.mount(TUNE_MOUNT)
-  expect(await after.find({ type: 'Button', key: 'tab-day' })).toBeDefined()
+  expect(await after.find({ type: 'Text', text: 'day', in: 'tune' })).toBeDefined()
   await after.unmount()
   await closeTune($)
 })
@@ -1959,27 +1962,29 @@ test('with the sky hidden the band still draws the tool, without the weather', a
   expect(await solarSays($, '')).toBe('Solar: the sky is hidden.')
   await solarSays($, 'tune')
   const ui = await $.ui.mount(TUNE_MOUNT)
-  expect(await ui.find({ type: 'Button', key: 'tab-day' })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: 'day', in: 'tune' })).toBeDefined()
   expect(await ui.find({ type: 'Raster', key: 'sky' })).toBeUndefined()
   await ui.unmount()
   await closeTune($)
 })
 
-test('the digits 1 to 5 change the tab from the prompt while the tool is open', async ($, on) => {
+test('a click on a tab in the tool changes the tab', async ($, on) => {
   paneWorld(on)
   const { clock, world } = await noonWorld($, on)
   const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
   await solarSays($, 'tune')
   const ui = await $.ui.mount(TUNE_MOUNT)
-  expect((await ui.find({ type: 'Button', key: 'tab-day' }))?.props).toMatchObject({ hotkey: '2', dimColor: false })
-  expect((await ui.find({ type: 'Button', key: 'tab-dusk' }))?.props).toMatchObject({ hotkey: '3', dimColor: true })
-  await ui.press({ key: 'tab-dusk' })
+  expect((await ui.find({ type: 'Text', text: 'day', in: 'tune' }))?.props.dimColor).toBe(false)
+  expect((await ui.find({ type: 'Text', text: 'dusk', in: 'tune' }))?.props.dimColor).toBe(true)
+  // dusk, on the tool's top row; a click below the tabs is not one.
+  await ui.pointer({ type: 'down', x: 3, y: 2, button: 'left', in: 'tune' })
+  await ui.pointer({ type: 'down', x: 10, y: 0, button: 'left', in: 'tune' })
   await clock.advance(PREVIEW_MS)
   expect(saved().preview?.phase).toBe('dusk')
   await ui.unmount()
   // The tool goes on from dusk: its tab chosen, and a move moves dusk.
   const again = await $.ui.mount(TUNE_MOUNT)
-  expect((await again.find({ type: 'Button', key: 'tab-dusk' }))?.props.dimColor).toBe(false)
+  expect((await again.find({ type: 'Text', text: 'dusk', in: 'tune' }))?.props.dimColor).toBe(false)
   await again.key({ key: 'left' })
   await clock.advance(PREVIEW_MS)
   expect(saved().preview?.tune.dusk.brightness).toBe(DEFAULT_TUNE.dusk.brightness - 0.05)
@@ -1987,12 +1992,12 @@ test('the digits 1 to 5 change the tab from the prompt while the tool is open', 
   await again.key({ key: '5' })
   await again.unmount()
   const text = await $.ui.mount(TUNE_MOUNT)
-  expect((await text.find({ type: 'Button', key: 'tab-text' }))?.props.dimColor).toBe(false)
+  expect((await text.find({ type: 'Text', text: 'text', in: 'tune' }))?.props.dimColor).toBe(false)
   await text.unmount()
   await closeTune($)
-  // Closed, the band has no tabs to press.
+  // Closed, the band has no tool to click.
   const closed = await $.ui.mount(TUNE_MOUNT)
-  expect(await closed.find({ type: 'Button', key: 'tab-dusk' })).toBeUndefined()
+  expect(await closed.find({ type: 'Client', key: 'tune' })).toBeUndefined()
   await closed.unmount()
 })
 
@@ -2085,7 +2090,7 @@ async function textWorld($: Engine, on: On, before?: (world: ReturnType<typeof g
   await solarSays($, 'tune')
   const ui = await $.ui.mount(TUNE_MOUNT)
   await ui.key({ key: '5' })
-  expect((await ui.find({ type: 'Button', key: 'tab-text' }))?.props.dimColor).toBe(false)
+  expect((await ui.find({ type: 'Text', text: 'text', in: 'tune' }))?.props.dimColor).toBe(false)
 
   return { panes, clock, world, solar, config, runtime, ui, kills: () => KILLS(world.runs).length }
 }

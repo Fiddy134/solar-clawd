@@ -132,6 +132,16 @@ utan fokus. Det kostar att en siffra som första tecken i en tom prompt byter
 flik i stället för att skrivas, medan verktyget är öppet. Är det inte värt
 det tas genvägen bort; resten av designen hänger inte på den.
 
+**Ändrat efter livetestet av 0.11.0 (2026-10-29, Vincents val).** En klick
+på en flikknapp bytte flik men gav inte verktyget tangenterna: de stannade i
+prompten, och ← öppnade agentvyn. Motorn kan inte flytta fokus till en
+`Client` (`$.ui.focus` och en `ui.focus`-hook når bara `Button`, `Input` och
+`Select`). Från 0.11.1 ritas flikarna därför i verktygets översta rad, och en
+klick på en flik är en klick i verktyget, som ger det tangenterna. Raden
+ritar inga knappar. Siffrorna 1–5 i tom prompt byter fortfarande flik, nu via
+en `prompt.edit`-hook som sväljer siffran medan verktyget är ritat (inte
+under en fråga till personen).
+
 **Raden.** När verktyget är öppet blir raden en `Box` i rad: verktyget till
 vänster (`Client`), vädrets ord till höger. Raden ritas också när himlen är
 dold med `/solar`, eftersom textfliken fortfarande gör något. När verktyget är
@@ -189,4 +199,12 @@ keep, text och stängning i `hooks/register.tsx` flyttas från panelens
   gjordes bara i tom prompt).
 - Om `autoFocus` på en knapp i raden flyttar fokus när raden ritas första
   gången, eller bara när personen går in i raden.
-- Om Solar Clawds rad och verktyg finns kvar efter agentvyn.
+- ~~Om Solar Clawds rad och verktyg finns kvar efter agentvyn.~~ Nej
+  (2026-10-29): agentvyn flyttar samtalet till en kopia under
+  `claude daemon` (`--fork-session`), utan `TERM_PROGRAM`, så modden där vet
+  inte att den är i Ghostty och `/solar tune` svarar att den bara finns i
+  Ghostty. Botemedlet är ett nytt `claude` i fliken.
+- Om samma klick som ger verktyget fokus också når dess `onPointer`, så att
+  en klick på en flik byter flik direkt (0.11.1).
+- Om en siffra som `prompt.edit`-hooken sväljer lämnar prompten tom live
+  (testerna kan inte skicka `prompt.edit`; beslutet ligger i `tabKeyOf`).

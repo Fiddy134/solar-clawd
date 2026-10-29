@@ -76,7 +76,7 @@ import {
   PREVIEW_MS as TUNE_PREVIEW_MS,
   previewMoment,
   RENEW_MS,
-  TABS,
+  tabKeyOf,
   tabOf,
   TEXT_WORDS,
   TOOL_COLUMNS,
@@ -430,6 +430,8 @@ export const register: Register = on => {
   let handed: { site: object; cells: string } | null = null
   // The band's room as last drawn, so /solar tune can say it waits for more.
   let bandRoom: { columns: number; maxRows: number } | null = null
+  // Whether the band's last drawing held the tune tool.
+  let isToolDrawn = false
   let viewport = { columns: 160, rows: 45 }
   // The iTerm2 window in points, once iTerm2 has said.
   let windowSize: { width: number; height: number } | null = null
@@ -1625,6 +1627,7 @@ export const register: Register = on => {
   // where the window has the room; a question to the person takes the band
   // without closing the tool, and a hidden sky leaves the tool alone in it.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (e.surface === 'terminal') isToolDrawn = false
     if (e.surface !== 'terminal' || e.props.hasSurvey) return next(e)
     if (e.viewport) viewport = { columns: e.viewport.columns, rows: e.viewport.rows }
     const columns = e.props.bodyColumns
@@ -1632,10 +1635,11 @@ export const register: Register = on => {
     const hidden = await read($, isHidden)
     const opened = tuning.props
     const isTool = opened !== null && (await read($, isTuning)) && e.props.maxRows >= TOOL_ROWS && columns >= TOOL_COLUMNS
+    isToolDrawn = isTool
     if (!isTool && (hidden || columns < MIN_COLUMNS || e.props.maxRows < ROWS)) return next(e)
 
     const now = await $.clock.now()
-    const { Box, Button, Client, Raster } = $.ui.resolve(e)
+    const { Box, Client, Raster } = $.ui.resolve(e)
     if (!isTool || opened === null) {
       site = { requestId: e.requestId, columns }
       handed = { site, cells: drawFrame(viewAt(now, columns)) }
@@ -1646,34 +1650,30 @@ export const register: Register = on => {
     const isWeather = !hidden && weather >= WEATHER_MIN
     site = isWeather ? { requestId: e.requestId, columns: weather } : null
     handed = site === null ? null : { site, cells: drawFrame(viewAt(now, weather)) }
-    const shown = tabOf(tuning.latest ?? opened.start)
-    // A tab pressed, or its digit typed in an empty prompt: the tool goes
-    // there, under a new seq so its own state follows, and a part of the day
-    // previews as a move would.
-    const press = (tab: (typeof TABS)[number]) => () => {
-      const props = tuning.props
-      if (props === null || ghostty === null) return
-      const { state, action } = onTuneKey(tuning.latest ?? props.start, String(TABS.indexOf(tab) + 1))
-      tuning.latest = state
-      tuning.props = { ...props, start: state, seq: props.seq + 1 }
-      if (action === 'preview') previewSoon($, tuning, ghostty, inTurn, () => refreshSky?.())
-      $.ui.invalidate('ui.render')
-    }
 
     return (
-      <Box flexDirection="column" backgroundColor={TOOL_INK}>
-        <Box flexDirection="row" gap={1}>
-          {TABS.map((tab, i) => (
-            <Button key={`tab-${tab}`} hotkey={String(i + 1)} plain dimColor={tab !== shown} onPress={press(tab)}>
-              {tab}
-            </Button>
-          ))}
-        </Box>
-        <Box flexDirection="row">
-          <Client key={TUNE_KEY} module="./tune-band.tsx" props={opened} width={TOOL_COLUMNS} />
-          {handed !== null ? <Raster key={KEY} columns={weather} rows={ROWS} cells={handed.cells} /> : null}
-        </Box>
+      <Box flexDirection="row" backgroundColor={TOOL_INK}>
+        <Client key={TUNE_KEY} module="./tune-band.tsx" props={opened} width={TOOL_COLUMNS} />
+        {handed !== null ? <Raster key={KEY} columns={weather} rows={ROWS} cells={handed.cells} /> : null}
       </Box>
     )
+  })
+
+  // A digit 1 to 5 typed into an empty prompt while the tool is drawn goes
+  // to its tab and not into the prompt: the tool goes there under a new seq
+  // so its own state follows, and a part of the day previews as a move
+  // would. The tabs drawn in the tool cannot answer it, and a Button's
+  // hotkey would, but a click on a Button leaves the keys in the prompt.
+  on('prompt.edit', async ($, e, next) => {
+    const digit = tabKeyOf(e)
+    const props = tuning.props
+    if (digit === null || !isToolDrawn || props === null || ghostty === null || !(await read($, isTuning))) return next(e)
+    const { state, action } = onTuneKey(tuning.latest ?? props.start, digit)
+    tuning.latest = state
+    tuning.props = { ...props, start: state, seq: props.seq + 1 }
+    if (action === 'preview') previewSoon($, tuning, ghostty, inTurn, () => refreshSky?.())
+    $.ui.invalidate('ui.render')
+
+    return { text: e.text, cursor: e.cursor }
   })
 }
