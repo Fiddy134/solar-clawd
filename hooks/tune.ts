@@ -62,6 +62,11 @@ export type Settings = {
   // A text file unlike the kept text with no live mark is a draft a killed
   // session left, which the next session to start puts back.
   textDraftUntil: number | null
+  // Whether that draft moved the gap from the one kept, so the padding line
+  // under the include may say another: only then is the line put back,
+  // and a padding the person set there by hand stays theirs otherwise.
+  // False once kept or closed, as the mark is null.
+  isGapDrafted: boolean
 }
 
 const KEYS = Object.keys(LIMITS) as (keyof TuneValues)[]
@@ -142,6 +147,7 @@ export function asSettings(text: string): Settings {
     preview,
     text: clampText(isObject(file.text) ? file.text : {}),
     textDraftUntil: typeof draft === 'number' && Number.isFinite(draft) ? draft : null,
+    isGapDrafted: file.isGapDrafted === true,
   }
 }
 
@@ -345,6 +351,8 @@ export const RENEW_MS = 20_000
 // What the pane says, in English as the rest of Solar.
 export const TUNE_WORDS = {
   notGhostty: 'Solar: tune is for the sky in Ghostty on a Mac.',
+  notIncluded: "Solar: Ghostty's config does not show the sky yet (/solar ghostty), so the sliders change nothing you can see.",
+  hidden: 'Solar: the sky is hidden, so the sliders change nothing you can see until /solar brings it back.',
   kept: 'kept',
   hint: '\u2191 \u2193 pick   \u2190 \u2192 move   tab phase   \u23ce keep   r reset   u undo   esc close',
 }

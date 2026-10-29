@@ -699,10 +699,20 @@ const STAGED = '# Solar Clawd: the sky while a Claude session runs, and a stage 
 const OUR_LINES = [/^# Solar Clawd: /, /^config-file\s*=\s*\??.*\/runtime\/solar-clawd\.ghostty$/]
 const PADDING = /^window-padding-x\s*=\s*(\d+)\s*(?:,\s*(\d+))?$/
 
-// Whether a config's line is a stage padding the mod could have written:
-// the right side one of the widths a theme may ask, plus a gap the tune
-// pane may add. A person's own at one of them reads as the mod's too.
+// Whether a config's line is a stage padding the mod could have written
+// anywhere in a config: the right side one of the widths a theme may ask.
+// A person's own at one of them reads as the mod's too.
 function isOurPadding(row: string): boolean {
+  const right = PADDING.exec(row.trim())?.[2]
+
+  return right !== undefined && (STAGE_WIDTHS as readonly number[]).includes(Number(right))
+}
+
+// Whether the line right under the mod's include is a stage padding the
+// mod could have written there: a width a theme may ask plus a gap the
+// tune pane may add. Only that one line is read so; a person's own
+// elsewhere at such a width stays theirs.
+function isOurStageLine(row: string): boolean {
   const right = PADDING.exec(row.trim())?.[2]
   const { min, max, step } = TEXT_LIMITS.gap
   const isGap = (gap: number) => gap >= min && gap <= max && (gap - min) % step === 0
@@ -730,7 +740,7 @@ export function restaged(text: string, pt: number): string | null {
   let at = include + 1
   while (include >= 0 && at < rows.length && isBesideInclude(rows[at]!)) at++
   const below = rows[at]
-  if (include < 0 || below === undefined || !isOurPadding(below)) return null
+  if (include < 0 || below === undefined || !isOurStageLine(below)) return null
   rows[at] = `window-padding-x = ${PADDING.exec(below.trim())![1]},${pt}`
 
   return rows.join('\n')
@@ -865,18 +875,43 @@ const RESET_FONT_SIZE = [
 // The text file's text for these values.
 export const textFileOf = (text: TextValues) => textLines(text).map(line => `${line}\n`).join('')
 
+// The font size reset running, and whether a change of size came while
+// it ran: macOS may hold the first osascript while it asks the person
+// whether Solar may, and the resets asked meanwhile are then run once,
+// after it, instead of each beside it.
+const resetting = { isRunning: false, isOwed: false }
+
+function resetFontSize($: EngineInterface): void {
+  if (resetting.isRunning) {
+    resetting.isOwed = true
+    return
+  }
+  resetting.isRunning = true
+  void $.process
+    .run(['/usr/bin/osascript', ...RESET_FONT_SIZE], { timeoutMs: 60_000 })
+    .catch(() => undefined)
+    .finally(() => {
+      resetting.isRunning = false
+      if (!resetting.isOwed) return
+      resetting.isOwed = false
+      resetFontSize($)
+    })
+}
+
 // Writes the tune pane's text where Ghostty reads it: the touched rows
-// (textLines) in the text file, included beside the sky's, and the gap on
-// the mod's own padding line at the theme's stage `pt` plus it (where the
-// line already says so, nothing is written). Each new text is checked
+// (textLines) in the text file, included beside the sky's, and, where
+// `isRestaging`, the gap on the mod's own padding line at the theme's stage
+// `pt` plus it (where the line already says so, nothing is written); a
+// write that leaves the gap as it was leaves the padding line alone, so
+// one the person set there by hand stays. Each new text is checked
 // first with the app's own `+validate-config` against a file of this
 // session's own, never one Ghostty reads, its answer piped: a text Ghostty
 // refuses is not written, so its error window never opens, and with no app
 // of this user's to check it with nothing is written at all. The check's
 // file is then moved into place, and Ghostty reloads once for whatever
 // changed. A change of size resets the size of every terminal, not waited
-// on: macOS asks the person once whether Solar may.
-export async function writeText($: EngineInterface, ghostty: Ghostty, text: TextValues, pt: number): Promise<TextWritten> {
+// on, one at a time: macOS asks the person once whether Solar may.
+export async function writeText($: EngineInterface, ghostty: Ghostty, text: TextValues, pt: number, isRestaging = true): Promise<TextWritten> {
   const wanted = textFileOf(text)
   const onDisk = await $.fs.read(ghostty.text).catch(() => '')
   let isChanged = false
@@ -900,11 +935,11 @@ export async function writeText($: EngineInterface, ghostty: Ghostty, text: Text
     if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
     isChanged = true
   }
-  if ((await restageGhostty($, ghostty, pt, text.gap)) === 'restaged') isChanged = true
+  if (isRestaging && (await restageGhostty($, ghostty, pt, text.gap)) === 'restaged') isChanged = true
   if (!isChanged) return 'same'
   await reloadGhostty($, ghostty)
   const sizeOf = (lines: string) => lines.split('\n').find(line => line.startsWith('font-size = ')) ?? null
-  if (sizeOf(wanted) !== sizeOf(onDisk)) void $.process.run(['/usr/bin/osascript', ...RESET_FONT_SIZE], { timeoutMs: 60_000 }).catch(() => undefined)
+  if (sizeOf(wanted) !== sizeOf(onDisk)) resetFontSize($)
 
   return 'written'
 }

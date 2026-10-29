@@ -6,11 +6,13 @@
 // find (the files, the tab's mark, the host's state for the session) in
 // `left`; the two after it start a fresh module on that, as a reload does.
 // Run alone or before the first, they have nothing to start on and fail.
+// The tune pane's two at the end hand over the same way, in `tuneLeft`.
 
 import { expect, mock, test } from 'claude-code/testing'
 
 import { markOf } from './mark'
-import { RELOADS, reloadWorld, SCALE_ASKS } from './test-kit'
+import { asSettings, PREVIEW_MS, TUNE_PANE } from './tune'
+import { CONFIG, paneWorld, RELOADS, reloadWorld, SCALE_ASKS, TUNE_MOUNT } from './test-kit'
 import type { LeftBehind } from './test-kit'
 
 const START = Date.UTC(2026, 9, 24, 20, 0)
@@ -101,4 +103,51 @@ test('a reload under another session id than the one kept (a /clear between) wri
   expect(world.writes).toContain(`${runtime}/alive-this-session`)
   // The mark goes with the heartbeat, as each minute; the same one.
   expect(world.ttyLog).toEqual([`write ${MARK}`, `start ${MARK}`])
+})
+
+let tuneLeft: LeftBehind | null = null
+const SETTINGS = '/Users/test/Library/Application Support/solar-clawd/sky.json'
+
+test('a session with the tune pane open leaves a preview, a text and a gap drafted, for a reload', { timeoutMs: 15_000 }, async ($, on) => {
+  const clock = mock.clock(on, { now: START })
+  paneWorld(on)
+  const { world, states, runtime } = reloadWorld(on, clock, null)
+  world.cli.showConfig = 'font-size = 14\nwindow-padding-x = 2,240\n'
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(11_000)
+  await $.command.run({ command: 'solar', args: 'tune', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  // The night's brightness a step down, then on the text tab the size a
+  // step up and the gap two.
+  await ui.key({ key: 'left' })
+  for (let i = 0; i < 5 && (await ui.find({ type: 'Text', text: /^ text $/, in: 'tune' }))?.props.backgroundColor !== '#ff6fc0'; i++) await ui.key({ key: 'tab' })
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'up' })
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  const saved = asSettings(world.files.get(SETTINGS)!.text)
+  expect(saved.preview?.tune.night.brightness).toBe(0.95)
+  expect(saved.textDraftUntil).not.toBeNull()
+  expect(saved.isGapDrafted).toBe(true)
+  expect(world.files.get(`${runtime}/text.ghostty`)?.text).toBe('font-size = 14.5\n')
+  expect(world.files.get(CONFIG)!.text).toContain('\nwindow-padding-x = 2,256\n')
+  tuneLeft = { files: new Map(world.files), states: new Map(states), mark: MARK, at: clock.now() }
+})
+
+test('a reload with the tune pane left open drops its preview at once, and its text and gap with it', async ($, on) => {
+  const clock = mock.clock(on, { now: tuneLeft!.at + 1_000 })
+  // The pane the old module opened is still there as the new one starts.
+  const panes = paneWorld(on)
+  panes.open.add(TUNE_PANE)
+  const { world, runtime } = reloadWorld(on, clock, tuneLeft)
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(1)
+  expect(panes.open.has(TUNE_PANE)).toBe(false)
+  const saved = asSettings(world.files.get(SETTINGS)!.text)
+  expect(saved.preview).toBeNull()
+  expect(saved.textDraftUntil).toBeNull()
+  expect(saved.isGapDrafted).toBe(false)
+  expect(world.files.get(`${runtime}/text.ghostty`)?.text).toBe('')
+  expect(world.files.get(CONFIG)!.text).toContain('\nwindow-padding-x = 2,240\n')
 })

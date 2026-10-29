@@ -62,6 +62,8 @@ test('settings from an older Solar, broken or out of range give defaults and lim
   expect(good?.until).toBe(5)
   expect(good?.tune.dusk.colour).toBe(0.8)
   expect(good?.tune.dawn).toEqual(DEFAULT_TUNE.dawn)
+  // A gap draft counts only as true itself.
+  expect([asSettings('{"isGapDrafted":true}'), asSettings('{"isGapDrafted":"yes"}'), old].map(settings => settings.isGapDrafted)).toEqual([true, false, false])
 })
 
 test('a tune saved keeps the pace and the pace kept keeps the tune', () => {
@@ -129,7 +131,7 @@ test("today's settings draw today's sky", () => {
 test('a preview counts until its time, and only a time at most a minute ahead', () => {
   const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
   const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null })
+  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null, isGapDrafted: false })
   expect(activeTune(settings(100_000), 50_000)).toEqual({ tune, phase: 'dusk' })
   expect(activeTune(settings(100_000), 100_000)).toEqual({ tune: saved, phase: null })
   // A minute ahead and the second its write took count; anything further is

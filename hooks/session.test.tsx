@@ -17,7 +17,7 @@ import type { TuneSettings } from './tune'
 import { wallpaperPng } from './sky'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
-import { APPLESCRIPT_RELOADS, BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
+import { APPLESCRIPT_RELOADS, BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, paneWorld, TUNE_MOUNT, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
 
 // The comment the mod writes with its include and the stage, and the one it
 // wrote before there was a stage; where its runtime folder is on a Mac.
@@ -1736,32 +1736,6 @@ test("iTerm2's wallpaper draws the tune saved in sky.json, never a preview", asy
   expect(shown[0]).not.toBe((await paint(null))[0])
 })
 
-// The engine's panes, in memory: which are open, and what each open asked.
-function paneWorld(on: On) {
-  const open = new Set<string>()
-  const opened: object[] = []
-  on('ui.open', (_, e) => {
-    open.add(e.id)
-    opened.push({ ...e })
-    return { value: { isPlaced: true } }
-  })
-  on('ui.close', (_, e) => {
-    open.delete(e.id)
-    return { value: undefined }
-  })
-  on('ui.panes', () => ({ value: [...open].map(id => ({ id, title: id, isShown: true, isFocused: true, isPlaced: true })) }))
-
-  return { open, opened }
-}
-
-const TUNE_MOUNT = {
-  plugin: 'solar-clawd',
-  surface: 'terminal',
-  component: 'Pane',
-  requestId: TUNE_PANE,
-  props: { title: 'Solar tune', isFocused: true, bodyColumns: 72, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} },
-} as const
-
 // The pane closed through the mod's own ui.close hook. The kit cannot press
 // Escape or the close mark for the person, so the mod's own close stands in:
 // a session started again (a reload) finds the pane open and closes it, and
@@ -1803,8 +1777,9 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   const saves = () => world.runs.filter(argv => argv[0] === '/bin/mv' && argv.at(-1) === SETTINGS).length
   const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
 
-  // A dark blue pane that takes the keys, on the part of the day it is now.
-  expect(await solarSays($, 'tune')).toBeUndefined()
+  // A dark blue pane that takes the keys, on the part of the day it is now;
+  // this world's config does not show the sky, which the command says.
+  expect(await solarSays($, 'tune')).toBe(TUNE_WORDS.notIncluded)
   expect(panes.opened).toEqual([{ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' }])
   const ui = await $.ui.mount(TUNE_MOUNT)
   expect(await ui.find({ type: 'Text', text: ' day ', in: 'tune' })).toMatchObject({ props: { backgroundColor: '#ff6fc0', color: '#10142a' } })
@@ -1835,9 +1810,11 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   expect(saved().preview!.until).toBeLessThanOrEqual(clock.now() + PREVIEW_LIFE_MS)
 
   // Enter keeps it for every session, and the pane says so.
+  // The sky goes on showing the phase being tuned, now at the kept tune.
   await ui.key({ key: 'return' })
   expect(saved().tune.day.brightness).toBe(0.85)
-  expect(saved().preview).toBeNull()
+  expect(saved().preview).toEqual({ tune: saved().tune, phase: 'day', until: clock.now() + PREVIEW_LIFE_MS })
+  expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.0);')
   expect(saved().pace).toBe('spar')
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeDefined()
   await ui.key({ key: 'down' })
@@ -1908,7 +1885,7 @@ test('a keep the pane posted together with a later move is kept, and the move pr
   const state = { phase: 'day', row: 'brightness', tune: day(0.9), opened: DEFAULT_TUNE }
   await ui.post({ state, action: 'preview', keeps: 1, keptTune: day(0.95) })
   expect(saved().tune.day.brightness).toBe(0.95)
-  expect(saved().preview).toBeNull()
+  expect(saved().preview?.tune.day.brightness).toBe(0.95)
   await clock.advance(PREVIEW_MS)
   expect(saved().preview?.tune.day.brightness).toBe(0.9)
   expect(saved().tune.day.brightness).toBe(0.95)
@@ -1918,6 +1895,49 @@ test('a keep the pane posted together with a later move is kept, and the move pr
   expect(saved().preview?.tune.day.brightness).toBe(0.8)
   await closeTune($, panes)
   await ui.unmount()
+})
+
+test('a preview due while a keep is still being written is taken away at the close', async ($, on) => {
+  const panes = paneWorld(on)
+  const { clock, world } = await noonWorld($, on)
+  const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  const day = (brightness: number) => ({ ...DEFAULT_TUNE, day: { ...DEFAULT_TUNE.day, brightness } })
+  // The keep's move of sky.json into place waits until it is let go; a
+  // move posted meanwhile comes due while it waits.
+  let letGo = () => {}
+  world.slowMoves.set(SETTINGS, new Promise<void>(resolve => (letGo = resolve)))
+  const keeping = ui.post({ state: { phase: 'day', row: 'brightness', tune: day(0.95), opened: DEFAULT_TUNE }, action: 'keep', keeps: 1, keptTune: day(0.95) })
+  await clock.advance(1)
+  await ui.post({ state: { phase: 'day', row: 'brightness', tune: day(0.9), opened: DEFAULT_TUNE }, action: 'preview', keeps: 0, keptTune: null })
+  await clock.advance(PREVIEW_MS)
+  letGo()
+  await keeping
+  await clock.advance(1)
+  expect(saved().tune.day.brightness).toBe(0.95)
+  expect(saved().preview?.tune.day.brightness).toBe(0.9)
+  await closeTune($, panes)
+  expect(saved().preview).toBeNull()
+  await ui.unmount()
+})
+
+test('/solar tune says so where the sky cannot show what its sliders do', async ($, on) => {
+  const panes = paneWorld(on)
+  const { solar } = await paceWorld($, on, '1.4.0')
+  expect([TUNE_WORDS.notIncluded, TUNE_WORDS.hidden].every(words => /^Solar: /.test(words))).toBe(true)
+  // Not in Ghostty's config yet: the pane opens, and says why the sky stays as it is.
+  expect(await solar('tune')).toBe(TUNE_WORDS.notIncluded)
+  expect(panes.open.has(TUNE_PANE)).toBe(true)
+  await closeTune($, panes)
+  await solar('ghostty')
+  expect(await solar('')).toBe('Solar: the sky is hidden.')
+  expect(await solar('tune')).toBe(TUNE_WORDS.hidden)
+  expect(panes.open.has(TUNE_PANE)).toBe(true)
+  await closeTune($, panes)
+  expect(await solar('')).toBe('Solar: the sky is back.')
+  expect(await solar('tune')).toBeUndefined()
+  await closeTune($, panes)
 })
 
 // Ghostty's +show-config as it prints the text keys on a config that sets
@@ -2075,6 +2095,32 @@ test('a change of size resets the font size of every terminal', async ($, on) =>
   await ui.unmount()
 })
 
+test('size changes while macOS still asks about the first reset run no second reset beside it, and one more after', async ($, on) => {
+  const { panes, clock, world, ui } = await textWorld($, on)
+  // osascript waits, as it does while macOS asks the person whether Solar may.
+  let letGo = () => {}
+  world.slowRuns.set('/usr/bin/osascript', new Promise<void>(resolve => (letGo = resolve)))
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(RESETS(world.runs)).toBe(1)
+  for (let i = 0; i < 3; i++) {
+    await ui.key({ key: 'right' })
+    await clock.advance(PREVIEW_MS)
+  }
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 15\n')
+  expect(RESETS(world.runs)).toBe(1)
+  // Answered: the sizes asked meanwhile are reset once, together.
+  world.slowRuns.delete('/usr/bin/osascript')
+  letGo()
+  await clock.advance(1)
+  expect(RESETS(world.runs)).toBe(2)
+  await clock.advance(1_000)
+  expect(RESETS(world.runs)).toBe(2)
+  await closeTune($, panes)
+  expect(RESETS(world.runs)).toBe(3)
+  await ui.unmount()
+})
+
 test('the gap widens the padding line for new windows', async ($, on) => {
   const { panes, clock, world, solar, config, runtime, ui, kills } = await textWorld($, on, world => {
     seedThemes(world)
@@ -2118,6 +2164,34 @@ test('a gap not kept goes back at the close', async ($, on) => {
   expect(config()).toContain('\nwindow-padding-x = 2,248\n')
   await closeTune($, panes)
   expect(config()).toContain('\nwindow-padding-x = 2,240\n')
+  await ui.unmount()
+})
+
+test("a padding of the person's own a gap from a stage width is not taken for the mod's", async ($, on) => {
+  const { solar, config } = await paceWorld($, on, '1.4.0', 'font-size = 14\nwindow-padding-x = 4,256\n')
+  await solar('ghostty')
+  expect(config()).toContain('\nwindow-padding-x = 4,256\n')
+  expect(config()).toContain(`config-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 4,240\n`)
+})
+
+test('a padding set by hand under the include stays through a pane whose gap is never touched', async ($, on) => {
+  const { panes, clock, world, config, ui } = await textWorld($, on, world => {
+    world.files.set(CONFIG, { text: world.files.get(CONFIG)!.text.replace('window-padding-x = 2,240', 'window-padding-x = 2,320'), mtimeMs: 0 })
+  })
+  expect(config()).toContain('\nwindow-padding-x = 2,320\n')
+  // A size drafted, kept and drafted again, then the close: the gap stays 0
+  // throughout, and the padding as the person set it.
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  expect(config()).toContain('\nwindow-padding-x = 2,320\n')
+  await ui.key({ key: 'return' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(config()).toContain('\nwindow-padding-x = 2,320\n')
+  await closeTune($, panes)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  expect(config()).toContain('\nwindow-padding-x = 2,320\n')
   await ui.unmount()
 })
 
@@ -2192,20 +2266,20 @@ test("Ghostty's command line is run only from this user's own app, under an Appl
 // A Ghostty 1.4 session on a Mac starting on a config with the sky, its
 // stage and the text include, sky.json and text.ghostty as given: what a
 // session killed with the tune pane open leaves.
-async function crashedWorld($: Engine, on: On, settings: (start: number) => object, text: string) {
+async function crashedWorld($: Engine, on: On, settings: (start: number) => object, text: string, padding = '2,240') {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
   const world = ghosttyWorld(on, { value: 1 })
   world.tick(start)
   world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
   world.answers.set('/bin/ps', MAC_PS)
-  world.files.set(CONFIG, { text: `${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\n${TEXT_INCLUDE}\nwindow-padding-x = 2,240\n`, mtimeMs: start })
+  world.files.set(CONFIG, { text: `${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\n${TEXT_INCLUDE}\nwindow-padding-x = ${padding}\n`, mtimeMs: start })
   world.files.set(SETTINGS, { text: JSON.stringify(settings(start)), mtimeMs: start })
   world.files.set(TEXT, { text, mtimeMs: start })
   on('classic.Notification', () => ({}))
   await startGhostty($, on, clock, world)
 
-  return { world, validations: () => world.runs.filter(argv => argv[1] === '+validate-config').length }
+  return { clock, world, validations: () => world.runs.filter(argv => argv[1] === '+validate-config').length }
 }
 
 test('a text draft a killed session left is put back to the kept text at the next start', async ($, on) => {
@@ -2219,6 +2293,33 @@ test("a text draft another session's pane still renews is left alone at the star
   const { world, validations } = await crashedWorld($, on, start => ({ text: { size: 14.5 }, textDraftUntil: start + 30_000 }), 'font-size = 20\n')
   expect(world.files.get(TEXT)?.text).toBe('font-size = 20\n')
   expect(validations()).toBe(0)
+})
+
+test('a text and a gap drafted by a session killed after this one started are put back once its mark lapses', async ($, on) => {
+  const { clock, world, validations } = await crashedWorld($, on, start => ({ text: { size: 14.5 }, textDraftUntil: start + 30_000, isGapDrafted: true }), 'font-size = 20\n', '2,256')
+  const config = () => world.files.get(CONFIG)?.text ?? ''
+  // While the mark is live the draft is the other pane's, and stays.
+  await clock.advance(15_000)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 20\n')
+  expect(config()).toContain('\nwindow-padding-x = 2,256\n')
+  expect(validations()).toBe(0)
+  // Lapsed, it is a dead pane's: within one look the kept text is checked
+  // and written back, the gap with it, and the mark cleared.
+  await clock.advance(8_000)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
+  expect(config()).toContain('\nwindow-padding-x = 2,240\n')
+  expect(validations()).toBe(1)
+  expect(asSettings(world.files.get(SETTINGS)!.text)).toMatchObject({ textDraftUntil: null, isGapDrafted: false })
+  await clock.advance(10_000)
+  expect(validations()).toBe(1)
+})
+
+test('a lapsed draft that never moved the gap leaves a padding set by hand under the include', async ($, on) => {
+  const { clock, world } = await crashedWorld($, on, start => ({ text: { size: 14.5 }, textDraftUntil: start + 30_000 }), 'font-size = 20\n', '2,320')
+  await clock.advance(23_000)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
+  expect(world.files.get(CONFIG)?.text).toContain('\nwindow-padding-x = 2,320\n')
+  expect(asSettings(world.files.get(SETTINGS)!.text).textDraftUntil).toBeNull()
 })
 
 test('a start with the text as kept checks nothing and writes nothing', async ($, on) => {

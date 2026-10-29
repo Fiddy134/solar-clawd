@@ -7,6 +7,7 @@ import type { Engine } from 'claude-code/testing'
 
 import { STOCKHOLM, swedishOffsetMs } from './astro'
 import { contextAt, eventsAt } from './events'
+import { TUNE_PANE } from './tune'
 
 export const BAND = {
   plugin: 'solar-clawd',
@@ -89,9 +90,14 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // Files whose next move into place waits for the promise, as a slow disk
   // does, so a test can act while the write is under way.
   const slowMoves = new Map<string, Promise<void>>()
+  // Commands every run of which waits for the promise before it answers,
+  // as osascript does while macOS asks the person something.
+  const slowRuns = new Map<string, Promise<void>>()
   on('process.run', async (_, e) => {
     runs.push([...e.argv])
     const [command] = e.argv
+    const slow = command === undefined ? undefined : slowRuns.get(command)
+    if (slow !== undefined) await slow
     if (command && denied.has(command)) return { deny: 'denied in a test' }
     if (command && failing.has(command)) return { value: { exitCode: 1, stdout: '', stderr: 'failed', isStdoutTruncated: false, isStderrTruncated: false } }
     if (command && /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/.test(command)) {
@@ -160,7 +166,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, reads, runs, writes, failing, denied, toasts, answers, cli, links, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
+  return { files, reads, runs, writes, failing, denied, toasts, answers, cli, links, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves, slowRuns,
     helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
     tick: (ms: number) => (now = ms),
   }
@@ -315,3 +321,30 @@ export function reloadWorld(on: On, clock: ReturnType<typeof mock.clock>, left: 
 
 // The screen's scale asked of the window server.
 export const SCALE_ASKS = (runs: string[][]) => runs.filter(argv => argv[0] === '/usr/bin/osascript' && argv.join(' ').includes('NSScreen')).length
+
+// The engine's panes, in memory: which are open, and what each open asked.
+export function paneWorld(on: On) {
+  const open = new Set<string>()
+  const opened: object[] = []
+  on('ui.open', (_, e) => {
+    open.add(e.id)
+    opened.push({ ...e })
+    return { value: { isPlaced: true } }
+  })
+  on('ui.close', (_, e) => {
+    open.delete(e.id)
+    return { value: undefined }
+  })
+  on('ui.panes', () => ({ value: [...open].map(id => ({ id, title: id, isShown: true, isFocused: true, isPlaced: true })) }))
+
+  return { open, opened }
+}
+
+// The tune pane as the engine mounts it in a terminal.
+export const TUNE_MOUNT = {
+  plugin: 'solar-clawd',
+  surface: 'terminal',
+  component: 'Pane',
+  requestId: TUNE_PANE,
+  props: { title: 'Solar tune', isFocused: true, bodyColumns: 72, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} },
+} as const

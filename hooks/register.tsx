@@ -79,7 +79,7 @@ import {
   TUNE_PANE,
   TUNE_WORDS,
 } from './tune'
-import type { PanePost, PaneState, TextValues } from './tune'
+import type { PanePost, PaneState, Settings, TextValues } from './tune'
 import type { TextWritten } from './ghostty'
 import type { TunePaneProps } from './tune-pane'
 import type { SolarClawdCarried } from '../types'
@@ -259,10 +259,15 @@ const UNREADABLE_CONFIG = `Solar: could not read Ghostty's config, so it is left
 // The tune pane's state as the preview in sky.json, its tune held to the
 // limits (it came from the surface module), running a PREVIEW_LIFE_MS from
 // now.
-async function writePreview($: EngineInterface, ghostty: Ghostty, state: PaneState): Promise<void> {
+async function previewOf($: EngineInterface, state: PaneState): Promise<NonNullable<Settings['preview']>> {
   const tune = asSettings(JSON.stringify({ tune: state.tune })).tune
   const phase = PHASES.includes(state.phase) ? state.phase : 'day'
-  await writeSettings($, ghostty, { preview: { tune, phase, until: (await $.clock.now()) + PREVIEW_LIFE_MS } })
+
+  return { tune, phase, until: (await $.clock.now()) + PREVIEW_LIFE_MS }
+}
+
+async function writePreview($: EngineInterface, ghostty: Ghostty, state: PaneState): Promise<void> {
+  await writeSettings($, ghostty, { preview: await previewOf($, state) })
 }
 
 // What the tune pane says of Ghostty's text as last written: nothing once
@@ -275,10 +280,18 @@ function noteOf(written: TextWritten): string | null {
 }
 
 // Ghostty's text as the tune pane has it, written where Ghostty reads it,
-// the padding line at the theme's stage `pt` plus the gap; what came of it
-// shown in the pane while it is open, a refusal by its key.
-async function writeTuneText($: EngineInterface, sky: Ghostty, text: TextValues, tuning: { props: TunePaneProps | null }, pt: number): Promise<void> {
-  const written = await writeText($, sky, text, pt).catch((): TextWritten => 'unreadable')
+// and where `isRestaging` the padding line at the theme's stage `pt` plus
+// the gap; what came of it shown in the pane while it is open, a refusal
+// by its key.
+async function writeTuneText(
+  $: EngineInterface,
+  sky: Ghostty,
+  text: TextValues,
+  tuning: { props: TunePaneProps | null },
+  pt: number,
+  isRestaging: boolean,
+): Promise<void> {
+  const written = await writeText($, sky, text, pt, isRestaging).catch((): TextWritten => 'unreadable')
   const note = noteOf(written)
   if (tuning.props === null || tuning.props.note === note) return
   tuning.props = { ...tuning.props, note }
@@ -286,9 +299,11 @@ async function writeTuneText($: EngineInterface, sky: Ghostty, text: TextValues,
 }
 
 // Marks the tune pane's text, not yet kept, as live in sky.json for a
-// PREVIEW_LIFE_MS, so a session starting meanwhile leaves it in Ghostty.
-async function markTextDraft($: EngineInterface, ghostty: Ghostty): Promise<void> {
-  await writeSettings($, ghostty, { textDraftUntil: (await $.clock.now()) + PREVIEW_LIFE_MS })
+// PREVIEW_LIFE_MS, so a session starting meanwhile leaves it in Ghostty;
+// and, once a draft has moved the gap, says so, so whoever puts the draft
+// back puts the padding line back too.
+async function markTextDraft($: EngineInterface, ghostty: Ghostty, isGapDrafted: boolean): Promise<void> {
+  await writeSettings($, ghostty, { textDraftUntil: (await $.clock.now()) + PREVIEW_LIFE_MS, ...(isGapDrafted ? { isGapDrafted } : {}) })
 }
 
 // The notifications that ask the person something.
@@ -311,8 +326,13 @@ export const register: Register = on => {
     due: null as { cancel: () => void } | null,
     renew: null as { cancel: () => void } | null,
     textDue: null as { cancel: () => void } | null,
-    // Whether this session has marked a text draft live in sky.json.
+    // Whether this session has marked a text draft live in sky.json, and
+    // whether one of its drafts moved the gap from the one saved: only then
+    // does the padding line go back at the close, so a padding the person
+    // set by hand under the include stays through a pane that never
+    // touched the gap.
     isTextDrafting: false,
+    isGapDrafted: false,
     writes: Promise.resolve(),
   }
   const inTurn = (work: () => Promise<void>) => (tuning.writes = tuning.writes.then(work).catch(() => undefined))
@@ -563,8 +583,12 @@ export const register: Register = on => {
     // The saved tune, or a preview while one lasts: the part of the day it
     // shows, at today's moment of it, with that part's values whatever the
     // sun, so every session draws the same and the pane shows exactly what
-    // it changes. Only the drawn sky takes the preview's moment: the
-    // events, Clawd and the waiting light keep the real one.
+    // it changes. The preview shows the whole scene at that moment: the
+    // sun, moon and stars, the theme's scenery for that part of the day,
+    // the market's flags, and Clawd asleep at night. What keeps the real
+    // moment is what is reckoned apart from the scene: the events, Clawd's
+    // look up at something passing, the ISS, the catch, the waiting light,
+    // the tab's mark, the heartbeat, and the band.
     const { tune, phase } = activeTune(settings, now)
     const shown = phase === null ? ms : previewMoment(phase, now, where.place)
     const tuned = phase === null ? tune : { dawn: tune[phase], day: tune[phase], dusk: tune[phase], night: tune[phase] }
@@ -735,10 +759,13 @@ export const register: Register = on => {
       if (isOurs) await stageOf($, ghostty, stagePtOf(theme), kept !== null)
       // A text draft a session killed with the tune pane open left in
       // Ghostty, with no pane still marking it live: put back to the text
-      // kept in sky.json, checked and written as the pane writes it.
+      // kept in sky.json, checked and written as the pane writes it, and
+      // the padding line where the draft moved the gap.
       const saved = await readSettings($, ghostty)
-      const isDrafted = (await $.fs.read(ghostty.text).catch(() => '')) !== textFileOf(saved.text)
-      if (!isOnLinux && isDrafted && !isTextDraftLive(saved, await $.clock.now())) await writeText($, ghostty, saved.text, stagePtOf(theme)).catch(() => undefined)
+      const isDrafted = saved.isGapDrafted || (await $.fs.read(ghostty.text).catch(() => '')) !== textFileOf(saved.text)
+      if (!isOnLinux && isDrafted && !isTextDraftLive(saved, await $.clock.now())) {
+        await writeText($, ghostty, saved.text, stagePtOf(theme), saved.isGapDrafted).catch(() => undefined)
+      }
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
@@ -860,7 +887,23 @@ export const register: Register = on => {
         // What the sky's ticks depend on, which another session's /solar
         // or the person may have changed: the sky is updated at once.
         if (ghostty !== null) {
-          activity.pace = (await readSettings($, ghostty)).pace
+          const settings = await readSettings($, ghostty)
+          activity.pace = settings.pace
+          // A text draft whose pane stopped marking it live, a session killed
+          // with the tune pane open after this one started: the kept text is
+          // written back, checked as the pane writes it, and the kept gap
+          // where the draft moved it, in the pane's turn, and the mark
+          // cleared. This session's own open pane keeps its mark live.
+          const sky = ghostty
+          const isLapsed = settings.textDraftUntil !== null && !isTextDraftLive(settings, await $.clock.now())
+          if (!isOnLinux && isLapsed && !tuning.isTextDrafting) {
+            await inTurn(async () => {
+              const saved = await readSettings($, sky)
+              if (saved.textDraftUntil === null || isTextDraftLive(saved, await $.clock.now())) return
+              await writeText($, sky, saved.text, stagePtOf(theme), saved.isGapDrafted).catch(() => undefined)
+              await writeSettings($, sky, { textDraftUntil: null, isGapDrafted: false })
+            })
+          }
           // Another session's /solar theme: this one follows. A file that
           // says nothing readable changes nothing, and a theme refused once
           // is not checked again every few seconds.
@@ -979,8 +1022,15 @@ export const register: Register = on => {
     })
 
     // A reload leaves the tune pane open with nothing behind it: it closes,
-    // and with it any preview this session had.
-    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === TUNE_PANE)) await $.ui.close({ id: TUNE_PANE }).catch(() => undefined)
+    // and with it any preview this session had. That pane was this
+    // session's, so the preview in sky.json counts as its own, and so does
+    // a gap draft sky.json says it made; the close then puts back what is
+    // saved.
+    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === TUNE_PANE)) {
+      tuning.isPreviewing = true
+      if (ghostty !== null) tuning.isGapDrafted ||= (await readSettings($, ghostty)).isGapDrafted
+      await $.ui.close({ id: TUNE_PANE }).catch(() => undefined)
+    }
 
     return next(e)
   })
@@ -1269,11 +1319,16 @@ export const register: Register = on => {
         // A renewal changes nothing the sky shows, so it is not drawn again.
         const [sky, state] = [ghostty, tuning.latest]
         if (tuning.isPreviewing && sky !== null && state !== null) void inTurn(() => writePreview($, sky, state))
-        if (tuning.isTextDrafting && sky !== null) void inTurn(() => markTextDraft($, sky))
+        if (tuning.isTextDrafting && sky !== null) void inTurn(() => markTextDraft($, sky, tuning.isGapDrafted))
       })
       const opened = await $.ui.open({ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' })
+      if (!opened.isPlaced) return { text: `Solar: the tune pane waits to be placed: ${opened.reason}.` }
+      // A sky that does not show cannot show what the sliders do: said
+      // once, as the pane opens for the text it still tunes.
+      if (!ghostty.isIncluded) return { text: TUNE_WORDS.notIncluded }
+      if (await $.fs.exists(ghostty.hidden).catch(() => false)) return { text: TUNE_WORDS.hidden }
 
-      return opened.isPlaced ? {} : { text: `Solar: the tune pane waits to be placed: ${opened.reason}.` }
+      return {}
     }
 
     if (word === 'ghostty') {
@@ -1444,7 +1499,8 @@ export const register: Register = on => {
   // What the pane posts: a preview, written once the moves have rested a
   // PREVIEW_MS, the last of them winning; and a keep it has not heard of
   // yet, which may ride in a later move's post: that tune kept for every
-  // session, the preview gone, and the pane told so.
+  // session, previewed at the phase while the pane stays open, and the
+  // pane told so.
   on('ui.message', { requestId: TUNE_PANE }, async ($, e, next) => {
     const message = e.data as Partial<PanePost> | null
     const state = message?.state
@@ -1464,14 +1520,22 @@ export const register: Register = on => {
       tuning.textDue?.cancel()
       Object.assign(tuning, { due: null, textDue: null })
       // The text kept with the tune; a post that says none leaves the text
-      // as it was.
+      // as it was. The sky goes on showing the phase being tuned, now at
+      // the kept tune, until the close; the padding line is written only
+      // where the kept gap is not the one saved, or a draft moved it.
       const text = typeof keptText === 'object' && keptText !== null ? asSettings(JSON.stringify({ text: keptText })).text : null
+      const tune = asSettings(JSON.stringify({ tune: keptTune })).tune
       await inTurn(async () => {
-        await writeSettings($, sky, { tune: asSettings(JSON.stringify({ tune: keptTune })).tune, preview: null, ...(text === null ? {} : { text, textDraftUntil: null }) })
-        tuning.isPreviewing = false
+        const before = (await readSettings($, sky)).text
+        const preview = await previewOf($, { ...latest, tune })
+        tuning.isPreviewing = true
+        await writeSettings($, sky, { tune, preview, ...(text === null ? {} : { text, textDraftUntil: null, isGapDrafted: false }) })
         if (text !== null) tuning.isTextDrafting = false
         refreshSky?.()
-        if (text !== null) await writeTuneText($, sky, text, tuning, stagePtOf(theme))
+        if (text === null) return
+        const isRestaging = tuning.isGapDrafted || text.gap !== before.gap
+        tuning.isGapDrafted = false
+        await writeTuneText($, sky, text, tuning, stagePtOf(theme), isRestaging)
       })
       if (tuning.props === null) return answer
       tuning.props = { ...tuning.props, kept: keeps }
@@ -1487,8 +1551,10 @@ export const register: Register = on => {
         // Marked live first, so a session starting meanwhile leaves the draft.
         tuning.isTextDrafting = true
         void inTurn(async () => {
-          await markTextDraft($, sky)
-          await writeTuneText($, sky, asSettings(JSON.stringify({ text: shown.text })).text, tuning, stagePtOf(theme))
+          const text = asSettings(JSON.stringify({ text: shown.text })).text
+          if (text.gap !== (await readSettings($, sky)).text.gap) tuning.isGapDrafted = true
+          await markTextDraft($, sky, tuning.isGapDrafted)
+          await writeTuneText($, sky, text, tuning, stagePtOf(theme), tuning.isGapDrafted)
         })
       })
     }
@@ -1497,10 +1563,11 @@ export const register: Register = on => {
         tuning.due = null
         const latest = tuning.latest
         if (latest === null) return
-        // Counted as written before the write, so a close while it is under
-        // way, which waits its turn, takes it away again.
-        tuning.isPreviewing = true
+        // Counted as written in the write's own turn, before the write, so
+        // a close while it is under way, which waits its turn, takes it away
+        // again, and a keep queued ahead of it cannot count it unwritten.
         void inTurn(async () => {
+          tuning.isPreviewing = true
           await writePreview($, sky, latest)
           refreshSky?.()
         })
@@ -1525,12 +1592,14 @@ export const register: Register = on => {
     await inTurn(async () => {
       if (sky === null) return
       const saved = await readSettings($, sky)
-      await writeTuneText($, sky, saved.text, tuning, stagePtOf(theme))
-      if (saved.textDraftUntil !== null) await writeSettings($, sky, { textDraftUntil: null })
+      await writeTuneText($, sky, saved.text, tuning, stagePtOf(theme), tuning.isGapDrafted)
+      tuning.isGapDrafted = false
+      if (saved.textDraftUntil !== null || saved.isGapDrafted) await writeSettings($, sky, { textDraftUntil: null, isGapDrafted: false })
       tuning.isTextDrafting = false
       if (!tuning.isPreviewing) return
-      await writeSettings($, sky, { preview: null })
       tuning.isPreviewing = false
+      if (saved.preview === null) return
+      await writeSettings($, sky, { preview: null })
       refreshSky?.()
     })
 
