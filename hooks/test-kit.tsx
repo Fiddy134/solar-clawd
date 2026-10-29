@@ -46,6 +46,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
   // and +list-fonts print, and the keys +validate-config refuses in the
   // file it is given, each named as Ghostty names it.
   const cli = { showConfig: '', fonts: '', refuses: new Set<string>() }
+  // The user the session runs as, as id says it, and where realpath finds
+  // a path that is a link (any other is its own).
+  answers.set('/usr/bin/id', '501\n')
+  const links = new Map<string, string>()
   let now = 0
   // The session's environment: Ghostty's own variables, the home folder.
   const env = new Map([['TERM_PROGRAM', 'ghostty'], ['HOME', '/Users/test']])
@@ -105,6 +109,10 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
       }
       return { value: { exitCode, stdout: out, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
     }
+    if (command === '/bin/realpath') {
+      const path = e.argv[1] ?? ''
+      return { value: { exitCode: 0, stdout: `${links.get(path) ?? path}\n`, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+    }
     let stdout = ''
     if (command === '/usr/sbin/ioreg') stdout = `    | |   "HIDIdleTime" = ${idleSeconds.value * 1e9}\n`
     if (command === '/usr/bin/pmset') stdout = power.text
@@ -152,7 +160,7 @@ export function ghosttyWorld(on: On, idleSeconds: { value: number }) {
     return { value: undefined }
   })
 
-  return { files, reads, runs, writes, failing, denied, toasts, answers, cli, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
+  return { files, reads, runs, writes, failing, denied, toasts, answers, cli, links, power, front, unreadable, env, helpers, helperFails, ttyLog, slowMoves,
     helpersOn: (clock: ReturnType<typeof mock.clock>) => (helperClock = clock),
     tick: (ms: number) => (now = ms),
   }

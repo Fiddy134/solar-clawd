@@ -17,7 +17,7 @@ const OURS = [
   /^sky-[\w-]+\.png$/,
   /^alive-[\w-]+$/,
   /^waiting-[\w-]+$/,
-  /^(sky\.glsl|solar-clawd\.ghostty|vsync\.ghostty|market\.json)\.tmp-[\w-]+$/,
+  /^(sky\.glsl|solar-clawd\.ghostty|vsync\.ghostty|text\.ghostty|market\.json)\.tmp-[\w-]+$/,
 ]
 
 // Full paths of the files in `folder` to remove. `keep` names what the

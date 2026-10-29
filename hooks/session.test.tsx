@@ -309,9 +309,11 @@ test('on Linux Ghostty reloads on SIGUSR2, and nothing of the Mac is asked', asy
   expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript', '/usr/bin/lsappinfo'].includes(argv[0]!))).toBe(false)
 })
 
-// Ghostty's processes on a Mac as ps lists them: the app, whose parent is
-// launchd, and a ghostty run from a shell in it, which SIGUSR2 would end.
-const MAC_PS = '  619     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n 4242   619 /usr/bin/login\n 5150  4300 /Applications/Ghostty.app/Contents/MacOS/ghostty\n'
+// Ghostty's processes on a Mac as ps lists them, with their user: another
+// user's app, this user's (501), whose parent is launchd, and a ghostty run
+// from a shell in it, which SIGUSR2 would end.
+const MAC_PS =
+  '  777     1   502 /Users/other/Applications/Ghostty.app/Contents/MacOS/ghostty\n  619     1   501 /Applications/Ghostty.app/Contents/MacOS/ghostty\n 4242   619     0 /usr/bin/login\n 5150  4300   501 /Applications/Ghostty.app/Contents/MacOS/ghostty\n'
 const KILLS = (runs: string[][]) => runs.filter(argv => argv[0] === '/bin/kill').map(argv => argv.join(' '))
 
 test('on a Mac Ghostty 1.2 and later reloads on SIGUSR2 to the app alone, with no AppleScript', async ($, on) => {
@@ -336,7 +338,7 @@ async function macReloads($: Engine, on: On, version: string, ps: string, isKill
 }
 
 test('on a Mac AppleScript reloads where ps finds no Ghostty app to signal', async ($, on) => {
-  const world = await macReloads($, on, '1.4.0', ' 5150  4300 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
+  const world = await macReloads($, on, '1.4.0', ' 5150  4300   501 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  777     1   502 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
   expect(KILLS(world.runs)).toEqual([])
   expect(RELOADS(world.runs)).toBeGreaterThan(0)
 })
@@ -2136,4 +2138,115 @@ test('hiding the sky keeps the text include', async ($, on) => {
   await $.session.end({ reason: 'prompt_input_exit', sessionId: 'this-session', resume: { id: 'this-session' } })
   expect(config()).toContain(`\n${TEXT_INCLUDE}\n`)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+})
+
+test('a kept gap reaches the padding line, whatever theme came between', async ($, on) => {
+  const { panes, clock, world, solar, config, ui } = await textWorld($, on, world => seedThemes(world))
+  // The gap previewed on fyr, then another theme before Enter.
+  await ui.key({ key: 'up' })
+  await ui.key({ key: 'right' })
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(config()).toContain('\nwindow-padding-x = 2,256\n')
+  await solar('theme harbour')
+  expect(config()).toContain('\nwindow-padding-x = 2,400\n')
+  await ui.key({ key: 'return' })
+  expect(asSettings(world.files.get(SETTINGS)!.text).text.gap).toBe(16)
+  expect(config()).toContain('\nwindow-padding-x = 2,416\n')
+  await closeTune($, panes)
+  expect(config()).toContain('\nwindow-padding-x = 2,416\n')
+  await ui.unmount()
+})
+
+test("Ghostty's command line is run only from this user's own app, under an Applications folder", async ($, on) => {
+  // Another user's app and a link out of /Applications are passed over;
+  // this user's app is the one asked.
+  const { panes, clock, world, ui } = await textWorld($, on, world => {
+    world.answers.set('/bin/ps', '  777     1   502 /Users/other/Applications/Ghostty.app/Contents/MacOS/ghostty\n  619     1   501 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
+  })
+  const asked = () => world.runs.filter(argv => /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/.test(argv[0]!)).map(argv => argv[0])
+  expect(new Set(asked())).toEqual(new Set([GHOSTTY_APP]))
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  expect(new Set(asked())).toEqual(new Set([GHOSTTY_APP]))
+  // With only apps that do not qualify, nothing is checked and nothing written.
+  world.answers.set('/bin/ps', '  777     1   502 /Applications/Ghostty.app/Contents/MacOS/ghostty\n  619     1   501 /Users/test/Downloads/Ghostty.app/Contents/MacOS/ghostty\n  620     1   501 /Users/test/Applications/Ghostty.app/Contents/MacOS/ghostty\n')
+  world.links.set('/Users/test/Applications/Ghostty.app/Contents/MacOS/ghostty', '/private/tmp/Ghostty.app/Contents/MacOS/ghostty')
+  const before = asked().length
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(asked().length).toBe(before)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
+  expect(await ui.find({ type: 'Text', text: TEXT_WORDS.noApp, in: 'tune' })).toBeDefined()
+  // An app of this user's own ~/Applications is one.
+  world.links.clear()
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
+  expect(asked().at(-1)).toBe('/Users/test/Applications/Ghostty.app/Contents/MacOS/ghostty')
+  await closeTune($, panes)
+  await ui.unmount()
+})
+
+// A Ghostty 1.4 session on a Mac starting on a config with the sky, its
+// stage and the text include, sky.json and text.ghostty as given: what a
+// session killed with the tune pane open leaves.
+async function crashedWorld($: Engine, on: On, settings: (start: number) => object, text: string) {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
+  world.answers.set('/bin/ps', MAC_PS)
+  world.files.set(CONFIG, { text: `${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\n${TEXT_INCLUDE}\nwindow-padding-x = 2,240\n`, mtimeMs: start })
+  world.files.set(SETTINGS, { text: JSON.stringify(settings(start)), mtimeMs: start })
+  world.files.set(TEXT, { text, mtimeMs: start })
+  on('classic.Notification', () => ({}))
+  await startGhostty($, on, clock, world)
+
+  return { world, validations: () => world.runs.filter(argv => argv[1] === '+validate-config').length }
+}
+
+test('a text draft a killed session left is put back to the kept text at the next start', async ($, on) => {
+  const { world, validations } = await crashedWorld($, on, () => ({ text: { size: 14.5 } }), 'font-size = 20\nfaint-opacity = 1\n')
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
+  expect(validations()).toBe(1)
+  expect(RESETS(world.runs)).toBe(1)
+})
+
+test("a text draft another session's pane still renews is left alone at the start", async ($, on) => {
+  const { world, validations } = await crashedWorld($, on, start => ({ text: { size: 14.5 }, textDraftUntil: start + 30_000 }), 'font-size = 20\n')
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 20\n')
+  expect(validations()).toBe(0)
+})
+
+test('a start with the text as kept checks nothing and writes nothing', async ($, on) => {
+  // A draft mark long past is a dead pane's, and counts not at all.
+  const { world, validations } = await crashedWorld($, on, start => ({ text: { size: 14.5 }, textDraftUntil: start - 1 }), 'font-size = 14.5\n')
+  expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
+  expect(validations()).toBe(0)
+  expect(world.writes.some(path => path.startsWith(`${TEXT}.tmp-`))).toBe(false)
+})
+
+test('the pane marks its text draft live while it is open, and clears the mark at a keep and at the close', async ($, on) => {
+  const { panes, clock, world, ui } = await textWorld($, on)
+  const until = () => JSON.parse(world.files.get(SETTINGS)?.text ?? '{}').textDraftUntil ?? null
+  expect(until()).toBeNull()
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  const marked = until()
+  expect(marked).toBeGreaterThan(clock.now())
+  expect(marked).toBeLessThanOrEqual(clock.now() + PREVIEW_LIFE_MS)
+  // Renewed while the pane stays open.
+  await clock.advance(20_000)
+  expect(until()).toBeGreaterThan(marked)
+  await ui.key({ key: 'return' })
+  expect(until()).toBeNull()
+  await ui.key({ key: 'right' })
+  await clock.advance(PREVIEW_MS)
+  expect(until()).not.toBeNull()
+  await closeTune($, panes)
+  expect(until()).toBeNull()
+  await ui.unmount()
 })

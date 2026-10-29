@@ -203,10 +203,13 @@ test('tidying takes the temp files a crashed write left, and no one else\'s', ()
     entry('notes.txt.tmp-old-session', now - 2 * 3_600_000),
     entry('vsync.ghostty.tmp-old-session', now - 2 * 3_600_000),
     entry('vsync.ghostty', now - 2 * 3_600_000),
+    entry('text.ghostty.tmp-old-session', now - 2 * 3_600_000),
+    entry('text.ghostty', now - 2 * 3_600_000),
   ]
   expect(staleFiles(entries, '/runtime', now, []).sort()).toEqual([
     '/runtime/sky.glsl.tmp-old-session',
     '/runtime/solar-clawd.ghostty.tmp-old-session',
+    '/runtime/text.ghostty.tmp-old-session',
     '/runtime/vsync.ghostty.tmp-old-session',
   ])
 })

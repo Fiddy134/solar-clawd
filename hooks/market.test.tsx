@@ -383,6 +383,7 @@ const ghosttyOf = (id: string): Ghostty => ({
   settings: '/sky.json',
   vsync: '/runtime/vsync.ghostty',
   text: '/runtime/text.ghostty',
+  uid: 501,
   market: MARKET_FILE,
   version: [1, 2],
   home: '/home',

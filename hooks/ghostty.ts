@@ -71,6 +71,9 @@ export type Ghostty = {
   // when it says none.
   version: [number, number] | null
   home: string
+  // The user the session runs as, as id says it; null where it said none.
+  // Only this user's Ghostty is signalled, or run for its command line.
+  uid: number | null
   // The session's terminal (/dev/ttys004), where its tab's mark is written;
   // null when it could not be found.
   tty: string | null
@@ -156,32 +159,53 @@ export async function ttyOf($: EngineInterface): Promise<string | null> {
   return /^(tty[\w.]+|pts\/\d+)$/.test(name) ? `/dev/${name}` : null
 }
 
-// The pids of Ghostty's app on a Mac, from `ps -axo pid=,ppid=,comm=`: the
-// app's parent is launchd, which keeps out a ghostty run from a shell in it
-// (`ghostty --version`, `+validate-config`), whose end SIGUSR2 would be.
+// The pids of Ghostty's app on a Mac, from `ps -axo pid=,ppid=,uid=,comm=`:
+// the app's parent is launchd, which keeps out a ghostty run from a shell
+// in it (`ghostty --version`, `+validate-config`), whose end SIGUSR2 would
+// be; and it runs as this user, which keeps out another user's Ghostty on
+// a Mac that several share.
 const GHOSTTY_APP = /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/
+const PS_APPS = ['/bin/ps', '-axo', 'pid=,ppid=,uid=,comm=']
 
-// Ghostty's apps as ps lists them: each one's pid and the path of its
-// binary, which is also Ghostty's command line.
-export function ghosttyApps(ps: string): { pid: number; path: string }[] {
+// This user's Ghostty apps as ps lists them: each one's pid and the path of
+// its binary, which is also Ghostty's command line. None where the user is
+// not known.
+export function ghosttyApps(ps: string, uid: number | null): { pid: number; path: string }[] {
   return ps.split('\n').flatMap(line => {
-    const [pid = '', ppid = '', ...comm] = line.trim().split(/\s+/)
+    const [pid = '', ppid = '', owner = '', ...comm] = line.trim().split(/\s+/)
     const path = comm.join(' ')
-    return ppid === '1' && GHOSTTY_APP.test(path) && /^\d+$/.test(pid) ? [{ pid: Number(pid), path }] : []
+    return ppid === '1' && uid !== null && owner === String(uid) && GHOSTTY_APP.test(path) && /^\d+$/.test(pid) ? [{ pid: Number(pid), path }] : []
   })
 }
 
-export function ghosttyAppPids(ps: string): number[] {
-  return ghosttyApps(ps).map(app => app.pid)
+export function ghosttyAppPids(ps: string, uid: number | null): number[] {
+  return ghosttyApps(ps, uid).map(app => app.pid)
+}
+
+// The user the session runs as, as id says it; null where it says none.
+export async function ownUid($: EngineInterface): Promise<number | null> {
+  const answer = await $.process.run(['/usr/bin/id', '-u'], { timeoutMs: 5_000 }).catch(() => null)
+  const uid = answer?.exitCode === 0 ? answer.stdout.trim() : ''
+
+  return /^\d+$/.test(uid) ? Number(uid) : null
 }
 
 // The binary of the Ghostty app that runs, for its command line (+show-config,
 // +list-fonts, +validate-config): the app's own, so its answers are those
-// of the Ghostty that draws; null where ps finds none.
-export async function ghosttyAppPath($: EngineInterface): Promise<string | null> {
-  const ps = await $.process.run(['/bin/ps', '-axo', 'pid=,ppid=,comm='], { timeoutMs: 5_000 }).catch(() => null)
+// of the Ghostty that draws. Only an app of this user's whose binary, links
+// resolved, lies in /Applications or the user's own ~/Applications is run:
+// what ps names is a path anyone could have put a Ghostty.app at. Null
+// where none is.
+export async function ghosttyAppPath($: EngineInterface, ghostty: Ghostty): Promise<string | null> {
+  const ps = await $.process.run(PS_APPS, { timeoutMs: 5_000 }).catch(() => null)
+  const folders = ['/Applications/', `${ghostty.home}/Applications/`]
+  for (const { path } of ghosttyApps(ps?.stdout ?? '', ghostty.uid)) {
+    const resolved = await $.process.run(['/bin/realpath', path], { timeoutMs: 5_000 }).catch(() => null)
+    const real = resolved?.exitCode === 0 ? resolved.stdout.trim() : ''
+    if (GHOSTTY_APP.test(real) && !real.includes('/../') && folders.some(folder => real.startsWith(folder))) return real
+  }
 
-  return ghosttyApps(ps?.stdout ?? '')[0]?.path ?? null
+  return null
 }
 
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
@@ -204,9 +228,9 @@ export async function reloadGhostty($: EngineInterface, ghostty: Ghostty): Promi
     }
     const [major = 0, minor = 0] = ghostty.version ?? []
     if (major > 1 || (major === 1 && minor >= 2)) {
-      const ps = await $.process.run(['/bin/ps', '-axo', 'pid=,ppid=,comm='], { timeoutMs: 5_000 }).catch(() => null)
+      const ps = await $.process.run(PS_APPS, { timeoutMs: 5_000 }).catch(() => null)
       let isSent = false
-      for (const pid of ghosttyAppPids(ps?.stdout ?? '')) {
+      for (const pid of ghosttyAppPids(ps?.stdout ?? '', ghostty.uid)) {
         const sent = await $.process.run(['/bin/kill', '-USR2', String(pid)], { timeoutMs: 5_000 }).catch(() => null)
         isSent ||= sent?.exitCode === 0
       }
@@ -838,27 +862,31 @@ const RESET_FONT_SIZE = [
   "const app = Application('com.mitchellh.ghostty'); app.terminals().forEach(terminal => app.performAction('reset_font_size', { on: terminal }))",
 ]
 
+// The text file's text for these values.
+export const textFileOf = (text: TextValues) => textLines(text).map(line => `${line}\n`).join('')
+
 // Writes the tune pane's text where Ghostty reads it: the touched rows
-// (textLines) in the text file, included beside the sky's, and, given the
-// theme's stage `pt` where the gap may have changed, the gap on the mod's
-// own padding line at `pt` plus it (null leaves the padding as it is). Each new
-// text is checked first with the app's own `+validate-config` against a
-// file of this session's own, never one Ghostty reads, its answer piped:
-// a text Ghostty refuses is not written, so its error window never opens.
-// The check's file is then moved into place, and Ghostty reloads once for
-// whatever changed. A change of size resets the size of every terminal,
-// not waited on: macOS asks the person once whether Solar may.
-export async function writeText($: EngineInterface, ghostty: Ghostty, text: TextValues, pt: number | null): Promise<TextWritten> {
-  const wanted = textLines(text).map(line => `${line}\n`).join('')
+// (textLines) in the text file, included beside the sky's, and the gap on
+// the mod's own padding line at the theme's stage `pt` plus it (where the
+// line already says so, nothing is written). Each new text is checked
+// first with the app's own `+validate-config` against a file of this
+// session's own, never one Ghostty reads, its answer piped: a text Ghostty
+// refuses is not written, so its error window never opens, and with no app
+// of this user's to check it with nothing is written at all. The check's
+// file is then moved into place, and Ghostty reloads once for whatever
+// changed. A change of size resets the size of every terminal, not waited
+// on: macOS asks the person once whether Solar may.
+export async function writeText($: EngineInterface, ghostty: Ghostty, text: TextValues, pt: number): Promise<TextWritten> {
+  const wanted = textFileOf(text)
   const onDisk = await $.fs.read(ghostty.text).catch(() => '')
   let isChanged = false
   if (wanted !== onDisk) {
+    const app = await ghosttyAppPath($, ghostty)
+    if (app === null) return 'no-app'
     const included = await includeText($, ghostty)
     if (included === 'unreadable' || included === 'no-include') return included
     const temp = `${ghostty.text}.tmp-${ghostty.id}`
     if (wanted !== '') {
-      const app = await ghosttyAppPath($)
-      if (app === null) return 'no-app'
       await $.fs.write(temp, wanted)
       const check = await $.process.run([app, '+validate-config', `--config-file=${temp}`], { timeoutMs: 10_000 }).catch(() => null)
       if (check?.exitCode !== 0) {
@@ -872,7 +900,7 @@ export async function writeText($: EngineInterface, ghostty: Ghostty, text: Text
     if (exitCode !== 0) throw new Error(`mv exited ${exitCode}`)
     isChanged = true
   }
-  if (pt !== null && (await restageGhostty($, ghostty, pt, text.gap)) === 'restaged') isChanged = true
+  if ((await restageGhostty($, ghostty, pt, text.gap)) === 'restaged') isChanged = true
   if (!isChanged) return 'same'
   await reloadGhostty($, ghostty)
   const sizeOf = (lines: string) => lines.split('\n').find(line => line.startsWith('font-size = ')) ?? null
@@ -884,8 +912,8 @@ export async function writeText($: EngineInterface, ghostty: Ghostty, text: Text
 // The person's own text and the fonts, as the running Ghostty says them:
 // its +show-config, everything included, and its +list-fonts, read once
 // as the tune pane opens; empty where there is no app to ask.
-export async function readGhosttyText($: EngineInterface): Promise<{ showConfig: string; fonts: string }> {
-  const app = await ghosttyAppPath($)
+export async function readGhosttyText($: EngineInterface, ghostty: Ghostty): Promise<{ showConfig: string; fonts: string }> {
+  const app = await ghosttyAppPath($, ghostty)
   if (app === null) return { showConfig: '', fonts: '' }
   const run = (argv: string[]) =>
     $.process

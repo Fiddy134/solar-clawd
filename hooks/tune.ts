@@ -57,6 +57,11 @@ export type Settings = {
   tune: TuneSettings
   preview: { tune: TuneSettings; phase: Phase; until: number } | null
   text: TextValues
+  // Until when an open tune pane's text, not yet kept, stands in Ghostty's
+  // text file: renewed as the preview is, and null once kept or closed.
+  // A text file unlike the kept text with no live mark is a draft a killed
+  // session left, which the next session to start puts back.
+  textDraftUntil: number | null
 }
 
 const KEYS = Object.keys(LIMITS) as (keyof TuneValues)[]
@@ -129,7 +134,15 @@ export function asSettings(text: string): Settings {
       ? { tune: tuneOf(p.tune), phase: p.phase as Phase, until: p.until }
       : null
 
-  return { pace: file.pace === 'full' ? 'full' : 'spar', tune: tuneOf(file.tune), preview, text: clampText(isObject(file.text) ? file.text : {}) }
+  const draft = file.textDraftUntil
+
+  return {
+    pace: file.pace === 'full' ? 'full' : 'spar',
+    tune: tuneOf(file.tune),
+    preview,
+    text: clampText(isObject(file.text) ? file.text : {}),
+    textDraftUntil: typeof draft === 'number' && Number.isFinite(draft) ? draft : null,
+  }
 }
 
 // The lines the text include holds: only what was touched, the font list
@@ -199,9 +212,18 @@ export const PREVIEW_LIFE_MS = 60_000
 // otherwise.
 export function activeTune(settings: Settings, now: number): { tune: TuneSettings; phase: Phase | null } {
   const { preview } = settings
-  if (preview !== null && now < preview.until && preview.until <= now + PREVIEW_LIFE_MS + 1_000) return { tune: preview.tune, phase: preview.phase }
+  if (preview !== null && isLive(preview.until, now)) return { tune: preview.tune, phase: preview.phase }
 
   return { tune: settings.tune, phase: null }
+}
+
+// Whether an open pane's mark, running until `until`, still counts: as a
+// preview does, while its time lasts and lies at most PREVIEW_LIFE_MS ahead.
+const isLive = (until: number, now: number) => now < until && until <= now + PREVIEW_LIFE_MS + 1_000
+
+// Whether a tune pane somewhere has its text, not yet kept, in Ghostty.
+export function isTextDraftLive(settings: Settings, now: number): boolean {
+  return settings.textDraftUntil !== null && isLive(settings.textDraftUntil, now)
 }
 
 const DAY_MS = 86_400_000
@@ -341,7 +363,7 @@ export const TEXT_WORDS = {
   off: 'off',
   builtIn: 'built-in',
   refused: (key: string) => `Ghostty refuses ${key}; the text stays as it was`,
-  noApp: "Ghostty's app was not found, so the text stays as it was",
+  noApp: "Solar found no Ghostty app of yours under Applications to check the text with, so it stays as it was",
   noInclude: "Ghostty's config does not show the sky yet (/solar ghostty), so the text stays as it was",
   unreadable: "Ghostty's config could not be read, so the text stays as it was",
 }
