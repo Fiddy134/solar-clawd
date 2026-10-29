@@ -31,6 +31,7 @@ import {
   TEXT_ROWS,
   TEXT_WORDS,
   textLines,
+  TOOL_COLUMNS,
   textValueText,
   TUNE_ROWS,
   TUNE_WORDS,
@@ -259,7 +260,9 @@ test('the pane shows each value as the mock-up does, and no number in it reads a
   }
   expect(TUNE_WORDS.notGhostty).toBe('Solar: tune is for the sky in Ghostty on a Mac.')
   expect(TUNE_WORDS.kept).toBe('kept')
-  expect(TUNE_WORDS.hint).toBe('click   \u2191\u2193 pick   \u2190\u2192 move   tab phase   \u23ce keep   r reset   u undo   q close')
+  // Only keys known to reach the tool in the band; it fits its width.
+  expect(TUNE_WORDS.hint).toBe('click the sliders   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close')
+  expect(TUNE_WORDS.hint.length).toBeLessThan(TOOL_COLUMNS)
   expect(TUNE_WORDS.closed).toBe('Solar: tune closed.')
 })
 

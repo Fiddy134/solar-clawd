@@ -360,7 +360,9 @@ export const TUNE_WORDS = {
   notIncluded: "Solar: Ghostty's config does not show the sky yet (/solar ghostty), so the sliders change nothing you can see.",
   hidden: 'Solar: the sky is hidden, so the sliders change nothing you can see until /solar brings it back.',
   kept: 'kept',
-  hint: 'click   \u2191\u2193 pick   \u2190\u2192 move   tab phase   \u23ce keep   r reset   u undo   q close',
+  // Only the keys known to reach the tool in the band; tab and Enter may too.
+  hint: 'click the sliders   \u2191\u2193 \u2190\u2192   [ ] phase   s keep   r reset   u undo   q close',
+  waits: `Solar: the tune tool opens in the band once the window has ${TOOL_COLUMNS} columns and room for ${TOOL_ROWS} rows above the prompt.`,
   closed: 'Solar: tune closed.',
 }
 

@@ -1900,6 +1900,16 @@ test('the band waits with the tool when the window is too low or narrow, and kee
   await closeTune($)
 })
 
+test('/solar tune in a window too small for the tool says it waits for room', async ($, on) => {
+  paneWorld(on)
+  await noonWorld($, on)
+  const narrow = await $.ui.mount({ ...TUNE_MOUNT, props: { ...TUNE_MOUNT.props, bodyColumns: TOOL_COLUMNS - 1 } })
+  await narrow.unmount()
+  expect(await solarSays($, 'tune')).toBe(TUNE_WORDS.waits)
+  expect(TUNE_WORDS.waits).toBe(`Solar: the tune tool opens in the band once the window has ${TOOL_COLUMNS} columns and room for ${TOOL_ROWS} rows above the prompt.`)
+  await closeTune($)
+})
+
 test('a question hides the tool and keeps it open', async ($, on) => {
   paneWorld(on)
   // Stands for the engine, which draws its own band when the mod passes.

@@ -424,6 +424,8 @@ export const register: Register = on => {
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
   let site: { requestId: string; columns: number } | null = null
+  // The band's room as last drawn, so /solar tune can say it waits for more.
+  let bandRoom: { columns: number; maxRows: number } | null = null
   let viewport = { columns: 160, rows: 45 }
   // The iTerm2 window in points, once iTerm2 has said.
   let windowSize: { width: number; height: number } | null = null
@@ -1377,6 +1379,8 @@ export const register: Register = on => {
       })
       await update($, isTuning, () => true)
       $.ui.invalidate('ui.render')
+      // Too small a window: the tool waits, open, for the room to draw in.
+      if (bandRoom !== null && (bandRoom.columns < TOOL_COLUMNS || bandRoom.maxRows < TOOL_ROWS)) return { text: TUNE_WORDS.waits }
       // A sky that does not show cannot show what the sliders do: said
       // once, as the tool opens for the text it still tunes.
       if (!ghostty.isIncluded) return { text: TUNE_WORDS.notIncluded }
@@ -1623,6 +1627,7 @@ export const register: Register = on => {
     if (e.surface !== 'terminal' || e.props.hasSurvey) return next(e)
     if (e.viewport) viewport = { columns: e.viewport.columns, rows: e.viewport.rows }
     const columns = e.props.bodyColumns
+    bandRoom = { columns, maxRows: e.props.maxRows }
     const hidden = await read($, isHidden)
     const opened = tuning.props
     const isTool = opened !== null && (await read($, isTuning)) && e.props.maxRows >= TOOL_ROWS && columns >= TOOL_COLUMNS
