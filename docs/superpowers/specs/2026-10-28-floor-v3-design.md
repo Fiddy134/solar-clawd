@@ -51,6 +51,47 @@ Uppifrån och ner:
 - **Efter stängning** står golvet inte tomt. Där finns en sen trader vid en post, städare med moppar, kryptobordet som lever dygnet runt och dämpat ljus.
 - **Detaljer som händer:** kaffe på posterna, en duva på statyn, en budbärare i dörren.
 
+## Läses som
+
+Föreslagen av Claude ur skisserna och designen, godtagen av Vincent 2026-10-29 ("Känns som en rimlig lista"). Domaren dömer efter den, byggaren bygger mot den, och vid en senare ändring prövas den igen. **Bärande** rader underkänner temat om de inte håller; de övriga är rättningspunkter. Vilka rader som är bärande är Claudes förslag och ännu inte prövat av Vincent. *(design)* betyder att raden kommer ur designen och inte syns i skissen.
+
+**Hela bilden, på fem sekunder (ram 01)**
+1. **Bärande.** Högra halvan läses som NYSE:s handelsgolv, inifrån och snett uppifrån. Inte ett kontor eller en lagerlokal.
+2. Vänstra delen läses som himlen, orörd. Inget drar blicken dit från texten.
+3. **Bärande.** Salen har djup: det som är närmare står lägre och framför det bakre. Den känns inte som 2D.
+4. Det känns levande och mysigt, inte tomt eller sterilt.
+
+**Salen, uppifrån och ner**
+5. Taket är ett förgyllt kassettak sett inifrån. Ingen gavel och ingen fasad.
+6. Frisen säger NEW YORK STOCK EXCHANGE och går att läsa.
+7. Valvfönstren är höga fönster mot himlen, och vädret syns i dem.
+8. Flaggan är den amerikanska och hänger på bakväggen.
+9. **Bärande.** Kuberna är NYSE:s hängande kuber, lådor med topp och front. De ska inte se ut som platta skyltar.
+10. Tickerbandet är ett kursband längs fotlisten, med pilar upp och ner.
+11. HALT och FILLED är Claudes väntljus och får inte kunna förväxlas med tickerbandet.
+12. Golvet är ett trägolv i plankor, sett uppifrån.
+13. **Bärande.** Posterna är handelsposter med skärmar, inte skrivbord, och kurserna syns på dem.
+14. **Bärande.** Folket är traders i klungor som rör sig mellan posterna åt alla håll, inte längs en linje.
+15. Lapparna är papper slängda på golvet, inte brus.
+16. **Bärande.** Huvud-Clawd står vid pulpeten längst fram med den gröna bankirlampan, och man hittar honom först av alla.
+
+**Väster om salen**
+17. Muren är en tjock vägg i genomskärning, med en dörröppning.
+18. Trottoaren är en gångväg utanför byggnaden och läses inte som en del av salen.
+19. Flaggorna sitter på stänger ut från fasaden, och lyktorna är gatlyktor.
+20. Statyn är Washington på sin sockel.
+21. Clawdarna vid dörren är på väg in eller ut.
+
+**Kvällen och efter stängning**
+22. Lamporna i taket är tända och salen har varmt ljus.
+23. Lyktorna är tända och dörren lyser ut på trottoaren.
+24. Golvet står inte tomt efter stängning: där finns en sen trader, städare och kryptobordet *(design)*.
+
+**Öppna frågor till Vincent:**
+- I skissen är folket koralla Clawdar med färgade rockar. Är traderna Clawdar i rockar, eller ska det finnas andra figurer också?
+- Den lilla NYSE-skylten nere på muren: är det en skylt vid dörren, eller bara skissens markering?
+- Clawden längst ner till vänster på trottoaren: står han där med avsikt?
+
 ## Bredden
 
 Researchen 2026-10-28, i Ghostty v1.4.0-koden, visade:
@@ -78,7 +119,7 @@ Med 600 pt skulle en split få ~19 kolumner, och med 400 pt ~44. Nu när vänste
 ## Mål
 
 - NYSE snett uppifrån i marginalen, med trottoaren längs muren och Clawdar som rör sig i salen och genom dörren. Himlen är orörd till vänster.
-- Att det läses som NYSE på fem sekunder, och att det har djup, detaljer och mysighet. Vincent avgör det med ögat. Domaren bedömer det mot skissen och Vincents ord.
+- Att det läses som NYSE på fem sekunder, och att det har djup, detaljer och mysighet. Vincent avgör det med ögat. Domaren bedömer det mot skissen, Vincents ord och listan under "Läses som".
 - Samma hårda krav som förut: lint rent, kompilerar, bench ≤ 1,25 × fyr, texten läsbar och väntljuset läsbart.
 - Arket skickas till Vincent.
 
