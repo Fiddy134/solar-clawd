@@ -4,12 +4,12 @@
 
 import { expect, test } from 'claude-code/testing'
 
-import { STOCKHOLM } from './astro'
+import { STOCKHOLM, sunAt } from './astro'
 import { withSettings } from './ghostty'
 import { luminance, mix, saturate } from './paint'
 import { sceneAt } from './shader'
 import { STOPS } from './sky'
-import { asSettings, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, PHASES, phaseWeights, tuneAt, tunedColour } from './tune'
+import { activeTune, asSettings, clampTune, DEFAULT_TUNE, LIMITS, NEUTRAL, PHASES, phaseWeights, PREVIEW_LIFE_MS, previewMoment, tuneAt, tunedColour } from './tune'
 import type { Phase, TuneSettings, TuneValues } from './tune'
 
 test('settings from an older Solar, broken or out of range give defaults and limits', () => {
@@ -97,4 +97,40 @@ test('no setting makes the sky lighter than today', () => {
 test("today's settings draw today's sky", () => {
   for (const c of STOP_COLOURS)
     for (const k of [1, 0.85]) expect(tunedColour(c, k, NEUTRAL)).toBe(saturate(mix(0, c, k), 1.35))
+})
+
+test('a preview counts until its time, and a minute after this session first read it at most', () => {
+  const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
+  const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
+  const settings = { pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until: 100_000 } }
+  expect(activeTune(settings, 50_000, 40_000)).toEqual({ tune, phase: 'dusk' })
+  expect(activeTune(settings, 100_000, 40_000)).toEqual({ tune: saved, phase: null })
+  expect(activeTune(settings, 50_000, 50_000 - PREVIEW_LIFE_MS)).toEqual({ tune: saved, phase: null })
+  expect(activeTune(settings, 50_000, null)).toEqual({ tune, phase: 'dusk' })
+  expect(activeTune({ ...settings, preview: null }, 50_000, 40_000)).toEqual({ tune: saved, phase: null })
+})
+
+test("a preview's moment is today's sunrise, noon, sunset or midnight, and now where the sun neither rises nor sets", () => {
+  const now = Date.UTC(2026, 9, 21, 7, 0)
+  const at = (phase: Phase) => previewMoment(phase, now, STOCKHOLM)
+  const sun = (ms: number) => sunAt(ms, STOCKHOLM.lat, STOCKHOLM.lon).elevation
+  // Sunrise and sunset where dayArc counts them, within a minute.
+  expect(Math.abs(sun(at('dawn')) + 0.83)).toBeLessThan(0.2)
+  expect(sun(at('dawn') + 600_000)).toBeGreaterThan(sun(at('dawn')))
+  expect(Math.abs(sun(at('dusk')) + 0.83)).toBeLessThan(0.2)
+  expect(sun(at('dusk') + 600_000)).toBeLessThan(sun(at('dusk')))
+  // The sun at its highest at noon, its lowest twelve hours on.
+  expect(sun(at('day'))).toBeGreaterThan(sun(at('day') - 600_000))
+  expect(sun(at('day'))).toBeGreaterThan(sun(at('day') + 600_000))
+  expect(sun(at('night'))).toBeLessThan(-30)
+  expect(at('night') - at('day')).toBe(12 * 3_600_000)
+  expect(at('dawn')).toBeLessThan(at('day'))
+  expect(at('day')).toBeLessThan(at('dusk'))
+  // The whole day gives one moment for each phase.
+  expect(previewMoment('dawn', now + 3 * 3_600_000, STOCKHOLM)).toBe(at('dawn'))
+  // Svalbard in December and in June.
+  const svalbard = { name: 'Longyearbyen', lat: 78.22, lon: 15.65 }
+  for (const ms of [Date.UTC(2026, 11, 21, 12), Date.UTC(2026, 5, 21, 12)]) {
+    for (const phase of PHASES) expect(previewMoment(phase, ms, svalbard)).toBe(ms)
+  }
 })

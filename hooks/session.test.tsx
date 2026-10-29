@@ -5,6 +5,7 @@ import type { On } from 'claude-code'
 import { expect, mock, test } from 'claude-code/testing'
 import type { Engine } from 'claude-code/testing'
 
+import { STOCKHOLM } from './astro'
 import { ROWS } from './clawd'
 import { themeFiles } from './themes/check'
 import { THEMES } from './themes/index'
@@ -12,6 +13,8 @@ import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
 import { asSettings, DEFAULT_TUNE } from './tune'
+import type { TuneSettings } from './tune'
+import { wallpaperPng } from './sky'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
 import { fromBase64 } from './paint'
 import { BAND, ghosttyWorld, RELOADS, CONFIG, startGhostty, SIGNALS, linuxWorld, waitingWorld, ISS_OMM, ISS_PASS, TTY } from './test-kit'
@@ -1592,4 +1595,129 @@ test("a config with the include but not yet staged loses a stage line the mod wr
   world.files.set(CONFIG, { text: `font-size = 14\nwindow-padding-x = 2,300\nwindow-padding-x = 2,400\n${UNSTAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\n`, mtimeMs: start })
   await startGhostty($, on, clock, world)
   expect(world.files.get(CONFIG)?.text).toBe(`font-size = 14\nwindow-padding-x = 2,300\n${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`)
+})
+
+// A Ghostty session at noon on an ordinary day, sky.json saying `settings`
+// before it starts; the sky's shader as text, its sun's height and its tune.
+async function noonWorld($: Engine, on: On, settings?: object) {
+  const start = Date.UTC(2026, 9, 21, 10, 30)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  if (settings) world.files.set(SETTINGS, { text: JSON.stringify(settings), mtimeMs: start })
+  on('classic.Notification', () => ({}))
+  const runtime = await startGhostty($, on, clock, world)
+  const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+
+  return { start, clock, world, runtime, shader }
+}
+const elevationIn = (text: string) => Number(/const float ELEVATION = (-?[\d.]+);/.exec(text)?.[1])
+const tuneIn = (text: string) => /const vec4 sky_TUNE = (vec4\([^)]*\));/.exec(text)?.[1]
+const NIGHT_PREVIEW = { brightness: 0.6, shade: 1.2, colour: 0.8, warmth: -0.5 }
+
+test('a saved tune reaches the shader of every session', async ($, on) => {
+  const { clock, world, shader } = await noonWorld($, on, { pace: 'spar', tune: { day: { brightness: 0.7 } } })
+  expect(shader()).toContain('TUNE = vec4(0.7, 1.0, 1.0, 0.0);')
+  // Another session saves another tune: this one draws it at its next update.
+  world.files.set(SETTINGS, { text: JSON.stringify({ tune: { day: { brightness: 0.85, warmth: 0.5 } } }), mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.5);')
+})
+
+test('a preview shows while its session lives and goes within a minute of its last word', async ($, on) => {
+  const { clock, world, shader } = await noonWorld($, on)
+  const preview = (until: number) =>
+    world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', preview: { tune: { night: NIGHT_PREVIEW }, phase: 'night', until } }), mtimeMs: clock.now() })
+  expect(elevationIn(shader())).toBeGreaterThan(10)
+  expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
+  preview(clock.now() + 30_000)
+  await clock.advance(10_100)
+  expect(elevationIn(shader())).toBeLessThan(-5)
+  expect(tuneIn(shader())).toBe('vec4(0.6, 1.2, 0.8, -0.5)')
+  // Not renewed: once its time is up, the next update draws noon and the
+  // saved tune again.
+  await clock.advance(31_000 - 10_100)
+  await clock.advance(10_100)
+  expect(elevationIn(shader())).toBeGreaterThan(10)
+  expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
+  // One that says it runs an hour (a dead session's, or a clock gone wrong)
+  // goes a minute after this session first read it.
+  preview(clock.now() + 3_600_000)
+  await clock.advance(10_100)
+  expect(elevationIn(shader())).toBeLessThan(-5)
+  await clock.advance(40_000)
+  expect(elevationIn(shader())).toBeLessThan(-5)
+  await clock.advance(61_000 - 50_100 + 10_100)
+  expect(elevationIn(shader())).toBeGreaterThan(10)
+  expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
+})
+
+test('a second session draws the preview instead of writing over it', async ($, on) => {
+  const { clock, world, runtime, shader } = await noonWorld($, on)
+  // The tuning session: its preview, renewed every 20 s, and the shader it
+  // writes for it.
+  const renew = (text?: string) => {
+    world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', preview: { tune: { night: NIGHT_PREVIEW }, phase: 'night', until: clock.now() + 30_000 } }), mtimeMs: clock.now() })
+    if (text !== undefined) world.files.set(`${runtime}/sky.glsl`, { text, mtimeMs: clock.now() })
+  }
+  renew()
+  await clock.advance(10_000)
+  const drawn = shader()
+  expect(elevationIn(drawn)).toBeLessThan(-5)
+  expect(tuneIn(drawn)).toBe('vec4(0.6, 1.2, 0.8, -0.5)')
+  // Each renewal is a new `until` this session first sees at another moment:
+  // its text stays the tuning session's, written by neither again, and
+  // Ghostty is not reloaded.
+  const reloads = RELOADS(world.runs)
+  const writes = () => world.writes.filter(path => path.startsWith(`${runtime}/sky.glsl`)).length
+  const written = writes()
+  for (let i = 0; i < 4; i++) {
+    await clock.advance(20_000)
+    renew(drawn)
+  }
+  await clock.advance(10_000)
+  expect(shader()).toBe(drawn)
+  expect(writes()).toBe(written)
+  expect(RELOADS(world.runs)).toBe(reloads)
+})
+
+test("iTerm2's wallpaper draws the tune saved in sky.json, never a preview", async ($, on) => {
+  const start = Date.UTC(2026, 9, 21, 10, 30)
+  const clock = mock.clock(on, { now: start })
+  const saved = { day: { brightness: 0.5, colour: 0.8 } }
+  const settings = JSON.stringify({ tune: saved, preview: { tune: { day: { brightness: 1, warmth: 1 } }, phase: 'day', until: start + 3_600_000 } })
+  // Each picture and the tick it was painted at (TICK_MS from the start).
+  const pictures: { at: number; png: string }[] = []
+  mock.env(on, { ITERM_SESSION_ID: 'w0t0p0:0F8E2C1A-1111-4A4A-9B9B-123456789ABC', HOME: '/Users/test' })
+  mock.store(on)
+  on('fs.read', (_, e) => (e.path === SETTINGS ? { value: settings } : { deny: 'ENOENT' }))
+  on('fs.list', () => ({ value: [] }))
+  on('process.run', (_, e) => {
+    const [command] = e.argv
+    let stdout = ''
+    if (command === '/usr/sbin/ioreg') stdout = `"HIDIdleTime" = ${1e9}\n`
+    if (command === '/usr/bin/base64') pictures.push({ at: start + Math.floor((clock.now() - start) / 125) * 125, png: e.init?.stdin ?? '' })
+    if (command === '/usr/bin/osascript') stdout = e.argv.some(arg => arg.includes('background image')) ? 'ok 120 80 true' : 'true'
+    return { value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false } }
+  })
+  on('command.register', () => ({ value: { command: 'solar' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  await clock.advance(20_000)
+  expect(pictures.length).toBeGreaterThan(3)
+  // Painted again here, in the same order and with a cache of its own, from
+  // the second picture on (the first is at a guessed size).
+  const paint = async (tune: TuneSettings | null) => {
+    const cache = {}
+    const out: string[] = []
+    for (const { at } of pictures.slice(1)) {
+      out.push(await wallpaperPng({ ms: at, t: at / 1000, place: STOCKHOLM, weather: null, kp: null, isAuroraForced: false, moonTexture: null, tune }, 240, 160, async () => {}, cache))
+    }
+
+    return out
+  }
+  const shown = pictures.slice(1).map(picture => picture.png)
+  expect(shown).toEqual(await paint(asSettings(settings).tune))
+  expect(shown[0]).not.toBe((await paint(null))[0])
 })

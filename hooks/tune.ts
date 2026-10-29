@@ -5,6 +5,8 @@
 // say, how much of each part of the day a moment is, and the colour a tune
 // makes of the sky; the shader, the sessions and the pane build on it.
 
+import { sunAt } from './astro'
+import type { Place } from './astro'
 import { clamp, luminance, mix, saturate, smoothstep } from './paint'
 import type { Pace } from './pace'
 import type { Scene } from './shader'
@@ -80,6 +82,67 @@ export function asSettings(text: string): Settings {
       : null
 
   return { pace: file.pace === 'full' ? 'full' : 'spar', tune: tuneOf(file.tune), preview }
+}
+
+// How long a preview counts at most from the moment a session first reads
+// its `until`: the tuning session renews it every 20 s, so one that says it
+// runs for hours (a dead session's, or a clock gone wrong) still goes
+// within a minute of its last word.
+export const PREVIEW_LIFE_MS = 60_000
+
+// The tune to draw now: the preview's, and the part of the day it shows,
+// while its time lasts and less than PREVIEW_LIFE_MS after `firstSeen`
+// (when this session first read that `until`; null, just now); the saved
+// tune and no part of the day otherwise.
+export function activeTune(settings: Settings, now: number, firstSeen: number | null): { tune: TuneSettings; phase: Phase | null } {
+  const { preview } = settings
+  if (preview !== null && now < preview.until && now < (firstSeen ?? now) + PREVIEW_LIFE_MS) return { tune: preview.tune, phase: preview.phase }
+
+  return { tune: settings.tune, phase: null }
+}
+
+const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
+// The sun's height at its rise and set, as dayArc counts them.
+const HORIZON = -0.83
+
+// The moment a preview shows its part of the day at: today's sunrise for
+// dawn, the sun at its highest for day, sunset for dusk, and twelve hours
+// after noon for night. Today is the place's solar day, from one midnight
+// of its longitude to the next, so every moment of it gives the same four.
+// Where the sun neither rises nor sets that day, now.
+export function previewMoment(phase: Phase, now: number, place: Place): number {
+  const elevation = (ms: number) => sunAt(ms, place.lat, place.lon).elevation
+  const shift = (place.lon / 360) * DAY_MS
+  const midnight = Math.floor((now + shift) / DAY_MS) * DAY_MS - shift
+  // Noon within the half hour the equation of time moves it, to the second.
+  let [from, to] = [midnight + 11.5 * HOUR_MS, midnight + 12.5 * HOUR_MS]
+  while (to - from > 1_000) {
+    const a = from + (to - from) / 3
+    const b = to - (to - from) / 3
+    if (elevation(a) < elevation(b)) from = a
+    else to = b
+  }
+  const noon = Math.round((from + to) / 2)
+  const before = noon - 12 * HOUR_MS
+  const after = noon + 12 * HOUR_MS
+  const high = elevation(noon)
+  if (high <= HORIZON || elevation(before) >= HORIZON || elevation(after) >= HORIZON) return now
+  // Where the sun crosses the horizon between a low and a high, to the second.
+  const crossing = (low: number, top: number) => {
+    let [a, b] = [low, top]
+    while (Math.abs(b - a) > 1_000) {
+      const middle = (a + b) / 2
+      if (elevation(middle) < HORIZON) a = middle
+      else b = middle
+    }
+
+    return Math.round((a + b) / 2)
+  }
+  if (phase === 'dawn') return crossing(before, noon)
+  if (phase === 'dusk') return crossing(after, noon)
+
+  return phase === 'day' ? noon : after
 }
 
 // How much of each part of the day a scene is. Day and night by the sun's

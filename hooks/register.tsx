@@ -59,6 +59,7 @@ import { BASE_THEME, THEMES } from './themes/index'
 import { themeNamed, themeNames } from './themes/named'
 import { stagePtOf } from './themes/theme'
 import type { Theme } from './themes/theme'
+import { activeTune, asSettings, previewMoment } from './tune'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
 
@@ -293,9 +294,9 @@ export const register: Register = on => {
 
     return true
   }
-  // Set when this session runs in iTerm2: its session id and where the
-  // wallpaper files go.
-  let iterm: { sessionId: string; folder: string } | null = null
+  // Set when this session runs in iTerm2: its session id, where the
+  // wallpaper files go, and the settings file Ghostty's sessions share.
+  let iterm: { sessionId: string; folder: string; settings: string } | null = null
   const wallpaper = { at: 0, count: 0, isBusy: false, isShown: false, key: '', last: '' }
   // Whether the person is at the computer (and how long they have been
   // away from the keys), iTerm2 or Ghostty in front, and the sky's pace for
@@ -444,10 +445,11 @@ export const register: Register = on => {
   // What was in the Ghostty sky last time it was drawn; null before the first.
   let lastSky: string[] | null = null
 
-  const shaderAt = (now: number, extras: SkyExtras) => {
-    const { ms, mode } = momentAt(now)
-    const demo = mode === 'demo' ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
+  // The preview's `until` this session last read, and when it first read it.
+  const previewSeen = { until: null as number | null, at: null as number | null }
 
+  const shaderAt = (now: number, { settings, ...extras }: SkyExtras) => {
+    const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
 
     const iss = issNow(now, mode)
@@ -456,7 +458,22 @@ export const register: Register = on => {
     if (lastSky !== null) claude.passing = nextPassing(claude.passing, now, skyGained(lastSky, sky))
     lastSky = sky
 
-    return skyShader(shaderParams({ ...viewAt(now, viewport.columns), ms }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now) }), theme)
+    // The saved tune, or a preview while one lasts: the part of the day it
+    // shows, at today's moment of it, with that part's values whatever the
+    // sun, so every session draws the same and the pane shows exactly what
+    // it changes. Only the drawn sky takes the preview's moment: the
+    // events, Clawd and the waiting light keep the real one.
+    const until = settings.preview?.until ?? null
+    if (until !== previewSeen.until) [previewSeen.until, previewSeen.at] = [until, now]
+    const { tune, phase } = activeTune(settings, now, previewSeen.at)
+    const shown = phase === null ? ms : previewMoment(phase, now, where.place)
+    const tuned = phase === null ? tune : { dawn: tune[phase], day: tune[phase], dusk: tune[phase], night: tune[phase] }
+    const demo = mode === 'demo' && phase === null ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null
+
+    return skyShader(
+      shaderParams({ ...viewAt(now, viewport.columns), ms: shown }, { demo, events, shootingRate: shootingRate(context), iss, ...extras, context: catchAt(now), tune: tuned }),
+      theme,
+    )
   }
 
   on('session.start', async ($, e, next) => {
@@ -473,7 +490,7 @@ export const register: Register = on => {
     const home = await $.env.get('HOME')
     const sessionId = (await $.env.get('ITERM_SESSION_ID'))?.split(':')[1]
     if (sessionId && home) {
-      iterm = { sessionId, folder: `${home}/Library/Caches/solar-clawd` }
+      iterm = { sessionId, folder: `${home}/Library/Caches/solar-clawd`, settings: `${runtimeFolder(home, false, null).slice(0, -'/runtime'.length)}/sky.json` }
       await $.process.run(['/bin/mkdir', '-p', iterm.folder])
       void tidy($, iterm.folder, [sessionId]).catch(() => undefined)
     }
@@ -730,7 +747,11 @@ export const register: Register = on => {
       if (iterm === null) return
       let path = ''
       if (now !== null) {
-        const view = viewAt(now, viewport.columns)
+        // The tune saved in sky.json, where there is one; never a preview,
+        // which is Ghostty's, nor the text shade, which the wallpaper does
+        // not draw.
+        const saved = await $.fs.read(iterm.settings).catch(() => '')
+        const view = { ...viewAt(now, viewport.columns), tune: saved ? asSettings(saved).tune : null }
         // At the window's own pixels once iTerm2 has said its size, so the moon
         // and stars are sharp; until then a guess from the terminal's cells,
         // about 2.15 times as tall as wide. The time-lapse paints at half size.

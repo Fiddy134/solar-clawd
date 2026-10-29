@@ -234,8 +234,10 @@ export type SkyState = {
   livelyAt: (now: number) => boolean
 }
 
-// What the session's shader is asked to draw beyond the scene.
+// What the session's shader is asked to draw beyond the scene, and the
+// shared settings as the update read them.
 export type SkyExtras = {
+  settings: Settings
   waiting: { mode: 'asking' | 'done'; isUrgent: boolean } | null
   isYUp: boolean
   stagePx: number
@@ -332,6 +334,9 @@ async function writeGhosttySky(
 ): Promise<void> {
   const { written } = ghostty
   const now = await $.clock.now()
+  // The shared settings first, so the shader is never drawn from older
+  // ones than this update's: another session's tune, or its preview.
+  const settings = await readSettings($, ghostty)
   // The tab's mark when its context window changes, and again each minute:
   // a `reset` in the tab would have cleared it.
   const mark = markOf(state.catchAt(now), state.workAt(now))
@@ -372,6 +377,7 @@ async function writeGhosttySky(
     const scale = ghostty.isLinux ? 1 : asScale(await $.fs.read(`${ghostty.folder}/scale`).catch(() => ''))
     if (scale !== null) ghostty.stagePx = ghostty.stagePt * scale
     const extras = {
+      settings,
       waiting: waiting && { mode: waiting.mode, isUrgent: waiting.isUrgent },
       isYUp: ghostty.isLinux,
       stagePx: ghostty.stagePx,
