@@ -68,6 +68,7 @@ import {
   asSettings,
   fontsOf,
   isTextDraftLive,
+  onTuneKey,
   ownTextOf,
   PHASES,
   phaseWeights,
@@ -75,6 +76,8 @@ import {
   PREVIEW_MS as TUNE_PREVIEW_MS,
   previewMoment,
   RENEW_MS,
+  TABS,
+  tabOf,
   TEXT_WORDS,
   TOOL_COLUMNS,
   TOOL_ROWS,
@@ -353,6 +356,29 @@ async function closeTuning(
     if (saved.preview === null) return
     await writeSettings($, sky, { preview: null })
     refresh()
+  })
+}
+
+// The preview, written once the moves have rested a PREVIEW_MS, the last
+// of them winning. Counted as written in the write's own turn, before the
+// write, so a close while it is under way, which waits its turn, takes it
+// away again, and a keep queued ahead of it cannot count it unwritten.
+function previewSoon(
+  $: EngineInterface,
+  tuning: Tuning,
+  sky: Ghostty,
+  inTurn: (work: () => Promise<void>) => Promise<void>,
+  refresh: () => void,
+): void {
+  tuning.due ??= $.clock.after(TUNE_PREVIEW_MS, () => {
+    tuning.due = null
+    const latest = tuning.latest
+    if (latest === null) return
+    void inTurn(async () => {
+      tuning.isPreviewing = true
+      await writePreview($, sky, latest)
+      refresh()
+    })
   })
 }
 
@@ -1336,6 +1362,7 @@ export const register: Register = on => {
         const { text, tune } = settings
         tuning.props = {
           start: { phase, row: 'brightness', tune, opened: tune, isOnText: false, textRow: 'size', text, textOpened: text },
+          seq: 0,
           kept: 0,
           own: ownTextOf(showConfig, text),
           fonts: fontsOf(fonts),
@@ -1517,7 +1544,7 @@ export const register: Register = on => {
   // PREVIEW_MS, the last of them winning; and a keep it has not heard of
   // yet, which may ride in a later move's post: that tune kept for every
   // session, previewed at the phase while the tool stays open, and the
-  // pane told so.
+  // tool told so.
   on('ui.message', async ($, e, next) => {
     if (e.component !== 'AbovePrompt' || e.element !== TUNE_KEY) return next(e)
     const message = e.data as Partial<PanePost> | null
@@ -1527,6 +1554,8 @@ export const register: Register = on => {
     // The tool is drawn again from where it is, should its module start
     // over; what the post leaves out stays as it was.
     const latest: PaneState = { ...tuning.props.start, ...state }
+    // Another tab: the band's tabs show it.
+    if (tabOf(latest) !== tabOf(tuning.latest ?? tuning.props.start)) $.ui.invalidate('ui.render')
     tuning.latest = latest
     tuning.props = { ...tuning.props, start: latest }
     const keeps = message?.keeps
@@ -1576,21 +1605,7 @@ export const register: Register = on => {
         })
       })
     }
-    if (message?.action === 'preview') {
-      tuning.due ??= $.clock.after(TUNE_PREVIEW_MS, () => {
-        tuning.due = null
-        const latest = tuning.latest
-        if (latest === null) return
-        // Counted as written in the write's own turn, before the write, so
-        // a close while it is under way, which waits its turn, takes it away
-        // again, and a keep queued ahead of it cannot count it unwritten.
-        void inTurn(async () => {
-          tuning.isPreviewing = true
-          await writePreview($, sky, latest)
-          refreshSky?.()
-        })
-      })
-    }
+    if (message?.action === 'preview') previewSoon($, tuning, sky, inTurn, () => refreshSky?.())
     // q: the tool closes, after any keep that rode in with it.
     if (message?.action === 'close') {
       await closeTuning($, tuning, ghostty, stagePtOf(theme), inTurn, () => refreshSky?.())
@@ -1609,12 +1624,13 @@ export const register: Register = on => {
     if (e.viewport) viewport = { columns: e.viewport.columns, rows: e.viewport.rows }
     const columns = e.props.bodyColumns
     const hidden = await read($, isHidden)
-    const isTool = tuning.props !== null && (await read($, isTuning)) && e.props.maxRows >= TOOL_ROWS && columns >= TOOL_COLUMNS
+    const opened = tuning.props
+    const isTool = opened !== null && (await read($, isTuning)) && e.props.maxRows >= TOOL_ROWS && columns >= TOOL_COLUMNS
     if (!isTool && (hidden || columns < MIN_COLUMNS || e.props.maxRows < ROWS)) return next(e)
 
     const now = await $.clock.now()
-    const { Box, Client, Raster } = $.ui.resolve(e)
-    if (!isTool) {
+    const { Box, Button, Client, Raster } = $.ui.resolve(e)
+    if (!isTool || opened === null) {
       site = { requestId: e.requestId, columns }
 
       return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
@@ -1622,11 +1638,33 @@ export const register: Register = on => {
     const weather = columns - TOOL_COLUMNS
     const isWeather = !hidden && weather >= WEATHER_MIN
     site = isWeather ? { requestId: e.requestId, columns: weather } : null
+    const shown = tabOf(tuning.latest ?? opened.start)
+    // A tab pressed, or its digit typed in an empty prompt: the tool goes
+    // there, under a new seq so its own state follows, and a part of the day
+    // previews as a move would.
+    const press = (tab: (typeof TABS)[number]) => () => {
+      const props = tuning.props
+      if (props === null || ghostty === null) return
+      const { state, action } = onTuneKey(tuning.latest ?? props.start, String(TABS.indexOf(tab) + 1))
+      tuning.latest = state
+      tuning.props = { ...props, start: state, seq: props.seq + 1 }
+      if (action === 'preview') previewSoon($, tuning, ghostty, inTurn, () => refreshSky?.())
+      $.ui.invalidate('ui.render')
+    }
 
     return (
-      <Box flexDirection="row" backgroundColor={TOOL_INK}>
-        <Client key={TUNE_KEY} module="./tune-band.tsx" props={tuning.props} width={TOOL_COLUMNS} />
-        {isWeather ? <Raster key={KEY} columns={weather} rows={ROWS} cells={drawFrame(viewAt(now, weather))} /> : null}
+      <Box flexDirection="column" backgroundColor={TOOL_INK}>
+        <Box flexDirection="row" gap={1}>
+          {TABS.map((tab, i) => (
+            <Button key={`tab-${tab}`} hotkey={String(i + 1)} plain dimColor={tab !== shown} onPress={press(tab)}>
+              {tab}
+            </Button>
+          ))}
+        </Box>
+        <Box flexDirection="row">
+          <Client key={TUNE_KEY} module="./tune-band.tsx" props={opened} width={TOOL_COLUMNS} />
+          {isWeather ? <Raster key={KEY} columns={weather} rows={ROWS} cells={drawFrame(viewAt(now, weather))} /> : null}
+        </Box>
       </Box>
     )
   })

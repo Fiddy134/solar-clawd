@@ -282,6 +282,9 @@ test('each key starts from the last, and a keep travels in every post after it',
   expect(after.local.isKeptLast).toBe(false)
   // q posts a close, the keeps made so far with it.
   expect(keys(['left', 'return', 'q']).post).toMatchObject({ action: 'close', keeps: 1, keptTune: kept.local.pane.tune })
+  // A move to the text tab changes nothing the sky shows, but is posted, so
+  // the band knows the tab.
+  expect(keys(['5']).post).toMatchObject({ action: 'none', state: { isOnText: true } })
 })
 
 test('text values clamp, snap and stay untouched as null', () => {

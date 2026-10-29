@@ -385,7 +385,7 @@ export const TEXT_WORDS = {
 
 // The tabs: the four parts of the day, then the text.
 export const TAB_TEXT = 'text'
-const TABS: readonly (Phase | typeof TAB_TEXT)[] = [...PHASES, TAB_TEXT]
+export const TABS: readonly (Phase | typeof TAB_TEXT)[] = [...PHASES, TAB_TEXT]
 
 // The pane as the person has it: the part of the day and the row chosen,
 // the tune they are making, and the saved tune as the pane opened, which u
@@ -503,7 +503,7 @@ export function onTuneKey(state: PaneState, key: string, world: TextWorld = NO_T
 // frame, the last, so a keep followed by a move in the same frame still
 // reaches the hooks module, in the move's post.
 export type PaneLocal = { pane: PaneState; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null; isKeptLast: boolean }
-export type PanePost = { state: PaneState; action: 'preview' | 'text' | 'keep' | 'close'; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null }
+export type PanePost = { state: PaneState; action: TuneAction; keeps: number; keptTune: TuneSettings | null; keptText: TextValues | null }
 
 // One key in the surface module: the next local state, and the post to
 // send, or null where neither the sky nor the text would change.
@@ -518,7 +518,11 @@ export function onPaneKey(local: PaneLocal, key: string, world: TextWorld = NO_T
     isKeptLast: isKeep,
   }
 
-  return { local: next, post: action === 'none' ? null : { state, action, keeps: next.keeps, keptTune: next.keptTune, keptText: next.keptText } }
+  // A move to another tab is posted even where the sky stays, so the band
+  // knows the tab.
+  const isPosted = action !== 'none' || tabOf(state) !== tabOf(local.pane)
+
+  return { local: next, post: isPosted ? { state, action, keeps: next.keeps, keptTune: next.keptTune, keptText: next.keptText } : null }
 }
 
 // A value as the pane shows it: brightness as a percent, the others as

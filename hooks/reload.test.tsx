@@ -121,7 +121,7 @@ test('a session with the tune tool open leaves a preview, a text and a gap draft
   // The night's brightness a step down, then on the text tab the size a
   // step up and the gap two.
   await ui.key({ key: 'left' })
-  for (let i = 0; i < 5 && (await ui.find({ type: 'Text', text: /^ text $/, in: 'tune' }))?.props.backgroundColor !== '#ff6fc0'; i++) await ui.key({ key: 'tab' })
+  await ui.key({ key: '5' })
   await ui.key({ key: 'right' })
   await ui.key({ key: 'up' })
   await ui.key({ key: 'right' })

@@ -1,4 +1,5 @@
-// The tune tool's surface module, in the band above the prompt: it takes
+// The tune tool's surface module, in the band above the prompt, under the
+// tabs the band draws itself (they answer 1 to 5 from the prompt): it takes
 // the keys while it has the focus (once clicked), keeps the tool's state as
 // the person moves it, draws it in the riso inks on dark blue, and posts
 // each change to the hooks module, which writes the preview, keeps the tune
@@ -7,21 +8,30 @@
 
 import type { ClientModule, ClientSurface } from 'claude-code'
 
-import { BAR, barOf, onPaneKey, PHASES, ROW_LABELS, TAB_TEXT, TEXT_LABELS, TEXT_ROWS, TEXT_WORDS, textBarOf, textValueText, TUNE_ROWS, TUNE_WORDS, valueText } from './tune'
+import { BAR, barOf, onPaneKey, ROW_LABELS, TEXT_LABELS, TEXT_ROWS, TEXT_WORDS, textBarOf, textValueText, TUNE_ROWS, TUNE_WORDS, valueText } from './tune'
 import type { OwnText, PaneLocal, PaneState } from './tune'
 
-// What the hooks module hands it: the state to open on, how many keeps it
-// has written since the pane opened, the person's own text and the fonts
+// What the hooks module hands it: the state to open on, and again under a
+// new seq where the band moved the tab (its 1 to 5); how many keeps it has
+// written since the tool opened, the person's own text and the fonts
 // as Ghostty said them when the pane opened, and what it has to say of the
 // text as last written (a key Ghostty refused), null for nothing.
-export type TuneBandProps = { start: PaneState; kept: number; own: OwnText; fonts: string[]; note: string | null }
+export type TuneBandProps = { start: PaneState; seq: number; kept: number; own: OwnText; fonts: string[]; note: string | null }
 
 const INK = { body: '#10142a', pink: '#ff6fc0', yellow: '#ffe800', blue: '#9fd3ff' }
 
-const TuneBand: ClientModule<TuneBandProps, PaneLocal> = (props, surface: ClientSurface<PaneLocal>) => {
+const TuneBand: ClientModule<TuneBandProps, PaneLocal & { seq: number }> = (props, surface: ClientSurface<PaneLocal & { seq: number }>) => {
   const { Box, Text } = surface.elements
   const opening: PaneLocal = { pane: props.start, keeps: props.kept, keptTune: null, keptText: null, isKeptLast: false }
-  const local = surface.state ?? opening
+  // The state the band moved to, where it moved the tab since; the keeps
+  // stay the tool's own.
+  const now = () => {
+    const state = surface.state
+    if (state === undefined) return { ...opening, seq: props.seq }
+
+    return state.seq === props.seq ? state : { ...state, pane: props.start, seq: props.seq }
+  }
+  const local = now()
   const { pane } = local
   const world = { own: props.own, fonts: props.fonts }
 
@@ -29,15 +39,13 @@ const TuneBand: ClientModule<TuneBandProps, PaneLocal> = (props, surface: Client
   // drawn yet: two keys can come in one frame.
   surface.onKey(event => {
     if (event.ctrl || event.meta) return
-    const { local: next, post } = onPaneKey(surface.state ?? opening, event.key, world)
-    surface.setState(next)
+    const { local: next, post } = onPaneKey(now(), event.key, world)
+    surface.setState({ ...next, seq: props.seq })
     if (post !== null) surface.post(post)
   })
 
   // Kept once the hooks module has written the last keep, until the next key.
   const isKept = local.isKeptLast && props.kept >= local.keeps
-  const tabs = [...PHASES, TAB_TEXT]
-  const isChosenTab = (tab: string) => (pane.isOnText ? tab === TAB_TEXT : tab === pane.phase)
   // A row: its label, its bar (the knob in yellow), its value, and what
   // follows the value, dimmed where it is the person's own.
   const row = (label: string, isChosen: boolean, bar: string | null, value: string, isOwn: boolean, after: string) => {
@@ -63,13 +71,6 @@ const TuneBand: ClientModule<TuneBandProps, PaneLocal> = (props, surface: Client
 
   return (
     <Box flexDirection="column">
-      <Box flexDirection="row">
-        {tabs.map(tab => (
-          <Text color={isChosenTab(tab) ? INK.body : INK.pink} backgroundColor={isChosenTab(tab) ? INK.pink : undefined} bold={isChosenTab(tab)}>
-            {` ${tab} `}
-          </Text>
-        ))}
-      </Box>
       {pane.isOnText
         ? TEXT_ROWS.map(key => {
             // An untouched row shows the person's own value, where Ghostty
