@@ -142,7 +142,7 @@ export function asSettings(text: string): Settings {
   const draft = file.textDraftUntil
 
   return {
-    pace: file.pace === 'full' ? 'full' : 'spar',
+    pace: file.pace === 'spar' ? 'spar' : 'full',
     tune: tuneOf(file.tune),
     preview,
     text: clampText(isObject(file.text) ? file.text : {}),

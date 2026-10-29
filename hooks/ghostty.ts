@@ -587,7 +587,7 @@ export function scaleAskedAt(text: string): number | null {
   return Number.isFinite(at) && at > 0 ? at : null
 }
 
-// The settings the file says (pace, tune, preview); defaults, and spar, for
+// The settings the file says (pace, tune, preview); defaults, and full, for
 // anything else.
 export async function readSettings($: EngineInterface, ghostty: Ghostty): Promise<Settings> {
   return asSettings(await $.fs.read(ghostty.settings).catch(() => ''))

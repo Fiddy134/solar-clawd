@@ -652,7 +652,7 @@ test('ticks need macOS, a known Ghostty, and on 1.3 the vsync line', () => {
   for (const text of [undefined, '', 'tip']) expect(versionOf(text)).toBeNull()
   expect(asPace('{"pace":"full"}')).toBe('full')
   expect(asPace('{"pace":"spar"}')).toBe('spar')
-  for (const text of ['', '{"pace":"fast"}', '{', 'null', '"full"']) expect(asPace(text)).toBe('spar')
+  for (const text of ['', '{"pace":"fast"}', '{', 'null', '"spar"']) expect(asPace(text)).toBe('full')
 })
 
 

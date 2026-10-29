@@ -1234,15 +1234,16 @@ test('on Linux the pace stays as it is, and nothing is written for it', async ($
   expect(world.writes.some(path => path.endsWith('/sky.json') || path.includes('vsync.ghostty'))).toBe(false)
 })
 
-// A Ghostty 1.3.1 session on a Mac showing the sky, at this pace, with or
-// without the vsync line, with another app in front; and how many times the
+// A Ghostty 1.3.1 session on a Mac showing the sky, at this pace (null: no
+// settings file, as after an install), with or without the vsync line, with
+// another app in front; and how many times the
 // tab's mark is written over a stretch of time, by the session itself or
 // by its helper, PACE_HZ times a second for as long as one runs.
-async function tickWorld($: Engine, on: On, pace: 'full' | 'spar', isVsyncOff: boolean, version: string | null = '1.3.1', idle = { value: 1 }) {
+async function tickWorld($: Engine, on: On, pace: 'full' | 'spar' | null, isVsyncOff: boolean, version: string | null = '1.3.1', idle = { value: 1 }) {
   const world = await paceWorld($, on, version, 'font-size = 14\n', idle)
   await world.solar('ghostty')
   const start = world.clock.now()
-  world.world.files.set(SETTINGS, { text: JSON.stringify({ pace }), mtimeMs: start })
+  if (pace !== null) world.world.files.set(SETTINGS, { text: JSON.stringify({ pace }), mtimeMs: start })
   if (isVsyncOff) world.world.files.set(VSYNC, { text: 'window-vsync = false\n', mtimeMs: start })
   await world.clock.advance(11_000)
   const written = () => {
@@ -1282,6 +1283,12 @@ test('full with the vsync line ticks the mark 24 times a second, as the animatio
   idle.value = 1
   await clock.advance(3_100)
   expect(within(await marks(1_000), 24)).toBe(true)
+})
+
+test('a sky nobody has set a pace for is full: it ticks behind other apps with nothing in it moving', TICKING, async ($, on) => {
+  const { marks, clock } = await tickWorld($, on, null, true)
+  await clock.advance(4_000)
+  expect(within(await marks(10_000), 240)).toBe(true)
 })
 
 test('spar ticks only in front while something moves, and the sweep behind', TICKING, async ($, on) => {
@@ -1842,7 +1849,7 @@ test('the band tool previews as you move, keeps on enter and forgets on q', asyn
   expect(saved().tune.day.brightness).toBe(0.85)
   expect(saved().preview).toEqual({ tune: saved().tune, phase: 'day', until: clock.now() + PREVIEW_LIFE_MS })
   expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.0);')
-  expect(saved().pace).toBe('spar')
+  expect(saved().pace).toBe('full')
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeDefined()
   await ui.key({ key: 'down' })
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeUndefined()

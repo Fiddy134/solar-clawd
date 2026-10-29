@@ -516,7 +516,7 @@ export const register: Register = on => {
   // Whether the person is at the computer (and how long they have been
   // away from the keys), iTerm2 or Ghostty in front, and the sky's pace for
   // every session, as last asked.
-  const activity = { isAway: false, idleMs: null as number | null, isFrontmost: true, isGhosttyInFront: null as boolean | null, pace: 'spar' as Pace }
+  const activity = { isAway: false, idleMs: null as number | null, isFrontmost: true, isGhosttyInFront: null as boolean | null, pace: 'full' as Pace }
   // Set when this session runs in Ghostty: where the sky's files go, and
   // the background the terminal draws.
   let ghostty: Ghostty | null = null

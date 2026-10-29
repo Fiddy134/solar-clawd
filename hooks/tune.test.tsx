@@ -49,7 +49,7 @@ test('settings from an older Solar, broken or out of range give defaults and lim
   expect(old.tune).toEqual(DEFAULT_TUNE)
   expect(old.preview).toBeNull()
   const broken = asSettings('{"pace":"ful')
-  expect(broken.pace).toBe('spar')
+  expect(broken.pace).toBe('full')
   expect(broken.tune).toEqual(DEFAULT_TUNE)
   expect(asSettings('{"tune":{"day":{"brightness":0.1,"shade":"x","warmth":7}}}').tune.day).toEqual({
     brightness: 0.5,

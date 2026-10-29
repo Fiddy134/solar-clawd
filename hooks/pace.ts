@@ -20,7 +20,7 @@ export const FULL_STILL_MS = 20 * 60_000
 
 export type Pace = 'full' | 'spar'
 
-// The pace a settings file says, spar for anything it does not say plainly.
+// The pace a settings file says, full for anything it does not say plainly.
 export function asPace(text: string): Pace {
   return asSettings(text).pace
 }
