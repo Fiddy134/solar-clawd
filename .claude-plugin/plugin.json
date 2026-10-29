@@ -1,6 +1,6 @@
 {
   "name": "solar-clawd",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A living risograph sky behind the terminal that follows the real sun, moon and weather, with a pixel Clawd above the prompt",
   "author": {
     "name": "Vincent Rogvall",

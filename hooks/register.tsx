@@ -45,6 +45,8 @@ import type { Pace } from './pace'
 import type { Elements } from './iss'
 import { ITERM_FRONTMOST, NOW_PLAYING, SCREEN_SCALE, SET_BACKGROUND } from './mac'
 import { MARKET_MS } from './market'
+import { GAP, layout, LOOK_FOLDER, LOOK_PANE, pictureRows, watchLook } from './look'
+import type { LookState } from './look'
 import { markOf } from './mark'
 import { CHOSEN_PLACE, findPlace, GUESSED_PLACE, ISS_MS, issElements, placeText, plain, refreshMarket, refreshWeather, settlePlace } from './net'
 import type { Where } from './net'
@@ -205,6 +207,10 @@ const UNREADABLE_CONFIG = `Solar: could not read Ghostty's config, so it is left
 const ASKING = ['permission_prompt', 'elicitation_dialog']
 
 export const register: Register = on => {
+  // The checkpoint pane's pictures and notes as last read, what the folder
+  // held then, and the timer that looks at it while the pane is open.
+  const looking: LookState = { look: { pictures: [], notes: [] }, signature: null, watch: null }
+
   // The band as last drawn, so the timer can repaint it in place, and the
   // terminal's size, which the wallpaper takes its shape from.
   let site: { requestId: string; columns: number } | null = null
@@ -454,10 +460,13 @@ export const register: Register = on => {
   }
 
   on('session.start', async ($, e, next) => {
+    // A reload leaves the pane open and starts the module over: it looks at
+    // the folder again.
+    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === LOOK_PANE)) await watchLook($, looking)
     await $.command.register({
       name: 'solar',
       description: 'Show or hide the solar sky; demo plays a day, HH:MM pins a time, plats sets the place',
-      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | theme <name> | full | spar | vsync off|on]',
+      argumentHint: '[demo | now | HH:MM | YYYY-MM-DD HH:MM | place <city> | aurora | storm | events | event <name> | catch | grill | ghostty | theme <name> | look | full | spar | vsync off|on]',
       immediate: true,
     })
 
@@ -1040,6 +1049,23 @@ export const register: Register = on => {
       return { text: `Solar: the sky is ${name} now, in every session.${stage}` }
     }
 
+    // The checkpoint's pictures in a pane beside the conversation.
+    if (word === 'look') {
+      if ((await $.ui.panes()).some(pane => pane.id === LOOK_PANE)) {
+        await $.ui.close({ id: LOOK_PANE })
+        return { text: 'Solar: the checkpoint pane is closed.' }
+      }
+      looking.signature = null
+      await watchLook($, looking)
+      const opened = await $.ui.open({ id: LOOK_PANE, title: 'Checkpoint', columns: 64 })
+
+      return {
+        text: opened.isPlaced
+          ? `Solar: the checkpoint pane shows ${LOOK_FOLDER}; /solar look again closes it.`
+          : `Solar: the checkpoint pane waits to be placed: ${opened.reason}.`,
+      }
+    }
+
     if (word === 'ghostty') {
       if (ghostty === null) return { text: NOT_GHOSTTY }
       const pt = stagePtOf(theme)
@@ -1164,7 +1190,35 @@ export const register: Register = on => {
       }
     }
 
-    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar theme <name>, /solar full, /solar spar or /solar vsync off|on.' }
+    return { text: 'Solar: /solar, /solar demo, /solar now, /solar HH:MM, /solar YYYY-MM-DD HH:MM, /solar place <city>, /solar aurora, /solar storm, /solar events, /solar event <name>, /solar catch, /solar grill, /solar theme <name>, /solar look, /solar full, /solar spar or /solar vsync off|on.' }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: LOOK_PANE }, async ($, e, next) => {
+    if (e.surface !== 'terminal') return next(e)
+    const { Box, Text, Image } = $.ui.resolve(e)
+    const { look } = looking
+    if (look.pictures.length === 0 && look.notes.length === 0) return <Text dimColor>Nothing in {LOOK_FOLDER} yet.</Text>
+    const placed = layout(look.pictures, e.props.bodyColumns, pictureRows(e.props.scroll.bodyRows, look.notes.length))
+
+    return (
+      <Box flexDirection="column" gap={1}>
+        {look.pictures.length > 0 && (
+          <Box flexDirection={placed.isDown ? 'column' : 'row'} gap={placed.isDown ? 1 : GAP}>
+            {look.pictures.map((picture, i) => (
+              <Box key={picture.name} flexDirection="column" width={placed.boxes[i]!.columns}>
+                <Image key={picture.name} source={{ png: picture.png }} columns={placed.boxes[i]!.columns} rows={placed.boxes[i]!.rows} alt={picture.name} />
+                <Text dimColor wrap="truncate">{picture.name}</Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+        {look.notes.length > 0 && (
+          <Box flexDirection="column">
+            {look.notes.map(line => <Text>{line === '' ? ' ' : line}</Text>)}
+          </Box>
+        )}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
