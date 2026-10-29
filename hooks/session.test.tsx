@@ -1625,7 +1625,7 @@ test('a saved tune reaches the shader of every session', async ($, on) => {
 })
 
 test('a preview shows while its session lives and goes within a minute of its last word', async ($, on) => {
-  const { clock, world, shader } = await noonWorld($, on)
+  const { start, clock, world, shader } = await noonWorld($, on)
   const preview = (until: number) =>
     world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', preview: { tune: { night: NIGHT_PREVIEW }, phase: 'night', until } }), mtimeMs: clock.now() })
   expect(elevationIn(shader())).toBeGreaterThan(10)
@@ -1641,13 +1641,25 @@ test('a preview shows while its session lives and goes within a minute of its la
   expect(elevationIn(shader())).toBeGreaterThan(10)
   expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
   // One that says it runs an hour (a dead session's, or a clock gone wrong)
-  // goes a minute after this session first read it.
-  preview(clock.now() + 3_600_000)
+  // counts not at all: no preview outlives its last word by a minute.
+  const seeded = clock.now()
+  preview(seeded + 3_600_000)
   await clock.advance(10_100)
+  expect(elevationIn(shader())).toBeGreaterThan(10)
+  await clock.advance(seeded + 61_000 - clock.now())
+  expect(elevationIn(shader())).toBeGreaterThan(10)
+  expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
+  // One a minute ahead shows, and is gone 61 s after it was written: written
+  // half a second before an update (every SKY_MS from the start), so one
+  // falls just after its minute.
+  await clock.advance((((9_500 - ((clock.now() - start) % 10_000)) % 10_000) + 10_000) % 10_000)
+  const written = clock.now()
+  preview(written + 60_000)
+  await clock.advance(1_000)
   expect(elevationIn(shader())).toBeLessThan(-5)
-  await clock.advance(40_000)
+  await clock.advance(written + 59_000 - clock.now())
   expect(elevationIn(shader())).toBeLessThan(-5)
-  await clock.advance(61_000 - 50_100 + 10_100)
+  await clock.advance(written + 61_000 - clock.now())
   expect(elevationIn(shader())).toBeGreaterThan(10)
   expect(tuneIn(shader())).toBe('vec4(1.0, 1.0, 1.0, 0.0)')
 })
@@ -1665,9 +1677,9 @@ test('a second session draws the preview instead of writing over it', async ($, 
   const drawn = shader()
   expect(elevationIn(drawn)).toBeLessThan(-5)
   expect(tuneIn(drawn)).toBe('vec4(0.6, 1.2, 0.8, -0.5)')
-  // Each renewal is a new `until` this session first sees at another moment:
-  // its text stays the tuning session's, written by neither again, and
-  // Ghostty is not reloaded.
+  // Each renewal is a new `until`, read at another moment: the text stays
+  // the tuning session's, written by neither again, and Ghostty is not
+  // reloaded.
   const reloads = RELOADS(world.runs)
   const writes = () => world.writes.filter(path => path.startsWith(`${runtime}/sky.glsl`)).length
   const written = writes()

@@ -84,19 +84,19 @@ export function asSettings(text: string): Settings {
   return { pace: file.pace === 'full' ? 'full' : 'spar', tune: tuneOf(file.tune), preview }
 }
 
-// How long a preview counts at most from the moment a session first reads
-// its `until`: the tuning session renews it every 20 s, so one that says it
-// runs for hours (a dead session's, or a clock gone wrong) still goes
-// within a minute of its last word.
+// How far ahead a preview's `until` may lie: the tuning session renews it
+// every 20 s, so one further off is a dead session's or a clock gone wrong,
+// and counts not at all. No preview outlives its last word by more than a
+// minute, and every session, however lately started, judges it alike.
 export const PREVIEW_LIFE_MS = 60_000
 
 // The tune to draw now: the preview's, and the part of the day it shows,
-// while its time lasts and less than PREVIEW_LIFE_MS after `firstSeen`
-// (when this session first read that `until`; null, just now); the saved
-// tune and no part of the day otherwise.
-export function activeTune(settings: Settings, now: number, firstSeen: number | null): { tune: TuneSettings; phase: Phase | null } {
+// while its time lasts and lies at most PREVIEW_LIFE_MS ahead (and the
+// second its write may take); the saved tune and no part of the day
+// otherwise.
+export function activeTune(settings: Settings, now: number): { tune: TuneSettings; phase: Phase | null } {
   const { preview } = settings
-  if (preview !== null && now < preview.until && now < (firstSeen ?? now) + PREVIEW_LIFE_MS) return { tune: preview.tune, phase: preview.phase }
+  if (preview !== null && now < preview.until && preview.until <= now + PREVIEW_LIFE_MS + 1_000) return { tune: preview.tune, phase: preview.phase }
 
   return { tune: settings.tune, phase: null }
 }

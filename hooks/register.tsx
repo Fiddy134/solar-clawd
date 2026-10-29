@@ -445,9 +445,6 @@ export const register: Register = on => {
   // What was in the Ghostty sky last time it was drawn; null before the first.
   let lastSky: string[] | null = null
 
-  // The preview's `until` this session last read, and when it first read it.
-  const previewSeen = { until: null as number | null, at: null as number | null }
-
   const shaderAt = (now: number, { settings, ...extras }: SkyExtras) => {
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
@@ -463,9 +460,7 @@ export const register: Register = on => {
     // sun, so every session draws the same and the pane shows exactly what
     // it changes. Only the drawn sky takes the preview's moment: the
     // events, Clawd and the waiting light keep the real one.
-    const until = settings.preview?.until ?? null
-    if (until !== previewSeen.until) [previewSeen.until, previewSeen.at] = [until, now]
-    const { tune, phase } = activeTune(settings, now, previewSeen.at)
+    const { tune, phase } = activeTune(settings, now)
     const shown = phase === null ? ms : previewMoment(phase, now, where.place)
     const tuned = phase === null ? tune : { dawn: tune[phase], day: tune[phase], dusk: tune[phase], night: tune[phase] }
     const demo = mode === 'demo' && phase === null ? { seconds: DEMO_MS / 1000, offsetMs: where.offsetMs } : null

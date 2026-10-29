@@ -99,15 +99,18 @@ test("today's settings draw today's sky", () => {
     for (const k of [1, 0.85]) expect(tunedColour(c, k, NEUTRAL)).toBe(saturate(mix(0, c, k), 1.35))
 })
 
-test('a preview counts until its time, and a minute after this session first read it at most', () => {
+test('a preview counts until its time, and only a time at most a minute ahead', () => {
   const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
   const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-  const settings = { pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until: 100_000 } }
-  expect(activeTune(settings, 50_000, 40_000)).toEqual({ tune, phase: 'dusk' })
-  expect(activeTune(settings, 100_000, 40_000)).toEqual({ tune: saved, phase: null })
-  expect(activeTune(settings, 50_000, 50_000 - PREVIEW_LIFE_MS)).toEqual({ tune: saved, phase: null })
-  expect(activeTune(settings, 50_000, null)).toEqual({ tune, phase: 'dusk' })
-  expect(activeTune({ ...settings, preview: null }, 50_000, 40_000)).toEqual({ tune: saved, phase: null })
+  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until } })
+  expect(activeTune(settings(100_000), 50_000)).toEqual({ tune, phase: 'dusk' })
+  expect(activeTune(settings(100_000), 100_000)).toEqual({ tune: saved, phase: null })
+  // A minute ahead and the second its write took count; anything further is
+  // a dead session's or a clock gone wrong, and counts not at all.
+  expect(activeTune(settings(50_000 + PREVIEW_LIFE_MS + 1_000), 50_000)).toEqual({ tune, phase: 'dusk' })
+  expect(activeTune(settings(50_000 + PREVIEW_LIFE_MS + 1_001), 50_000)).toEqual({ tune: saved, phase: null })
+  expect(activeTune(settings(50_000 + 3_600_000), 50_000)).toEqual({ tune: saved, phase: null })
+  expect(activeTune({ ...settings(100_000), preview: null }, 50_000)).toEqual({ tune: saved, phase: null })
 })
 
 test("a preview's moment is today's sunrise, noon, sunset or midnight, and now where the sun neither rises nor sets", () => {
