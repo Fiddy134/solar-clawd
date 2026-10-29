@@ -71,13 +71,14 @@ export type Ghostty = {
   tty: string | null
   configs: string[]
   isLinux: boolean
-  // The stage strip's width in device pixels: the theme's points, or the
-  // config's right padding where that is less, times the screen scale.
+  // The stage strip's width in points: the theme's, or the config's right
+  // padding where that is less. Every session works it out from the same
+  // config and theme, so all agree.
+  stagePt: number
+  // The same in device pixels: times the scale of the screen the front
+  // Ghostty window is on, which the sessions share in the runtime folder's
+  // scale file, so that none draws the stage at a width of its own.
   stagePx: number
-  // The config's right padding when the session began, in points: what the
-  // window it runs in has, since a padding changed later reaches only new
-  // windows. Null where the config had none of the mod's.
-  openPaddingPt?: number | null
   // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
@@ -341,6 +342,8 @@ async function writeGhosttySky(
     // market as the shared file has it now, latched to the scene, so every
     // session draws the same prices.
     const marketFile = ghostty.market === null ? null : await $.fs.read(ghostty.market).catch(() => '')
+    const scale = ghostty.isLinux ? 1 : asScale(await $.fs.read(`${ghostty.folder}/scale`).catch(() => ''))
+    if (scale !== null) ghostty.stagePx = ghostty.stagePt * scale
     const extras = {
       waiting: waiting && { mode: waiting.mode, isUrgent: waiting.isUrgent },
       isYUp: ghostty.isLinux,
@@ -491,6 +494,14 @@ export const VSYNC_OFF_LINE = 'window-vsync = false\n'
 
 // An include of the mod's vsync file, from any runtime folder.
 const VSYNC_INCLUDE = /^config-file\s*=\s*\??.*\/runtime\/vsync\.ghostty$/
+
+// A screen's scale as osascript or the scale file says it: a positive
+// number up to 4, null for anything else.
+export function asScale(text: string): number | null {
+  const scale = Number(text.trim())
+
+  return text.trim() !== '' && Number.isFinite(scale) && scale > 0 && scale <= 4 ? scale : null
+}
 
 // The sky's pace, as the settings file says it; spar for anything else.
 export async function readPace($: EngineInterface, ghostty: Ghostty): Promise<Pace> {

@@ -10,6 +10,7 @@ import type { Mode, Reaction } from './clawd'
 import { contextAt, EVENTS, eventsAt, kindOf, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
 import type { Forced } from './events'
 import {
+  asScale,
   endGhosttySky,
   ghosttyConfigs,
   ghosttyKnowsReloadSignal,
@@ -33,6 +34,7 @@ import {
   ttyOf,
   updateGhosttySky,
   writeSettings,
+  writeWhole,
 } from './ghostty'
 import type { Ghostty, SkyExtras, SkyState } from './ghostty'
 import { idleMs, isGhosttyInFront, isLinuxHost, isOnBattery } from './host'
@@ -91,6 +93,9 @@ const FILL_MS = 30_000
 
 // How often the sky is looked at: a new scene, the person away or back.
 const SKY_MS = 10_000
+// While Ghostty is in front, the screen its front window is on is asked
+// this often, so the stage follows a window moved to another screen.
+const SCALE_MS = 30_000
 // How often to ask whether the Mac runs on battery.
 const BATTERY_MS = 60_000
 
@@ -120,20 +125,29 @@ const MILESTONE_MS = 3 * 60_000
 // While the ISS passes, the sky follows it this often.
 const ISS_TICK_MS = 2_000
 
-// The stage strip's width in pixels: the theme's points, or the right
-// padding of the config that includes the sky where that is less, and the
-// padding the window opened with where that is less still (a padding
-// widened since reaches only new windows), so a theme never draws its
-// stage under text; times the screen's scale (asked once, on macOS; Linux
-// has the points as they are). An answer that is no positive number
-// counts as 1.
-async function stagePxOf($: EngineInterface, ghostty: Ghostty, pt: number): Promise<number> {
-  const points = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt, ghostty.openPaddingPt ?? pt)
-  if (ghostty.isLinux) return points
-  const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
-  const scale = Number(answer?.stdout.trim())
+// The stage strip's width: the theme's points, or the right padding of the
+// config that includes the sky where that is less, so a theme never draws
+// its stage under text in a window opened with that padding; in pixels,
+// times the scale of the screen the front Ghostty window is on (Linux has
+// the points as they are). Every session reads the same config and theme.
+async function stageOf($: EngineInterface, ghostty: Ghostty, pt: number): Promise<void> {
+  ghostty.stagePt = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt)
+  ghostty.stagePx = ghostty.stagePt * (await askScale($, ghostty))
+}
 
-  return points * (Number.isFinite(scale) && scale > 0 ? scale : 1)
+// The scale of the screen the front Ghostty window is on, asked of the
+// window server, and put in the runtime folder's scale file for every
+// session to draw the stage by: windows on two screens share one shader,
+// which fits the one in front. An answer that is no positive number counts
+// as 1.
+async function askScale($: EngineInterface, ghostty: Ghostty): Promise<number> {
+  if (ghostty.isLinux) return 1
+  const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
+  const scale = asScale(answer?.stdout ?? '') ?? 1
+  const path = `${ghostty.folder}/scale`
+  if (asScale(await $.fs.read(path).catch(() => '')) !== scale) await writeWhole($, path, `${scale}\n`, ghostty.id).catch(() => undefined)
+
+  return scale
 }
 
 // How full the context window is, 0 to 100, for the keeper's fish and
@@ -496,6 +510,7 @@ export const register: Register = on => {
         configs: ghosttyConfigs(home, isOnLinux, xdgConfig),
         isLinux: isOnLinux,
         // Asked below, once the config is known to include the sky.
+        stagePt: stagePtOf(theme),
         stagePx: stagePtOf(theme),
         knowsReloadSignal: isOnLinux && (await ghosttyKnowsReloadSignal($)),
         isIncluded: false,
@@ -532,14 +547,13 @@ export const register: Register = on => {
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
       const isOurs = await hasOurInclude($, ghostty)
-      ghostty.openPaddingPt = isOurs ? await stagedPadding($, ghostty) : null
       // An include from before there was a stage gets it, once: after that
       // the margin is the person's, changed or taken away as they like.
       if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty, stagePtOf(theme)))?.isMarginNew ?? false
       if (isMarginNew) $.ui.toast(`Solar: gave the lighthouse a ${stagePtOf(theme)}-point margin on the right of Ghostty's windows; new windows show it.`)
       // The screen's scale costs a moment of osascript: asked only for a sky
       // that shows.
-      if (isOurs) ghostty.stagePx = await stagePxOf($, ghostty, stagePtOf(theme))
+      if (isOurs) await stageOf($, ghostty, stagePtOf(theme))
       if (!ghostty.isIncluded) $.ui.toast('Solar: run /solar ghostty to show the sky behind the terminal.')
     }
 
@@ -602,6 +616,18 @@ export const register: Register = on => {
       }
       fetchMarket()
       $.clock.every(MARKET_MS, fetchMarket)
+      // The screen's scale, asked only of a sky in Ghostty's config and with
+      // Ghostty in front: a window moved to a screen of another scale takes
+      // its stage within half a minute, every session at its next update.
+      $.clock.every(SCALE_MS, () => {
+        void (async () => {
+          if (isOnLinux || !sky.isIncluded || (await read($, isHidden))) return
+          if ((await isGhosttyInFront($, isOnLinux)) !== true) return
+          const before = sky.stagePx
+          sky.stagePx = sky.stagePt * (await askScale($, sky))
+          if (sky.stagePx !== before) refreshSky?.()
+        })().catch(() => undefined)
+      })
       useTheme = async (chosen, name) => {
         ;[theme, themeName] = [chosen, name]
         refusedTheme = null
@@ -612,7 +638,7 @@ export const register: Register = on => {
         fetchMarket()
         const pt = stagePtOf(chosen)
         const staged = (await hasOurInclude($, sky)) ? await restageGhostty($, sky, pt) : ({ theirs: null } as const)
-        sky.stagePx = await stagePxOf($, sky, pt)
+        await stageOf($, sky, pt)
         refreshSky?.()
 
         return staged
@@ -1017,7 +1043,7 @@ export const register: Register = on => {
         const staged = await restageGhostty($, ghostty, pt)
         if (staged === 'unreadable') return { text: UNREADABLE_CONFIG }
         if (staged === 'restaged') {
-          ghostty.stagePx = await stagePxOf($, ghostty, pt)
+          await stageOf($, ghostty, pt)
           await updateGhosttySky($, ghostty, shaderAt, skyState)
           await reloadGhostty($, ghostty)
 
@@ -1032,7 +1058,7 @@ export const register: Register = on => {
       if (added === null) return { text: UNREADABLE_CONFIG }
       const { line, config } = added
       ghostty.isIncluded = true
-      ghostty.stagePx = await stagePxOf($, ghostty, pt)
+      await stageOf($, ghostty, pt)
       await updateGhosttySky($, ghostty, shaderAt, skyState)
       await reloadGhostty($, ghostty)
 

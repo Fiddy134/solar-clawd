@@ -538,6 +538,36 @@ test('the shader is told the stage strip in pixels: points times the screen scal
   expect(world.files.get(`${runtime}/sky.glsl`)?.text).toContain('const float STAGE_PX = 480.0;')
 })
 
+test('the stage follows the screen the front Ghostty window is on within half a minute, and every session draws it from the shared scale', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.files.set(CONFIG, { text: `${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 2,240\n`, mtimeMs: start })
+  world.answers.set('/usr/bin/osascript', '2\n')
+  const runtime = await startGhostty($, on, clock, world)
+  const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  const asked = () => world.runs.filter(argv => argv.includes('JavaScript')).length
+  expect(shader()).toContain('const float STAGE_PX = 480.0;')
+  expect(world.files.get(`${runtime}/scale`)?.text).toBe('2\n')
+  // Behind another app, the screen is not asked.
+  world.answers.set('/usr/bin/osascript', '1\n')
+  const before = asked()
+  await clock.advance(61_000)
+  expect(asked()).toBe(before)
+  expect(shader()).toContain('const float STAGE_PX = 480.0;')
+  // In front, on a screen of scale 1: the stage takes it.
+  world.front.value = 'com.mitchellh.ghostty'
+  await clock.advance(31_000)
+  expect(world.files.get(`${runtime}/scale`)?.text).toBe('1\n')
+  expect(shader()).toContain('const float STAGE_PX = 240.0;')
+  // Another session asked and found scale 2: this one draws it too.
+  world.front.value = 'com.apple.Safari'
+  world.files.set(`${runtime}/scale`, { text: '2\n', mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(shader()).toContain('const float STAGE_PX = 480.0;')
+})
+
 test('/solar ghostty asks the screen scale for the stage it has just added', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })
@@ -1033,24 +1063,6 @@ test('a session follows the theme another chose within a few seconds, and a them
   // A padding of the person's own stays theirs.
   world.files.set(CONFIG, { text: world.files.get(CONFIG)!.text.replace(/window-padding-x = (\d+),400/, 'window-padding-x = $1,300'), mtimeMs: clock.now() })
   expect(await solar('theme fyr')).toBe('Solar: the sky is fyr now, in every session. It wants a stage 240 points wide; your window-padding-x gives it 300, and stays as you set it.')
-})
-
-test('a wider theme chosen mid-session draws its stage no wider than the padding the window opened with', async ($, on) => {
-  const start = Date.UTC(2026, 9, 24, 20, 0)
-  const clock = mock.clock(on, { now: start })
-  const world = ghosttyWorld(on, { value: 1 })
-  world.tick(start)
-  world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
-  world.files.set(CONFIG, { text: `font-size = 14\n${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 10,240\n`, mtimeMs: start })
-  const runtime = await startGhostty($, on, clock, world)
-  const solar = async (args: string) =>
-    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
-  seedThemes(world)
-  expect(await solar('theme harbour')).toContain('Its stage is 400 points wide')
-  await clock.advance(100)
-  const shader = world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
-  expect(shader).toContain(HARBOUR_MARK)
-  expect(shader).toContain('const float STAGE_PX = 240.0;')
 })
 
 test('/solar vsync off writes the line in a file of its own, included once, and /solar vsync on empties it', async ($, on) => {

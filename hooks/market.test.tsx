@@ -388,6 +388,7 @@ const ghosttyOf = (id: string): Ghostty => ({
   tty: null,
   configs: [],
   isLinux: false,
+  stagePt: 240,
   stagePx: 240,
   knowsReloadSignal: false,
   isIncluded: true,

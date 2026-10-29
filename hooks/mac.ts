@@ -45,4 +45,22 @@ export const NOW_PLAYING = [
 
 // The scale of the main screen (2 on a Retina display), for
 // `osascript -l JavaScript`: the pixels in a point.
-export const SCREEN_SCALE = ['-e', 'ObjC.import("AppKit"); $.NSScreen.mainScreen.backingScaleFactor']
+export const SCREEN_SCALE = [
+  '-e',
+  [
+    'ObjC.import("AppKit"); ObjC.import("CoreGraphics");',
+    // The front Ghostty window, as the window server lists them front to
+    // back (it asks no permission for bounds), and the screen its middle is
+    // on; the main screen where there is none. The window server's y runs
+    // down from the top of the first screen, AppKit's up from its bottom.
+    'var screens = $.NSScreen.screens, top = screens.objectAtIndex(0).frame.size.height, scale = $.NSScreen.mainScreen.backingScaleFactor;',
+    'var list = ObjC.castRefToObject($.CGWindowListCopyWindowInfo(1 | 16, 0));',
+    'for (var i = 0; i < list.count; i++) { var w = list.objectAtIndex(i);',
+    '  if (ObjC.unwrap(w.objectForKey("kCGWindowOwnerName")) !== "Ghostty" || ObjC.unwrap(w.objectForKey("kCGWindowLayer")) !== 0) continue;',
+    '  var b = w.objectForKey("kCGWindowBounds"), x = ObjC.unwrap(b.objectForKey("X")) + ObjC.unwrap(b.objectForKey("Width")) / 2, y = top - ObjC.unwrap(b.objectForKey("Y")) - ObjC.unwrap(b.objectForKey("Height")) / 2;',
+    '  for (var j = 0; j < screens.count; j++) { var f = screens.objectAtIndex(j).frame;',
+    '    if (x >= f.origin.x && x < f.origin.x + f.size.width && y >= f.origin.y && y < f.origin.y + f.size.height) scale = screens.objectAtIndex(j).backingScaleFactor; }',
+    '  break; }',
+    'scale',
+  ].join(' '),
+]
