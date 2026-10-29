@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-# The checkpoint's pictures in a Ghostty split beside Claude Code: every PNG
-# in a folder side by side, in the order of their names, each with its name
-# under it, and any .md or .txt in the folder printed below them. It watches
-# the folder and draws again when a file there changes or the split is
-# resized, so Claude puts the sketch and the frames there and they show at
-# once. The pictures go through the Kitty graphics protocol, which Ghostty
-# draws in a plain shell; inside Claude Code's own window its redraws would
-# paint over them. Ctrl-C ends it and clears what it drew. --once draws one
-# time and ends, which is also how the output can be looked at in a file.
+# The checkpoint's pictures in a Ghostty window or tab beside Claude Code's
+# (a split gets the stage's whole margin and is too narrow): every PNG in a
+# folder side by side, or one under the other where that draws them larger,
+# in the order of their names, each with its name under it, and any .md or
+# .txt in the folder printed below them. It watches the folder and draws
+# again when a file there changes or the window is resized, so Claude puts
+# the sketch and the frames there and they show at once. The pictures go
+# through the Kitty graphics protocol, which Ghostty draws in a plain shell;
+# inside Claude Code's own window its redraws would paint over them. Ctrl-C
+# ends it and clears what it drew. --once draws one time and ends, which is
+# also how the output can be looked at in a file.
 #
 #   python3 tools/preview/show.py [folder]       (.preview/checkpoint by default)
 #   python3 tools/preview/show.py --once [folder]
@@ -108,21 +110,28 @@ def frame(folder):
     height = 0
     if pictures:
         n = len(pictures)
-        width = max(1, (cols - GAP * (n - 1)) // n)
         tallest = max(h / w for _, _, (w, h) in pictures)
-        # The pictures take what the split's height allows above the name
-        # line, leaving a third of it for the text when there is text.
-        room = rows - 2 - (min(len(lines), rows // 3) if lines else 0)
-        height = math.ceil(width * cell_w * tallest / cell_h)
-        if height > room > 0:
-            width = max(1, math.floor(room * cell_h / (cell_w * tallest)))
-            height = room
+        # The pictures take the split's height less a third for the text
+        # when there is text, each with a line for its name under it.
+        room = rows - (min(len(lines), rows // 3) if lines else 0)
+
+        def fit(width, rows_each):
+            # The widest picture within width columns and rows_each rows.
+            width = min(width, math.floor(rows_each * cell_h / (cell_w * tallest)))
+            return max(1, width), max(1, math.ceil(width * cell_w * tallest / cell_h))
+
+        # Side by side, or one under the other where the split is narrow
+        # enough that this draws them larger.
+        across = fit((cols - GAP * (n - 1)) // n, room - 2)
+        down = fit(cols, (room - 2 * n) // n)
+        is_down = n > 1 and down[0] > across[0]
+        width, tall = down if is_down else across
         for i, (name, data, (w, h)) in enumerate(pictures):
-            x = i * (width + GAP) + 1
+            x, y = (1, i * (tall + 2) + 1) if is_down else (i * (width + GAP) + 1, 1)
             rows_i = max(1, round(width * cell_w * (h / w) / cell_h))
-            out.append(f'\x1b[1;{x}H' + kitty(data, width, rows_i))
-            out.append(f'\x1b[{height + 1};{x}H\x1b[2m{name[:width]}\x1b[0m')
-        height += 2
+            out.append(f'\x1b[{y};{x}H' + kitty(data, width, rows_i))
+            out.append(f'\x1b[{y + tall};{x}H\x1b[2m{name[:width]}\x1b[0m')
+        height = (n * (tall + 2) if is_down else tall + 2)
 
     for j, line in enumerate(lines[:max(0, rows - height - 1)]):
         out.append(f'\x1b[{height + j + 1};1H{line[:cols]}')

@@ -65,7 +65,7 @@ There are two, and you look at frames, not at code.
 1. **After the rough shapes:** a frame by day and one by evening, each next to the sketch at the same size. One question: is this the picture you meant? Only the masses, the light and dark and where things stand count here, not the details. A no here costs an hour, and a no after the details costs a day.
 2. **After the shapes and the details:** the same two frames, now next to the reads-as list. You go down the lines and tick, strike or comment.
 
-- The pictures show in a Ghostty split beside Claude Code (⌘D): `python3 tools/preview/show.py` there draws every PNG in `.preview/checkpoint/` side by side and the list below them, and draws again when Claude puts new ones there. They cannot show in Claude Code's own window, which paints over them.
+- The pictures show in a Ghostty window of their own, on the other screen or beside Claude Code's (⌘N), or in a tab (⌘T): `python3 tools/preview/show.py` there draws every PNG in `.preview/checkpoint/` side by side and the list below them, and draws again when Claude puts new ones there. They cannot show in Claude Code's own window, which paints over them, and a split (⌘D) is too narrow, since every split gets the stage's whole margin too.
 - The evening is in both checkpoints when the theme's mood lives in it, as floor's cosiness does. Movement, night, weather and the closed hours are seen first in the sheet (step 8), after the judge, since a single still says little about them.
 - Taste is decided here, with you. The detailed work between and after the checkpoints can go to subagents.
 
