@@ -10,6 +10,7 @@
 import { sunAt } from './astro'
 import type { Place } from './astro'
 import { clamp, luminance, mix, saturate, smoothstep } from './paint'
+import type { Forced } from './events'
 import type { Pace } from './pace'
 import type { Scene } from './shader'
 
@@ -67,6 +68,10 @@ export type Settings = {
   // and a padding the person set there by hand stays theirs otherwise.
   // False once kept or closed, as the mark is null.
   isGapDrafted: boolean
+  // The events a session plays (/solar event, the milestone), for every
+  // session to draw: the sky's shader is one file, and a session that did
+  // not know of them would write the sky without them back.
+  forced: Forced[]
 }
 
 const KEYS = Object.keys(LIMITS) as (keyof TuneValues)[]
@@ -148,6 +153,11 @@ export function asSettings(text: string): Settings {
     text: clampText(isObject(file.text) ? file.text : {}),
     textDraftUntil: typeof draft === 'number' && Number.isFinite(draft) ? draft : null,
     isGapDrafted: file.isGapDrafted === true,
+    forced: Array.isArray(file.forced)
+      ? file.forced.flatMap(event =>
+          isObject(event) && typeof event.kind === 'string' && typeof event.at === 'number' && Number.isFinite(event.at) ? [{ kind: event.kind, at: event.at }] : [],
+        )
+      : [],
   }
 }
 

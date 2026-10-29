@@ -50,6 +50,9 @@ test('settings from an older Solar, broken or out of range give defaults and lim
   expect(old.preview).toBeNull()
   const broken = asSettings('{"pace":"ful')
   expect(broken.pace).toBe('full')
+  expect(old.forced).toEqual([])
+  expect(asSettings('{"forced":[{"kind":"surf","at":5},{"kind":3,"at":1},{"kind":"dolphin"},{"kind":"dolphin","at":"x"},null]}').forced).toEqual([{ kind: 'surf', at: 5 }])
+  expect(asSettings('{"forced":"surf"}').forced).toEqual([])
   expect(broken.tune).toEqual(DEFAULT_TUNE)
   expect(asSettings('{"tune":{"day":{"brightness":0.1,"shade":"x","warmth":7}}}').tune.day).toEqual({
     brightness: 0.5,
@@ -135,7 +138,7 @@ test("today's settings draw today's sky", () => {
 test('a preview counts until its time, and only a time at most a minute ahead', () => {
   const saved = { ...DEFAULT_TUNE, day: { ...NEUTRAL, brightness: 0.7 } }
   const tune = { ...DEFAULT_TUNE, dusk: { ...NEUTRAL, warmth: 0.5 } }
-  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null, isGapDrafted: false })
+  const settings = (until: number) => ({ pace: 'spar' as const, tune: saved, preview: { tune, phase: 'dusk' as Phase, until }, text: DEFAULT_TEXT, textDraftUntil: null, isGapDrafted: false, forced: [] })
   expect(activeTune(settings(100_000), 50_000)).toEqual({ tune, phase: 'dusk' })
   expect(activeTune(settings(100_000), 100_000)).toEqual({ tune: saved, phase: null })
   // A minute ahead and the second its write took count; anything further is

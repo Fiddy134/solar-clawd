@@ -7,7 +7,7 @@ import { localMidnight, STOCKHOLM } from './astro'
 import type { Waiting } from './waiting'
 import { drawFrame, ROWS } from './clawd'
 import type { Mode } from './clawd'
-import { contextAt, EVENTS, eventsAt, kindOf, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
+import { contextAt, EVENTS, eventsAt, kindOf, mergeForced, PREVIEW_MS, showerAt, shootingRate, specsOf, wordsOf } from './events'
 import type { Forced } from './events'
 import {
   asScale,
@@ -30,6 +30,7 @@ import {
   runtimeFolder,
   scaleAskedAt,
   setVsync,
+  shareForced,
   shareWaiting,
   stagedPadding,
   themeNameOf,
@@ -572,6 +573,13 @@ export const register: Register = on => {
 
     return { events, context }
   }
+  // The events other sessions play, as the settings file has them, taken
+  // into this session's: the sky's shader is the same text whichever
+  // session writes it.
+  const takeForced = (shared: readonly Forced[]) => {
+    const words = wordsOf(theme)
+    forced = mergeForced(forced, shared, kind => Object.hasOwn(words, kind))
+  }
 
   // Whether Ghostty's sky shows through the band, and with it the context
   // window on the keeper's line.
@@ -640,6 +648,7 @@ export const register: Register = on => {
 
   // The Ghostty shader for a moment: the scene then, or in a demo the day.
   const shaderAt = (now: number, { settings, ...extras }: SkyExtras) => {
+    takeForced(settings.forced)
     const { ms, mode } = momentAt(now)
     const { events, context } = eventsNow(now)
 
@@ -953,6 +962,7 @@ export const register: Register = on => {
         if (ghostty !== null) {
           const settings = await readSettings($, ghostty)
           activity.pace = settings.pace
+          takeForced(settings.forced)
           // A text draft whose tool stopped marking it live, a session killed
           // with the tune tool open after this one started: the kept text is
           // written back, checked as the tool writes it, and the kept gap
@@ -1132,7 +1142,10 @@ export const register: Register = on => {
       if (e.reason === 'answer') {
         if (waitFor({ mode: 'done', since: now })) await shareWaiting($, ghostty, waiting, refreshSky)
         // A long piece of work done: confetti over the sky.
-        if (e.durationMs > MILESTONE_MS) forced.push({ kind: 'milestone', at: now })
+        if (e.durationMs > MILESTONE_MS) {
+          forced.push({ kind: 'milestone', at: now })
+          await shareForced($, ghostty, forced, now)
+        }
       }
       // The ticks again, now Claude has written.
       refreshSky?.()
@@ -1441,7 +1454,9 @@ export const register: Register = on => {
       if (theme.manifest.previews.some(preview => preview.kind === kind) && ghostty === null) {
         return { text: `Solar: the ${words[kind]} shows only in Ghostty's sky, and this session is not running in Ghostty.` }
       }
+      if (ghostty !== null) takeForced((await readSettings($, ghostty)).forced)
       forced = [...forced.filter(event => event.kind !== kind), { kind, at: now }]
+      await shareForced($, ghostty, forced, now)
       await update($, isHidden, () => false)
 
       return { text: `Solar: ${words[kind]} for ${PREVIEW_MS / 1000} seconds.` }

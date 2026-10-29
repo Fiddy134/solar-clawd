@@ -4,6 +4,8 @@ import { field, number } from './json'
 import { asMarketFile, marketAt } from './market'
 import type { Market } from './market'
 import type { Work } from './activity'
+import { PREVIEW_MS } from './events'
+import type { Forced } from './events'
 import { markOf, UNMARK_TAB } from './mark'
 import { canTick, PACE_HZ, skyRules } from './pace'
 import type { Pace } from './pace'
@@ -362,6 +364,14 @@ export async function shareWaiting($: EngineInterface, ghostty: Ghostty | null, 
   if (ghostty === null) return
   await writeWaiting($, ghostty, waiting).catch(() => undefined)
   refresh?.()
+}
+
+// Writes the events this session plays, those still playing, where every
+// session reads them (the settings file), so none writes the sky without
+// them back.
+export async function shareForced($: EngineInterface, ghostty: Ghostty | null, forced: readonly Forced[], now: number): Promise<void> {
+  if (ghostty === null) return
+  await writeSettings($, ghostty, { forced: forced.filter(event => now - event.at < PREVIEW_MS) }).catch(() => undefined)
 }
 
 // Writes what this session waits on the person for where others read it,

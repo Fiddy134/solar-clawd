@@ -140,7 +140,7 @@ What differs from macOS:
 | `/solar now` | Follow the real sun again |
 | `/solar place <city>` | Set the place (otherwise guessed from your IP, starting in Stockholm); `auto` goes back to guessing |
 | `/solar events` | List the events |
-| `/solar event <name>` | Play an event for 90 seconds |
+| `/solar event <name>` | Play an event for 90 seconds, in the sky of every session |
 | `/solar aurora` | Toggle a forced aurora |
 | `/solar storm` | Toggle a storm, to see the wind |
 | `/solar catch` | The keeper lands a fish, as when another tenth of the context window fills (Ghostty's sky) |

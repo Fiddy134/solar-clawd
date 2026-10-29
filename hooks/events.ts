@@ -327,6 +327,20 @@ export function dayEventsAt(ms: number, ctx: EventContext): ActiveEvent[] {
 
 export type Forced = { kind: EventKind; at: number }
 
+// The events this session plays and those another session played (the
+// settings file): one of each kind, the latest, in the order they were
+// played, so every session draws the same sky from them. Only the kinds
+// `isKnown` takes, the theme's own.
+export function mergeForced(own: readonly Forced[], shared: readonly Forced[], isKnown: (kind: EventKind) => boolean): Forced[] {
+  const latest = new Map<EventKind, Forced>()
+  for (const event of [...own, ...shared]) {
+    const seen = latest.get(event.kind)
+    if (isKnown(event.kind) && (seen === undefined || event.at > seen.at)) latest.set(event.kind, event)
+  }
+
+  return [...latest.values()].sort((a, b) => a.at - b.at)
+}
+
 // The events up at `ms`: those of `specs` (the engine's, and a theme's
 // after them) whose condition holds, a rainbow if the sky makes one, and
 // those `forced` (a preview or a milestone) still within their length.

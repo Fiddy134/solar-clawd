@@ -12,6 +12,7 @@ import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
+import { PREVIEW_MS as EVENT_PREVIEW_MS } from './events'
 import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TEXT_WORDS, TOOL_COLUMNS, TOOL_ROWS, TUNE_WORDS } from './tune'
 import type { TuneSettings } from './tune'
 import { wallpaperPng } from './sky'
@@ -1656,6 +1657,31 @@ test('a saved tune reaches the shader of every session', async ($, on) => {
   world.files.set(SETTINGS, { text: JSON.stringify({ tune: { day: { brightness: 0.85, warmth: 0.5 } } }), mtimeMs: clock.now() })
   await clock.advance(10_100)
   expect(shader()).toContain('TUNE = vec4(0.85, 1.0, 1.0, 0.5);')
+})
+
+test("an event played in another session reaches this session's shader, for as long as it plays", async ($, on) => {
+  const { clock, world, shader } = await noonWorld($, on, { pace: 'full' })
+  expect(shader()).toContain('const int THEME_FORCE = 0;')
+  // Another session's /solar event surf: this one draws the same sky at its
+  // next update, rather than writing the sky without it back.
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'full', forced: [{ kind: 'surf', at: clock.now() }] }), mtimeMs: clock.now() })
+  await clock.advance(10_100)
+  expect(shader()).toContain('const int THEME_FORCE = 2;')
+  await clock.advance(EVENT_PREVIEW_MS)
+  expect(shader()).toContain('const int THEME_FORCE = 0;')
+})
+
+test('/solar event shares what it plays with every session, and keeps the rest of the settings', async ($, on) => {
+  const { clock, world } = await noonWorld($, on, { pace: 'spar', theme: 'fyr' })
+  const solar = (args: string) => $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  const at = clock.now()
+  await solar('event surf')
+  await clock.advance(1_000)
+  await solar('event dolphin')
+  const saved = JSON.parse(world.files.get(SETTINGS)!.text)
+  expect(saved.forced).toEqual([{ kind: 'surf', at }, { kind: 'dolphin', at: at + 1_000 }])
+  expect(saved.pace).toBe('spar')
+  expect(saved.theme).toBe('fyr')
 })
 
 test('a preview shows while its session lives and goes within a minute of its last word', async ($, on) => {
