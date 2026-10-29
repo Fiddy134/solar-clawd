@@ -12,7 +12,7 @@ import { THEMES } from './themes/index'
 import { rightPaddingOf, restaged, TICKER } from './ghostty'
 import { markOf, UNMARK_TAB } from './mark'
 import { PACE_HZ } from './pace'
-import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TEXT_WORDS, TUNE_PANE, TUNE_WORDS } from './tune'
+import { asSettings, DEFAULT_TUNE, PREVIEW_LIFE_MS, PREVIEW_MS, TEXT_WORDS, TOOL_COLUMNS, TOOL_ROWS, TUNE_WORDS } from './tune'
 import type { TuneSettings } from './tune'
 import { wallpaperPng } from './sky'
 import { WAITING_MS, WAITING_SWEEP_MS } from './waiting'
@@ -1738,13 +1738,10 @@ test("iTerm2's wallpaper draws the tune saved in sky.json, never a preview", asy
   expect(shown[0]).not.toBe((await paint(null))[0])
 })
 
-// The pane closed through the mod's own ui.close hook. The kit cannot press
-// Escape or the close mark for the person, so the mod's own close stands in:
-// a session started again (a reload) finds the pane open and closes it, and
-// the hook that drops the preview is the one the person's close runs.
-const closeTune = async ($: Engine, panes: { open: Set<string> }) => {
-  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  expect(panes.open.has(TUNE_PANE)).toBe(false)
+// The tune tool closed by /solar tune again, which runs the same close as
+// q in the tool.
+const closeTune = async ($: Engine) => {
+  expect(await solarSays($, 'tune')).toBe(TUNE_WORDS.closed)
 }
 
 const solarSays = async ($: Engine, args: string) =>
@@ -1773,17 +1770,19 @@ test('/solar tune outside Ghostty says so and opens nothing', async ($, on) => {
   expect(writes.some(path => path.endsWith('sky.json') || path.includes('sky.json.'))).toBe(false)
 })
 
-test('the pane previews as you move, keeps on enter and forgets on escape', async ($, on) => {
+test('the band tool previews as you move, keeps on enter and forgets on q', async ($, on) => {
   const panes = paneWorld(on)
   const { clock, world, shader } = await noonWorld($, on)
   const saves = () => world.runs.filter(argv => argv[0] === '/bin/mv' && argv.at(-1) === SETTINGS).length
   const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
 
-  // A dark blue pane that takes the keys, on the part of the day it is now;
-  // this world's config does not show the sky, which the command says.
+  // The tool in the band, left of the weather, on the part of the day it is
+  // now; no pane opens. This world's config does not show the sky, which
+  // the command says.
   expect(await solarSays($, 'tune')).toBe(TUNE_WORDS.notIncluded)
-  expect(panes.opened).toEqual([{ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' }])
+  expect(panes.opened).toEqual([])
   const ui = await $.ui.mount(TUNE_MOUNT)
+  expect((await ui.find({ type: 'Raster', key: 'sky' }))?.props).toMatchObject({ columns: 156 - TOOL_COLUMNS, rows: ROWS })
   expect(await ui.find({ type: 'Text', text: ' day ', in: 'tune' })).toMatchObject({ props: { backgroundColor: '#ff6fc0', color: '#10142a' } })
   expect(await ui.find({ type: 'Text', text: '100 %', in: 'tune' })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.hint, in: 'tune' })).toBeDefined()
@@ -1821,8 +1820,13 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeDefined()
   await ui.key({ key: 'down' })
   expect(await ui.find({ type: 'Text', text: TUNE_WORDS.kept, in: 'tune' })).toBeUndefined()
-  await closeTune($, panes)
+  // q closes it: the band is three rows of words again.
+  await ui.key({ key: 'q' })
   await ui.unmount()
+  const closed = await $.ui.mount(TUNE_MOUNT)
+  expect(await closed.find({ type: 'Client', key: 'tune' })).toBeUndefined()
+  expect((await closed.find({ type: 'Raster', key: 'sky' }))?.props).toMatchObject({ columns: 156, rows: ROWS })
+  await closed.unmount()
 
   // Opened again, moved, and closed: the preview goes and the saved tune
   // stays as it was kept.
@@ -1832,7 +1836,7 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   await again.key({ key: 'left' })
   await clock.advance(PREVIEW_MS)
   expect(saved().preview?.tune.day.brightness).toBe(0.8)
-  await closeTune($, panes)
+  await closeTune($)
   expect(saved().tune.day.brightness).toBe(0.85)
   expect(saved().preview).toBeNull()
   await clock.advance(1)
@@ -1845,7 +1849,7 @@ test('the pane previews as you move, keeps on enter and forgets on escape', asyn
   const third = await $.ui.mount(TUNE_MOUNT)
   const quiet = saves()
   await third.key({ key: 'left' })
-  await closeTune($, panes)
+  await closeTune($)
   await third.unmount()
   await clock.advance(60_000)
   expect(saves()).toBe(quiet)
@@ -1866,13 +1870,66 @@ test('a close while the first preview is still being written leaves no preview',
   expect(asSettings(world.files.get(SETTINGS)?.text ?? '').preview).toBeNull()
   // Closed while it is under way: the preview lands, and the close after it
   // takes it away again.
-  const closing = closeTune($, panes)
+  const closing = closeTune($)
   await clock.advance(1)
   letGo()
   await closing
   await clock.advance(1)
   expect(asSettings(world.files.get(SETTINGS)?.text ?? '').preview).toBeNull()
   await ui.unmount()
+})
+
+test('the band waits with the tool when the window is too low or narrow, and keeps its preview', async ($, on) => {
+  paneWorld(on)
+  const { clock, world } = await noonWorld($, on)
+  const saved = () => asSettings(world.files.get(SETTINGS)?.text ?? '')
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  await ui.key({ key: 'left' })
+  await clock.advance(PREVIEW_MS)
+  const first = saved().preview!.until
+  await ui.unmount()
+  for (const props of [{ maxRows: TOOL_ROWS - 1 }, { bodyColumns: TOOL_COLUMNS - 1 }]) {
+    const small = await $.ui.mount({ ...TUNE_MOUNT, props: { ...TUNE_MOUNT.props, ...props } })
+    expect(await small.find({ type: 'Client', key: 'tune' })).toBeUndefined()
+    expect(await small.find({ type: 'Raster', key: 'sky' })).toBeDefined()
+    await small.unmount()
+  }
+  await clock.advance(20_000)
+  expect(saved().preview!.until).toBeGreaterThan(first)
+  await closeTune($)
+})
+
+test('a question hides the tool and keeps it open', async ($, on) => {
+  paneWorld(on)
+  // Stands for the engine, which draws its own band when the mod passes.
+  on('ui.render', ($, e) => {
+    const { Text } = $.ui.resolve(e)
+
+    return <Text>engine</Text>
+  })
+  await noonWorld($, on)
+  await solarSays($, 'tune')
+  const asking = await $.ui.mount({ ...TUNE_MOUNT, props: { ...TUNE_MOUNT.props, hasSurvey: true } })
+  expect(await asking.find({ type: 'Client', key: 'tune' })).toBeUndefined()
+  expect((await asking.find({ type: 'Text' }))?.text).toBe('engine')
+  await asking.unmount()
+  const after = await $.ui.mount(TUNE_MOUNT)
+  expect(await after.find({ type: 'Text', text: ' day ', in: 'tune' })).toBeDefined()
+  await after.unmount()
+  await closeTune($)
+})
+
+test('with the sky hidden the band still draws the tool, without the weather', async ($, on) => {
+  paneWorld(on)
+  await noonWorld($, on)
+  expect(await solarSays($, '')).toBe('Solar: the sky is hidden.')
+  await solarSays($, 'tune')
+  const ui = await $.ui.mount(TUNE_MOUNT)
+  expect(await ui.find({ type: 'Text', text: ' day ', in: 'tune' })).toBeDefined()
+  expect(await ui.find({ type: 'Raster', key: 'sky' })).toBeUndefined()
+  await ui.unmount()
+  await closeTune($)
 })
 
 test('a keep the pane posted together with a later move is kept, and the move previewed', async ($, on) => {
@@ -1895,7 +1952,7 @@ test('a keep the pane posted together with a later move is kept, and the move pr
   await Promise.all([ui.key({ key: 'left' }), ui.key({ key: 'left' })])
   await clock.advance(PREVIEW_MS)
   expect(saved().preview?.tune.day.brightness).toBe(0.8)
-  await closeTune($, panes)
+  await closeTune($)
   await ui.unmount()
 })
 
@@ -1919,7 +1976,7 @@ test('a preview due while a keep is still being written is taken away at the clo
   await clock.advance(1)
   expect(saved().tune.day.brightness).toBe(0.95)
   expect(saved().preview?.tune.day.brightness).toBe(0.9)
-  await closeTune($, panes)
+  await closeTune($)
   expect(saved().preview).toBeNull()
   await ui.unmount()
 })
@@ -1928,18 +1985,16 @@ test('/solar tune says so where the sky cannot show what its sliders do', async 
   const panes = paneWorld(on)
   const { solar } = await paceWorld($, on, '1.4.0')
   expect([TUNE_WORDS.notIncluded, TUNE_WORDS.hidden].every(words => /^Solar: /.test(words))).toBe(true)
-  // Not in Ghostty's config yet: the pane opens, and says why the sky stays as it is.
+  // Not in Ghostty's config yet: the tool opens, and says why the sky stays as it is.
   expect(await solar('tune')).toBe(TUNE_WORDS.notIncluded)
-  expect(panes.open.has(TUNE_PANE)).toBe(true)
-  await closeTune($, panes)
+  await closeTune($)
   await solar('ghostty')
   expect(await solar('')).toBe('Solar: the sky is hidden.')
   expect(await solar('tune')).toBe(TUNE_WORDS.hidden)
-  expect(panes.open.has(TUNE_PANE)).toBe(true)
-  await closeTune($, panes)
+  await closeTune($)
   expect(await solar('')).toBe('Solar: the sky is back.')
   expect(await solar('tune')).toBeUndefined()
-  await closeTune($, panes)
+  await closeTune($)
 })
 
 // Ghostty's +show-config as it prints the text keys on a config that sets
@@ -2013,7 +2068,7 @@ test('a text change is validated, written to its own include and reloaded', asyn
 
   // Escape writes the text the pane opened with back, and Ghostty reloads.
   const beforeClose = kills()
-  await closeTune($, panes)
+  await closeTune($)
   expect(world.files.get(TEXT)?.text).toBe('')
   expect(kills()).toBeGreaterThan(beforeClose)
   await ui.unmount()
@@ -2025,7 +2080,7 @@ test('the text kept stays once the pane is closed, and u goes back to how it ope
   await ui.key({ key: 'return' })
   expect(asSettings(world.files.get(SETTINGS)!.text).text.size).toBe(13.5)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
-  await closeTune($, panes)
+  await closeTune($)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
   await ui.unmount()
   // Opened again on what was kept: a move, then u, is the kept text again.
@@ -2043,7 +2098,7 @@ test('the text kept stays once the pane is closed, and u goes back to how it ope
   await again.key({ key: 'r' })
   await clock.advance(PREVIEW_MS)
   expect(world.files.get(TEXT)?.text).toBe('')
-  await closeTune($, panes)
+  await closeTune($)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
   await again.unmount()
 })
@@ -2072,7 +2127,7 @@ test('a text change Ghostty refuses is not written', async ($, on) => {
   await clock.advance(PREVIEW_MS)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\nfont-family = ""\nfont-family = Menlo\n')
   expect(await ui.find({ type: 'Text', text: TEXT_WORDS.refused('font-family'), in: 'tune' })).toBeUndefined()
-  await closeTune($, panes)
+  await closeTune($)
   await ui.unmount()
 })
 
@@ -2092,7 +2147,7 @@ test('a change of size resets the font size of every terminal', async ($, on) =>
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\nfont-thicken = true\nfont-thicken-strength = 0\n')
   expect(RESETS(world.runs)).toBe(1)
   // The close takes the size away again: that is a change of size too.
-  await closeTune($, panes)
+  await closeTune($)
   expect(RESETS(world.runs)).toBe(2)
   await ui.unmount()
 })
@@ -2118,7 +2173,7 @@ test('size changes while macOS still asks about the first reset run no second re
   expect(RESETS(world.runs)).toBe(2)
   await clock.advance(1_000)
   expect(RESETS(world.runs)).toBe(2)
-  await closeTune($, panes)
+  await closeTune($)
   expect(RESETS(world.runs)).toBe(3)
   await ui.unmount()
 })
@@ -2153,7 +2208,7 @@ test('the gap widens the padding line for new windows', async ($, on) => {
   expect(await solar('ghostty')).toBe('Solar: Ghostty already shows the sky.')
   expect(await solar('theme fyr')).toBe("Solar: the sky is fyr now, in every session. Its stage is 240 points wide; Ghostty's new windows show it.")
   expect(config()).toContain('\nwindow-padding-x = 2,256\n')
-  await closeTune($, panes)
+  await closeTune($)
   expect(config()).toContain('\nwindow-padding-x = 2,256\n')
   await ui.unmount()
 })
@@ -2164,7 +2219,7 @@ test('a gap not kept goes back at the close', async ($, on) => {
   await ui.key({ key: 'right' })
   await clock.advance(PREVIEW_MS)
   expect(config()).toContain('\nwindow-padding-x = 2,248\n')
-  await closeTune($, panes)
+  await closeTune($)
   expect(config()).toContain('\nwindow-padding-x = 2,240\n')
   await ui.unmount()
 })
@@ -2191,7 +2246,7 @@ test('a padding set by hand under the include stays through a pane whose gap is 
   await ui.key({ key: 'right' })
   await clock.advance(PREVIEW_MS)
   expect(config()).toContain('\nwindow-padding-x = 2,320\n')
-  await closeTune($, panes)
+  await closeTune($)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
   expect(config()).toContain('\nwindow-padding-x = 2,320\n')
   await ui.unmount()
@@ -2202,7 +2257,7 @@ test('hiding the sky keeps the text include', async ($, on) => {
   await ui.key({ key: 'right' })
   await ui.key({ key: 'return' })
   await clock.advance(PREVIEW_MS)
-  await closeTune($, panes)
+  await closeTune($)
   await ui.unmount()
   expect(world.files.get(TEXT)?.text).toBe('font-size = 13.5\n')
   // The sky hidden, then the last session gone: the person's text stays.
@@ -2229,7 +2284,7 @@ test('a kept gap reaches the padding line, whatever theme came between', async (
   await ui.key({ key: 'return' })
   expect(asSettings(world.files.get(SETTINGS)!.text).text.gap).toBe(16)
   expect(config()).toContain('\nwindow-padding-x = 2,416\n')
-  await closeTune($, panes)
+  await closeTune($)
   expect(config()).toContain('\nwindow-padding-x = 2,416\n')
   await ui.unmount()
 })
@@ -2261,7 +2316,7 @@ test("Ghostty's command line is run only from this user's own app, under an Appl
   await clock.advance(PREVIEW_MS)
   expect(world.files.get(TEXT)?.text).toBe('font-size = 14.5\n')
   expect(asked().at(-1)).toBe('/Users/test/Applications/Ghostty.app/Contents/MacOS/ghostty')
-  await closeTune($, panes)
+  await closeTune($)
   await ui.unmount()
 })
 
@@ -2349,7 +2404,7 @@ test('the pane marks its text draft live while it is open, and clears the mark a
   await ui.key({ key: 'right' })
   await clock.advance(PREVIEW_MS)
   expect(until()).not.toBeNull()
-  await closeTune($, panes)
+  await closeTune($)
   expect(until()).toBeNull()
   await ui.unmount()
 })

@@ -341,10 +341,16 @@ export function tunedColour(c: number, k: number, values: TuneValues): number {
   return lightness > luminance(today) ? mix(0, tuned, luminance(today) / lightness) : tuned
 }
 
-// The pane, /solar tune: its id, how often a session writes what it shows
-// (at most, the last state winning), and how often it renews the preview
-// while open, well within PREVIEW_LIFE_MS.
-export const TUNE_PANE = 'solar-tune'
+// The tool, /solar tune, in the band above the prompt: its Client's key,
+// the rows and columns it needs (the tabs, the six text rows and the hint;
+// the hint's width), how often a session writes what it shows (at most,
+// the last state winning), and how often it renews the preview while open,
+// well within PREVIEW_LIFE_MS.
+export const TUNE_KEY = 'tune'
+export const TOOL_ROWS = 8
+export const TOOL_COLUMNS = 76
+// The fewest columns the weather keeps beside the tool.
+export const WEATHER_MIN = 26
 export const PREVIEW_MS = 250
 export const RENEW_MS = 20_000
 

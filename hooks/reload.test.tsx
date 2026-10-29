@@ -11,7 +11,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { markOf } from './mark'
-import { asSettings, PREVIEW_MS, TUNE_PANE } from './tune'
+import { asSettings, PREVIEW_MS } from './tune'
 import { CONFIG, paneWorld, RELOADS, reloadWorld, SCALE_ASKS, TUNE_MOUNT } from './test-kit'
 import type { LeftBehind } from './test-kit'
 
@@ -109,7 +109,7 @@ test('a reload under another session id than the one kept (a /clear between) wri
 let tuneLeft: LeftBehind | null = null
 const SETTINGS = '/Users/test/Library/Application Support/solar-clawd/sky.json'
 
-test('a session with the tune pane open leaves a preview, a text and a gap drafted, for a reload', { timeoutMs: 15_000 }, async ($, on) => {
+test('a session with the tune tool open leaves a preview, a text and a gap drafted, for a reload', { timeoutMs: 15_000 }, async ($, on) => {
   const clock = mock.clock(on, { now: START })
   paneWorld(on)
   const { world, states, runtime } = reloadWorld(on, clock, null)
@@ -136,15 +136,15 @@ test('a session with the tune pane open leaves a preview, a text and a gap draft
   tuneLeft = { files: new Map(world.files), states: new Map(states), mark: MARK, at: clock.now() }
 })
 
-test('a reload with the tune pane left open drops its preview at once, and its text and gap with it', async ($, on) => {
+test('a reload with the tune tool left open drops its preview at once, and its text and gap with it', async ($, on) => {
   const clock = mock.clock(on, { now: tuneLeft!.at + 1_000 })
-  // The pane the old module opened is still there as the new one starts.
-  const panes = paneWorld(on)
-  panes.open.add(TUNE_PANE)
-  const { world, runtime } = reloadWorld(on, clock, tuneLeft)
+  // The old module left the tool open, as its state says.
+  paneWorld(on)
+  const { world, runtime, states } = reloadWorld(on, clock, tuneLeft)
+  expect(tuneLeft!.states.get('isTuning')).toBe(true)
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
   await clock.advance(1)
-  expect(panes.open.has(TUNE_PANE)).toBe(false)
+  expect(states.get('isTuning')).toBe(false)
   const saved = asSettings(world.files.get(SETTINGS)!.text)
   expect(saved.preview).toBeNull()
   expect(saved.textDraftUntil).toBeNull()

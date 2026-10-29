@@ -76,15 +76,21 @@ import {
   previewMoment,
   RENEW_MS,
   TEXT_WORDS,
-  TUNE_PANE,
+  TOOL_COLUMNS,
+  TOOL_ROWS,
+  TUNE_KEY,
   TUNE_WORDS,
+  WEATHER_MIN,
 } from './tune'
 import type { PanePost, PaneState, Settings, TextValues } from './tune'
 import type { TextWritten } from './ghostty'
-import type { TunePaneProps } from './tune-pane'
+import type { TuneBandProps } from './tune-band'
 import type { SolarClawdCarried } from '../types'
 
 const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false)
+// Whether /solar tune's tool is open in the band; a reload finds it so and
+// closes it.
+const isTuning = atom({ plugin: 'solar-clawd', key: 'isTuning' } as const, false)
 // What the sky is drawn from, kept by the host through a hot reload of this
 // code (never into a new process): the reloaded module starts from it and
 // draws the sky the old one left. Another shape (code that keeps something
@@ -92,6 +98,8 @@ const isHidden = atom({ plugin: 'solar-clawd', key: 'isHidden' } as const, false
 const carried = atom({ plugin: 'solar-clawd', key: 'carried' } as const, null, { shape: 'sky-inputs-2' })
 
 const KEY = 'sky'
+// The tool's dark blue under the band while /solar tune is open.
+const TOOL_INK = '#10142a'
 // The moon's texture, baked by tools/bake-moon.sh.
 const MOON_SIZE = 256
 // Pixels per point of the window: Retina.
@@ -257,7 +265,7 @@ const PACE_WORDS = {
 const NOT_GHOSTTY = 'Solar: this session is not running in Ghostty.'
 const UNREADABLE_CONFIG = `Solar: could not read Ghostty's config, so it is left as it is.`
 
-// The tune pane's state as the preview in sky.json, its tune held to the
+// The tune tool's state as the preview in sky.json, its tune held to the
 // limits (it came from the surface module), running a PREVIEW_LIFE_MS from
 // now.
 async function previewOf($: EngineInterface, state: PaneState): Promise<NonNullable<Settings['preview']>> {
@@ -271,7 +279,7 @@ async function writePreview($: EngineInterface, ghostty: Ghostty, state: PaneSta
   await writeSettings($, ghostty, { preview: await previewOf($, state) })
 }
 
-// What the tune pane says of Ghostty's text as last written: nothing once
+// What the tune tool says of Ghostty's text as last written: nothing once
 // it is written, else why not.
 function noteOf(written: TextWritten): string | null {
   if (written === 'written' || written === 'same') return null
@@ -280,15 +288,15 @@ function noteOf(written: TextWritten): string | null {
   return { 'no-app': TEXT_WORDS.noApp, 'no-include': TEXT_WORDS.noInclude, unreadable: TEXT_WORDS.unreadable }[written]
 }
 
-// Ghostty's text as the tune pane has it, written where Ghostty reads it,
+// Ghostty's text as the tune tool has it, written where Ghostty reads it,
 // and where `isRestaging` the padding line at the theme's stage `pt` plus
-// the gap; what came of it shown in the pane while it is open, a refusal
+// the gap; what came of it shown in the tool while it is open, a refusal
 // by its key.
 async function writeTuneText(
   $: EngineInterface,
   sky: Ghostty,
   text: TextValues,
-  tuning: { props: TunePaneProps | null },
+  tuning: { props: TuneBandProps | null },
   pt: number,
   isRestaging: boolean,
 ): Promise<void> {
@@ -299,7 +307,56 @@ async function writeTuneText(
   $.ui.invalidate('ui.render')
 }
 
-// Marks the tune pane's text, not yet kept, as live in sky.json for a
+// The tune tool's session as closing it needs it: the writes waiting and
+// the renewal, what it draws and last showed, and what it has drafted.
+type Cancel = { cancel: () => void } | null
+type Tuning = {
+  props: TuneBandProps | null
+  latest: PaneState | null
+  due: Cancel
+  renew: Cancel
+  textDue: Cancel
+  isPreviewing: boolean
+  isTextDrafting: boolean
+  isGapDrafted: boolean
+}
+
+// The tool closed (q, /solar tune again, a reload): what was not kept is
+// dropped, the sky goes back to the real time and the saved tune, and the
+// band to its words. Its turn comes after any write already asked for, and
+// decides then: Ghostty's text goes back to the text saved in sky.json,
+// last kept or as the tool opened, so nothing unkept stays, also where a
+// reload of the mod left the tool with nothing behind it.
+async function closeTuning(
+  $: EngineInterface,
+  tuning: Tuning,
+  sky: Ghostty | null,
+  pt: number,
+  inTurn: (work: () => Promise<void>) => Promise<void>,
+  refresh: () => void,
+): Promise<void> {
+  await update($, isTuning, () => false)
+  $.ui.invalidate('ui.render')
+  tuning.due?.cancel()
+  tuning.renew?.cancel()
+  tuning.textDue?.cancel()
+  Object.assign(tuning, { props: null, latest: null, due: null, renew: null, textDue: null })
+  await inTurn(async () => {
+    if (sky === null) return
+    const saved = await readSettings($, sky)
+    await writeTuneText($, sky, saved.text, tuning, pt, tuning.isGapDrafted)
+    tuning.isGapDrafted = false
+    if (saved.textDraftUntil !== null || saved.isGapDrafted) await writeSettings($, sky, { textDraftUntil: null, isGapDrafted: false })
+    tuning.isTextDrafting = false
+    if (!tuning.isPreviewing) return
+    tuning.isPreviewing = false
+    if (saved.preview === null) return
+    await writeSettings($, sky, { preview: null })
+    refresh()
+  })
+}
+
+// Marks the tune tool's text, not yet kept, as live in sky.json for a
 // PREVIEW_LIFE_MS, so a session starting meanwhile leaves it in Ghostty;
 // and, once a draft has moved the gap, says so, so whoever puts the draft
 // back puts the padding line back too.
@@ -314,14 +371,14 @@ export const register: Register = on => {
   // The checkpoint pane's pictures and notes as last read, what the folder
   // held then, and the timer that looks at it while the pane is open.
   const looking: LookState = { look: { pictures: [], notes: [] }, signature: null, watch: null }
-  // The tune pane while it is open: the props it is drawn with, the last
+  // The tune tool while it is open: the props it is drawn with, the last
   // state it posted, whether this session has a preview in sky.json, the
   // write waiting for its PREVIEW_MS, the timer renewing the preview, the
   // text's write waiting likewise, and the writes in the order they were
   // asked for, the text's among them, so a close never lands before a
   // preview or a text asked earlier.
-  const tuning = {
-    props: null as TunePaneProps | null,
+  const tuning: Tuning & { writes: Promise<void> } = {
+    props: null as TuneBandProps | null,
     latest: null as PaneState | null,
     isPreviewing: false,
     due: null as { cancel: () => void } | null,
@@ -330,7 +387,7 @@ export const register: Register = on => {
     // Whether this session has marked a text draft live in sky.json, and
     // whether one of its drafts moved the gap from the one saved: only then
     // does the padding line go back at the close, so a padding the person
-    // set by hand under the include stays through a pane that never
+    // set by hand under the include stays through a tool that never
     // touched the gap.
     isTextDrafting: false,
     isGapDrafted: false,
@@ -556,7 +613,7 @@ export const register: Register = on => {
 
     // The saved tune, or a preview while one lasts: the part of the day it
     // shows, at today's moment of it, with that part's values whatever the
-    // sun, so every session draws the same and the pane shows exactly what
+    // sun, so every session draws the same and the tool shows exactly what
     // it changes. The preview shows the whole scene at that moment: the
     // sun, moon and stars, the theme's scenery for that part of the day,
     // the market's flags, and the keeper asleep at night. What keeps the real
@@ -713,7 +770,7 @@ export const register: Register = on => {
       // An include the mod added before, to its own folder: moved here, and
       // the old file emptied so Ghostty draws no second sky from it.
       let isMarginNew = false
-      // The tune pane's gap goes with any stage the mod writes.
+      // The tune tool's gap goes with any stage the mod writes.
       const { gap } = (await readSettings($, ghostty)).text
       if (!ghostty.isIncluded && (await hasOurInclude($, ghostty))) {
         const added = await includeInGhostty($, ghostty, stagePtOf(theme), gap)
@@ -730,9 +787,9 @@ export const register: Register = on => {
       // The screen's scale costs a moment of osascript: asked only for a sky
       // that shows.
       if (isOurs) await stageOf($, ghostty, stagePtOf(theme), kept !== null)
-      // A text draft a session killed with the tune pane open left in
-      // Ghostty, with no pane still marking it live: put back to the text
-      // kept in sky.json, checked and written as the pane writes it, and
+      // A text draft a session killed with the tune tool open left in
+      // Ghostty, with no tool still marking it live: put back to the text
+      // kept in sky.json, checked and written as the tool writes it, and
       // the padding line where the draft moved the gap.
       const saved = await readSettings($, ghostty)
       const isDrafted = saved.isGapDrafted || (await $.fs.read(ghostty.text).catch(() => '')) !== textFileOf(saved.text)
@@ -862,11 +919,11 @@ export const register: Register = on => {
         if (ghostty !== null) {
           const settings = await readSettings($, ghostty)
           activity.pace = settings.pace
-          // A text draft whose pane stopped marking it live, a session killed
-          // with the tune pane open after this one started: the kept text is
-          // written back, checked as the pane writes it, and the kept gap
-          // where the draft moved it, in the pane's turn, and the mark
-          // cleared. This session's own open pane keeps its mark live.
+          // A text draft whose tool stopped marking it live, a session killed
+          // with the tune tool open after this one started: the kept text is
+          // written back, checked as the tool writes it, and the kept gap
+          // where the draft moved it, in the tool's turn, and the mark
+          // cleared. This session's own open tool keeps its mark live.
           const sky = ghostty
           const isLapsed = settings.textDraftUntil !== null && !isTextDraftLive(settings, await $.clock.now())
           if (!isOnLinux && isLapsed && !tuning.isTextDrafting) {
@@ -994,15 +1051,15 @@ export const register: Register = on => {
       })
     })
 
-    // A reload leaves the tune pane open with nothing behind it: it closes,
-    // and with it any preview this session had. That pane was this
+    // A reload leaves the tune tool open with nothing behind it: it closes,
+    // and with it any preview this session had. That tool was this
     // session's, so the preview in sky.json counts as its own, and so does
     // a gap draft sky.json says it made; the close then puts back what is
     // saved.
-    if ((await $.ui.panes().catch(() => [])).some(pane => pane.id === TUNE_PANE)) {
+    if (await read($, isTuning)) {
       tuning.isPreviewing = true
       if (ghostty !== null) tuning.isGapDrafted ||= (await readSettings($, ghostty)).isGapDrafted
-      await $.ui.close({ id: TUNE_PANE }).catch(() => undefined)
+      await closeTuning($, tuning, ghostty, stagePtOf(theme), inTurn, () => refreshSky?.())
     }
 
     return next(e)
@@ -1261,14 +1318,20 @@ export const register: Register = on => {
       }
     }
 
-    // The pane that tunes the sky, on the part of the day it is now.
+    // The tool that tunes the sky, in the band, on the part of the day it is
+    // now; again, it closes.
     if (word === 'tune') {
       if (ghostty === null || ghostty.isLinux) return { text: TUNE_WORDS.notGhostty }
+      if (await read($, isTuning)) {
+        await closeTuning($, tuning, ghostty, stagePtOf(theme), inTurn, () => refreshSky?.())
+
+        return { text: TUNE_WORDS.closed }
+      }
       const settings = await readSettings($, ghostty)
       const weights = phaseWeights(sceneAt(momentAt(now).ms, where.place))
       const phase = PHASES.reduce((best, each) => (weights[each] > weights[best] ? each : best))
       if (tuning.props === null) {
-        // Ghostty's own text and its fonts, asked once as the pane opens.
+        // Ghostty's own text and its fonts, asked once as the tool opens.
         const { showConfig, fonts } = await readGhosttyText($, ghostty)
         const { text, tune } = settings
         tuning.props = {
@@ -1285,10 +1348,10 @@ export const register: Register = on => {
         if (tuning.isPreviewing && sky !== null && state !== null) void inTurn(() => writePreview($, sky, state))
         if (tuning.isTextDrafting && sky !== null) void inTurn(() => markTextDraft($, sky, tuning.isGapDrafted))
       })
-      const opened = await $.ui.open({ id: TUNE_PANE, title: 'Solar tune', focus: true, closeOnEscape: true, backgroundColor: '#10142a' })
-      if (!opened.isPlaced) return { text: `Solar: the tune pane waits to be placed: ${opened.reason}.` }
+      await update($, isTuning, () => true)
+      $.ui.invalidate('ui.render')
       // A sky that does not show cannot show what the sliders do: said
-      // once, as the pane opens for the text it still tunes.
+      // once, as the tool opens for the text it still tunes.
       if (!ghostty.isIncluded) return { text: TUNE_WORDS.notIncluded }
       if (await $.fs.exists(ghostty.hidden).catch(() => false)) return { text: TUNE_WORDS.hidden }
 
@@ -1450,25 +1513,18 @@ export const register: Register = on => {
     )
   })
 
-  // The tune pane: its surface module draws it and takes the keys.
-  on('ui.render', { component: 'Pane', requestId: TUNE_PANE }, async ($, e, next) => {
-    if (e.surface !== 'terminal' || tuning.props === null) return next(e)
-    const { Client } = $.ui.resolve(e)
-
-    return <Client key="tune" module="./tune-pane.tsx" props={tuning.props} />
-  })
-
-  // What the pane posts: a preview, written once the moves have rested a
+  // What the tool posts: a preview, written once the moves have rested a
   // PREVIEW_MS, the last of them winning; and a keep it has not heard of
   // yet, which may ride in a later move's post: that tune kept for every
-  // session, previewed at the phase while the pane stays open, and the
+  // session, previewed at the phase while the tool stays open, and the
   // pane told so.
-  on('ui.message', { requestId: TUNE_PANE }, async ($, e, next) => {
+  on('ui.message', async ($, e, next) => {
+    if (e.component !== 'AbovePrompt' || e.element !== TUNE_KEY) return next(e)
     const message = e.data as Partial<PanePost> | null
     const state = message?.state
     if (ghostty === null || tuning.props === null || typeof state !== 'object' || state === null) return next(e)
     const sky = ghostty
-    // The pane is drawn again from where it is, should its module start
+    // The tool is drawn again from where it is, should its module start
     // over; what the post leaves out stays as it was.
     const latest: PaneState = { ...tuning.props.start, ...state }
     tuning.latest = latest
@@ -1535,51 +1591,43 @@ export const register: Register = on => {
         })
       })
     }
+    // q: the tool closes, after any keep that rode in with it.
+    if (message?.action === 'close') {
+      await closeTuning($, tuning, ghostty, stagePtOf(theme), inTurn, () => refreshSky?.())
+
+      return {}
+    }
 
     return answer
   })
 
-  // The pane closed (Escape, its close mark, a reload): what was not kept
-  // is dropped, and the sky goes back to the real time and the saved tune.
-  on('ui.close', { id: TUNE_PANE }, async ($, e, next) => {
-    tuning.due?.cancel()
-    tuning.renew?.cancel()
-    tuning.textDue?.cancel()
-    Object.assign(tuning, { props: null, latest: null, due: null, renew: null, textDue: null })
-    // Its turn comes after any write already asked for, and decides then.
-    // Ghostty's text goes back to the text saved in sky.json, last kept or
-    // as the pane opened: nothing unkept stays, also where a reload of the
-    // mod left the pane with nothing behind it.
-    const sky = ghostty
-    await inTurn(async () => {
-      if (sky === null) return
-      const saved = await readSettings($, sky)
-      await writeTuneText($, sky, saved.text, tuning, stagePtOf(theme), tuning.isGapDrafted)
-      tuning.isGapDrafted = false
-      if (saved.textDraftUntil !== null || saved.isGapDrafted) await writeSettings($, sky, { textDraftUntil: null, isGapDrafted: false })
-      tuning.isTextDrafting = false
-      if (!tuning.isPreviewing) return
-      tuning.isPreviewing = false
-      if (saved.preview === null) return
-      await writeSettings($, sky, { preview: null })
-      refreshSky?.()
-    })
-
-    return next(e)
-  })
-
+  // The band: the words, or with /solar tune open the tool left of them
+  // where the window has the room; a question to the person takes the band
+  // without closing the tool, and a hidden sky leaves the tool alone in it.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     if (e.surface !== 'terminal' || e.props.hasSurvey) return next(e)
-    if (await read($, isHidden)) return next(e)
-
     if (e.viewport) viewport = { columns: e.viewport.columns, rows: e.viewport.rows }
     const columns = e.props.bodyColumns
-    if (columns < MIN_COLUMNS || e.props.maxRows < ROWS) return next(e)
+    const hidden = await read($, isHidden)
+    const isTool = tuning.props !== null && (await read($, isTuning)) && e.props.maxRows >= TOOL_ROWS && columns >= TOOL_COLUMNS
+    if (!isTool && (hidden || columns < MIN_COLUMNS || e.props.maxRows < ROWS)) return next(e)
 
     const now = await $.clock.now()
-    site = { requestId: e.requestId, columns }
-    const { Raster } = $.ui.resolve(e)
+    const { Box, Client, Raster } = $.ui.resolve(e)
+    if (!isTool) {
+      site = { requestId: e.requestId, columns }
 
-    return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
+      return <Raster key={KEY} columns={columns} rows={ROWS} cells={drawFrame(viewAt(now, columns))} />
+    }
+    const weather = columns - TOOL_COLUMNS
+    const isWeather = !hidden && weather >= WEATHER_MIN
+    site = isWeather ? { requestId: e.requestId, columns: weather } : null
+
+    return (
+      <Box flexDirection="row" backgroundColor={TOOL_INK}>
+        <Client key={TUNE_KEY} module="./tune-band.tsx" props={tuning.props} width={TOOL_COLUMNS} />
+        {isWeather ? <Raster key={KEY} columns={weather} rows={ROWS} cells={drawFrame(viewAt(now, weather))} /> : null}
+      </Box>
+    )
   })
 }

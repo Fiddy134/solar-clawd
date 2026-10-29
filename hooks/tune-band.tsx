@@ -1,8 +1,9 @@
-// The tune pane's surface module: it takes the keys while it has the focus
-// (once clicked), keeps the pane's state as the person moves it, draws it
-// in the riso inks on the pane's dark blue, and posts each change to the
-// hooks module, which writes the preview and keeps the tune. It runs on the
-// drawing thread with no $; what it knows of the world comes in its props.
+// The tune tool's surface module, in the band above the prompt: it takes
+// the keys while it has the focus (once clicked), keeps the tool's state as
+// the person moves it, draws it in the riso inks on dark blue, and posts
+// each change to the hooks module, which writes the preview, keeps the tune
+// and closes the tool on q. It runs on the drawing thread with no $; what it
+// knows of the world comes in its props.
 
 import type { ClientModule, ClientSurface } from 'claude-code'
 
@@ -13,11 +14,11 @@ import type { OwnText, PaneLocal, PaneState } from './tune'
 // has written since the pane opened, the person's own text and the fonts
 // as Ghostty said them when the pane opened, and what it has to say of the
 // text as last written (a key Ghostty refused), null for nothing.
-export type TunePaneProps = { start: PaneState; kept: number; own: OwnText; fonts: string[]; note: string | null }
+export type TuneBandProps = { start: PaneState; kept: number; own: OwnText; fonts: string[]; note: string | null }
 
 const INK = { body: '#10142a', pink: '#ff6fc0', yellow: '#ffe800', blue: '#9fd3ff' }
 
-const TunePane: ClientModule<TunePaneProps, PaneLocal> = (props, surface: ClientSurface<PaneLocal>) => {
+const TuneBand: ClientModule<TuneBandProps, PaneLocal> = (props, surface: ClientSurface<PaneLocal>) => {
   const { Box, Text } = surface.elements
   const opening: PaneLocal = { pane: props.start, keeps: props.kept, keptTune: null, keptText: null, isKeptLast: false }
   const local = surface.state ?? opening
@@ -91,4 +92,4 @@ const TunePane: ClientModule<TunePaneProps, PaneLocal> = (props, surface: Client
   )
 }
 
-export default TunePane
+export default TuneBand

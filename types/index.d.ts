@@ -1,4 +1,6 @@
 export type SolarClawdHidden = boolean
+// Whether /solar tune's tool is open in the band, so a reload can close it.
+export type SolarClawdTuning = boolean
 
 // What the sky is drawn from, kept by the host for the session so that a
 // hot reload of the mod's code draws the sky it left, not one from nothing;
@@ -47,6 +49,6 @@ export type SolarClawdCarried = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'solar-clawd': { isHidden: SolarClawdHidden; carried: Shaped<SolarClawdCarried> }
+    'solar-clawd': { isHidden: SolarClawdHidden; isTuning: SolarClawdTuning; carried: Shaped<SolarClawdCarried> }
   }
 }

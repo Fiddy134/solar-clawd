@@ -7,7 +7,6 @@ import type { Engine } from 'claude-code/testing'
 
 import { STOCKHOLM, swedishOffsetMs } from './astro'
 import { contextAt, eventsAt } from './events'
-import { TUNE_PANE } from './tune'
 
 export const BAND = {
   plugin: 'solar-clawd',
@@ -340,11 +339,5 @@ export function paneWorld(on: On) {
   return { open, opened }
 }
 
-// The tune pane as the engine mounts it in a terminal.
-export const TUNE_MOUNT = {
-  plugin: 'solar-clawd',
-  surface: 'terminal',
-  component: 'Pane',
-  requestId: TUNE_PANE,
-  props: { title: 'Solar tune', isFocused: true, bodyColumns: 72, placement: 'inline', scroll: { offset: 0, bodyRows: 12 }, view: {} },
-} as const
+// The band with the tune tool, as the engine mounts it in a wide terminal.
+export const TUNE_MOUNT = { ...BAND, props: { ...BAND.props, bodyColumns: 156 } } as const
