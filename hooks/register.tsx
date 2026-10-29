@@ -1207,7 +1207,7 @@ export const register: Register = on => {
             {look.pictures.map((picture, i) => (
               <Box key={picture.name} flexDirection="column" width={placed.boxes[i]!.columns}>
                 <Image key={picture.name} source={{ png: picture.png }} columns={placed.boxes[i]!.columns} rows={placed.boxes[i]!.rows} alt={picture.name} />
-                <Text dimColor wrap="truncate">{picture.name}</Text>
+                <Text wrap="truncate">{picture.name}</Text>
               </Box>
             ))}
           </Box>
