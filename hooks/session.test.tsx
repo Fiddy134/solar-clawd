@@ -305,6 +305,50 @@ test('on Linux Ghostty reloads on SIGUSR2, and nothing of the Mac is asked', asy
   expect(world.runs.some(argv => ['/usr/sbin/ioreg', '/usr/bin/pmset', '/usr/bin/osascript', '/usr/bin/lsappinfo'].includes(argv[0]!))).toBe(false)
 })
 
+// Ghostty's processes on a Mac as ps lists them: the app, whose parent is
+// launchd, and a ghostty run from a shell in it, which SIGUSR2 would end.
+const MAC_PS = '  619     1 /Applications/Ghostty.app/Contents/MacOS/ghostty\n 4242   619 /usr/bin/login\n 5150  4300 /Applications/Ghostty.app/Contents/MacOS/ghostty\n'
+const KILLS = (runs: string[][]) => runs.filter(argv => argv[0] === '/bin/kill').map(argv => argv.join(' '))
+
+test('on a Mac Ghostty 1.2 and later reloads on SIGUSR2 to the app alone, with no AppleScript', async ($, on) => {
+  const world = await macReloads($, on, '1.4.0', MAC_PS)
+  expect(KILLS(world.runs).length).toBeGreaterThan(0)
+  expect(new Set(KILLS(world.runs))).toEqual(new Set(['/bin/kill -USR2 619']))
+  expect(RELOADS(world.runs)).toBe(0)
+})
+
+// A Mac session reloading Ghostty of this version, ps listing these processes.
+async function macReloads($: Engine, on: On, version: string, ps: string, isKillFailing = false) {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.env.set('TERM_PROGRAM_VERSION', version)
+  world.answers.set('/bin/ps', ps)
+  if (isKillFailing) world.failing.add('/bin/kill')
+  await startGhostty($, on, clock, world)
+
+  return world
+}
+
+test('on a Mac AppleScript reloads where ps finds no Ghostty app to signal', async ($, on) => {
+  const world = await macReloads($, on, '1.4.0', ' 5150  4300 /Applications/Ghostty.app/Contents/MacOS/ghostty\n')
+  expect(KILLS(world.runs)).toEqual([])
+  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+})
+
+test('on a Mac AppleScript reloads where the signal was refused', async ($, on) => {
+  const world = await macReloads($, on, '1.4.0', MAC_PS, true)
+  expect(KILLS(world.runs).length).toBeGreaterThan(0)
+  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+})
+
+test('on a Mac a Ghostty before 1.2, or of no known version, is never sent SIGUSR2', async ($, on) => {
+  const world = await macReloads($, on, '1.1.3', MAC_PS)
+  expect(KILLS(world.runs)).toEqual([])
+  expect(RELOADS(world.runs)).toBeGreaterThan(0)
+})
+
 test('on Linux the shader flips fragCoord, which OpenGL gives with y up', async ($, on) => {
   const start = Date.UTC(2026, 9, 24, 20, 0)
   const clock = mock.clock(on, { now: start })

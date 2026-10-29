@@ -79,7 +79,8 @@ export type Ghostty = {
   // Ghostty window is on, which the sessions share in the runtime folder's
   // scale file, so that none draws the stage at a width of its own.
   stagePx: number
-  // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
+  // Whether Linux's Ghostty is new enough to reload on SIGUSR2; a Mac's
+  // goes by its version.
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
   isIncluded: boolean
@@ -150,10 +151,24 @@ export async function ttyOf($: EngineInterface): Promise<string | null> {
   return /^(tty[\w.]+|pts\/\d+)$/.test(name) ? `/dev/${name}` : null
 }
 
+// The pids of Ghostty's app on a Mac, from `ps -axo pid=,ppid=,comm=`: the
+// app's parent is launchd, which keeps out a ghostty run from a shell in it
+// (`ghostty --version`, `+validate-config`), whose end SIGUSR2 would be.
+const GHOSTTY_APP = /\/Ghostty\.app\/Contents\/MacOS\/ghostty$/
+
+export function ghosttyAppPids(ps: string): number[] {
+  return ps.split('\n').flatMap(line => {
+    const [pid = '', ppid = '', ...comm] = line.trim().split(/\s+/)
+    return ppid === '1' && GHOSTTY_APP.test(comm.join(' ')) && /^\d+$/.test(pid) ? [Number(pid)] : []
+  })
+}
+
 // Whether Ghostty took the reload. On Linux Ghostty reloads on SIGUSR2:
 // through systemd while it runs as its service, else sent to it straight,
 // but only to a Ghostty new enough to know the signal (to an older one it
-// is the end).
+// is the end). On a Mac too, from 1.2: sent to the app itself, which needs
+// no window in front and no Automation; AppleScript where that cannot be,
+// with no app found, the signal refused, or a Ghostty older or unknown.
 export async function reloadGhostty($: EngineInterface, ghostty: Ghostty): Promise<boolean> {
   try {
     if (ghostty.isLinux) {
@@ -165,6 +180,16 @@ export async function reloadGhostty($: EngineInterface, ghostty: Ghostty): Promi
       const { exitCode } = await $.process.run(['pkill', '-USR2', '-x', 'ghostty'], { timeoutMs: 5_000 })
 
       return exitCode === 0
+    }
+    const [major = 0, minor = 0] = ghostty.version ?? []
+    if (major > 1 || (major === 1 && minor >= 2)) {
+      const ps = await $.process.run(['/bin/ps', '-axo', 'pid=,ppid=,comm='], { timeoutMs: 5_000 }).catch(() => null)
+      let isSent = false
+      for (const pid of ghosttyAppPids(ps?.stdout ?? '')) {
+        const sent = await $.process.run(['/bin/kill', '-USR2', String(pid)], { timeoutMs: 5_000 }).catch(() => null)
+        isSent ||= sent?.exitCode === 0
+      }
+      if (isSent) return true
     }
     const { exitCode } = await $.process.run(['/usr/bin/osascript', ...RELOAD_GHOSTTY], { timeoutMs: 5_000 })
 
