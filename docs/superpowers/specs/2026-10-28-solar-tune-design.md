@@ -21,6 +21,9 @@ så grundvärdena är det som betyder mest för andra.
 ## Mål
 
 - Fyra reglage per läge: **brightness**, **text shade**, **colour**, **warmth**.
+- En flik **text** med Ghosttys egna textinställningar, ett set för alla tider
+  på dygnet och alla teman: **size**, **weight**, **line height**, **font**,
+  **faint text** och **gap** (se Texten nedan).
 - Fyra lägen, **dawn**, **day**, **dusk**, **night**, var med egna värden.
   Ändrar man day blir bara dagen annorlunda; kvällen behåller sina värden.
   Mellan lägena glider värdena mjukt med solens höjd, som himlens färger redan
@@ -69,6 +72,13 @@ så grundvärdena är det som betyder mest för andra.
   står under Mål.
 - Grundvärden: dagens utseende tills Vincent ställt in sina; sedan blir hans
   värden standard.
+- Texten (2026-10-29): fonten, storleken, tjockleken, radavståndet och luften
+  mellan texten och temat ska gå att ändra i samma ruta, inspirerat av
+  ghostty-designer. Luften till temat är **ett och samma värde för alla
+  teman**. Radavståndet och luften som de är i dag känns rätt på Mac-skärmen:
+  *"Man kan läsa all text utan att det känns ihoptryckt och man får en bra
+  mängd luft för att se det vi skapat på den högra sidan av skärmen"*. Dagens
+  värden är därför grundvärdena.
 - Brightness dämpar bara himlen själv, inte molnen, vädret, händelserna eller
   temats landskap. Vincent valde det efter en jämförelse renderad med den
   riktiga shadern (fyr, 13:00, halvmolnigt, 72 %): med bara himlen dämpad står
@@ -86,6 +96,40 @@ så grundvärdena är det som betyder mest för andra.
 | colour | Mättnaden på himlens gradient. Smaksak. | "normal" = dagens `SATURATION` 1.35. |
 | warmth | Varmare eller kallare himmel, som Night Shift. Smaksak. | "normal" = ingen förskjutning. |
 
+## Texten
+
+Ghosttys egna inställningar, inte shaderns. De gäller **alla** Ghostty-fönster,
+också de där Claude inte kör, som stagets marginal redan gör. Researchen och
+proven står i `docs/superpowers/notes/text-tuning-research.md`.
+
+| Reglage | Ghosttys inställning | Når öppna fönster? | Grundvärde och gränser |
+|---|---|---|---|
+| size | `font-size` | ja, utom där storleken ändrats för hand (⌘+/⌘−); modden kör `reset_font_size` över alla terminaler efter en ändring, vilket macOS frågar om en gång (Automation) | personens egen; steg om 0,5 pt |
+| weight | `font-thicken`, `font-thicken-strength` (bara macOS) | ja | av; bara tjockare |
+| line height | `adjust-cell-height` | ja | 0, som i dag; bara uppåt, i procent |
+| font | `font-family` (ur `ghostty +list-fonts`, bara monospace) | ja | personens egen; skrivs med `font-family = ""` först så att valet ersätter i stället för att läggas till |
+| faint text | `faint-opacity` | ja | Ghosttys 0,5; bara uppåt, till 1. Vincent provade 1 den 2026-10-29: Claude Codes dimmade text (SGR 2) blev tydlig mot dagshimlen |
+| gap | lägger till punkter i moddens egen `window-padding-x`-rad, temats bredd plus gap | **nej, bara nya fönster**, som temats bredd i dag | 0, som i dag; ett värde för alla teman |
+
+- Modden skriver en textinställning bara när personen har rört reglaget. Det
+  som inte rörts lämnas åt personens egen konfiguration.
+- Inställningarna skrivs i moddens include, som laddas efter personens egna
+  rader och därför gäller före dem. Rutan visar personens eget värde som
+  utgångsläge.
+- Varje utkast prövas med `ghostty +validate-config` innan det skrivs, så att
+  Ghosttys felfönster aldrig öppnas. Skrivningen är atomisk, med bara det
+  senaste värdet, som i ghostty-designer.
+- Omladdningen sker med SIGUSR2 till Ghosttys process. Det fungerar på macOS
+  sedan 1.2.0, provat live 2026-10-29, utan fönster framme och utan
+  Automation-behörighet. Att byta moddens AppleScript-väg mot SIGUSR2 är en
+  egen ändring som görs före tune.
+- `minimum-contrast` tas inte med: den ser inte himlen och skulle trycka grå
+  text mot vitt.
+- Skuggan runt texten är fortfarande reglaget text shade i himlens del. För
+  text som är mörkare än himlen hjälper en smal mörk kant lite. Att dämpa
+  himlen bredare bakom texten är [hypotes] och prövas på bilder innan det blir
+  ett reglage.
+
 ## Rutan
 
 Öppnas med `/solar tune`. Ritas ovanför prompten med himlen synlig bakom.
@@ -93,7 +137,7 @@ så grundvärdena är det som betyder mest för andra.
 ```
 › /solar tune
 ┌───────────────────────────────────────────────────────────┐
-│  dawn  [day]  dusk  night                  tab next phase  │
+│  dawn  [day]  dusk  night  text            tab next phase  │
 │ › brightness  ▓▓▓▓▓▓▓▓▓▓▓▓▓●░░░░░░   85 %                   │
 │   text shade  ▓▓▓▓▓▓▓▓▓▓▓▓●░░░░░░░   normal                │
 │   colour      ▓▓▓▓▓▓▓▓▓▓●░░░░░░░░░   normal                │
@@ -223,7 +267,12 @@ Tre spår, 2026-10-28.
 
 - Omladdningens tid och CPU vid 150–300 ms takt i Ghostty 1.4.0, och om den
   förblir flimmerfri.
-- Om omladdning når alla öppna flikar (dokumentationen säger ja).
+- ~~Om omladdning når alla öppna flikar.~~ Ja: Ghosttys källkod uppdaterar
+  varje yta (`src/App.zig:172-176`), och SIGUSR2 laddade om live 2026-10-29.
+- Om varje omladdning kompilerar om shadern i varje flik, och vad det kostar
+  (Ghosttys logg visar en omladdning var 3:e–10:e sekund från modden).
+- Om `font-family` och `adjust-cell-height` flödar om en körande Claude Code
+  utan fel.
 - Om en OSC 4-skrivning ritar om shadern när himlen står still.
 - Om palettfärger 17+ syns i Claude Codes utdata.
 - Om temana floor/terminal på `teman` ser fel ut med dämpad dagshimmel.
