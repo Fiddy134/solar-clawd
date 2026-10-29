@@ -54,6 +54,18 @@ Expected: no syntax error; the usage line.
 
 - [ ] **Step 4: Record his answer here and decide.** `reload` if 200 or 300 ms followed well and Ghostty's CPU stayed under about 20 % of a core; take the faster interval that did as `PREVIEW_MS`. Otherwise `palette`: stop after Task 4 and replan the live preview through palette colours 17+ (spec, "Hur snabbt direkt kan bli", point 3).
 
+  **Result, 2026-10-29 (Vincent, Ghostty 1.4.0, the sky showing, nothing heavy running):**
+
+  | Run | Writes in 20 s | Real period | Ghostty CPU | Over the baseline |
+  |---|---|---|---|---|
+  | none (baseline, `top` over 20 s) | – | – | 10.9 % | – |
+  | `reload.sh 200 20` | 73 | ~270 ms | 38.6 % | +28 points |
+  | `reload.sh 300 20` | 54 | ~370 ms | 34.3 % | +23 points |
+
+  No signal failed. The real period is the interval plus the script's own `ps | awk | kill` per flip.
+
+  **Decision: `reload`, with `PREVIEW_MS = 250`, against this step's 20 % rule, by Vincent's choice.** Both runs are over the rule. Vincent: *"det är väl inget problem om den drar lite extra när man drar reglaget? Så länge den går tillbaka till att dra mindre när man är färdig"*. The cost lasts only while a key is held in the pane. The pane writes nothing once the keys stop. While the pane is open and still, the 20 s renewal of `until` leaves the shader text unchanged, so Ghostty is not reloaded. With the pane closed there is no cost at all. `PREVIEW_MS` stays at the 250 the pane was built and tested with, between the two measured periods. The palette path is not built.
+
 ---
 
 ### Task 2: The settings, their limits and where they are kept
