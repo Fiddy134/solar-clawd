@@ -1,11 +1,15 @@
 # Handoff
 
-Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-28 kväll, session `a7764813` (Opus 5.5, auto mode). Workflowen `v3-teman` (floor v3 och terminal v3) kör fortfarande; den här filen skrivs om igen när den är klar.
+Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken finns i git. Senast: 2026-10-29 natt, session `a7764813` (Opus 5.5, auto mode). Workflowen `v3-teman` är klar, `/solar theme` byggt, allt på `main` (0.9.0, `59801c5`), **inte pushat**. Vincent ska prova temana live.
 
 ## Läge
 
 - **`/solar tune` är designat och planerat, inte byggt.** Design: `docs/superpowers/specs/2026-10-28-solar-tune-design.md` (`060d212`). Plan: `docs/superpowers/plans/2026-10-28-solar-tune.md` (`75f5d4b`). Vincent godkände båda och vill bygga i en ny session, med subagenter (rekommenderat). En ruta i Claude Code med brightness, text shade, colour och warmth per läge (dawn, day, dusk, night); brightness dämpar bara himlen, inte molnen (Vincent valde efter en renderad jämförelse). Steg 1 i planen är Vincents mätning av hur snabbt Ghostty tar en ändrad shader.
-- **`main` är pushad** till och med `bf2e85d` (0.8.1, hjälparen). Efter det bara dokument.
+- **`main` (0.9.0, `59801c5`)** har nu temamotorn (från `teman` + `v3-motor`: `sky_glyphWide`, `sky_NEW_YORK_WEEKDAY`, `sky_TRADING_DAY`, guidens avsnitt om vyn uppifrån), temana `themes/floor` (400 pt, bench 1,07) och `themes/terminal` (440 pt, bench 1,23, nära taket), och `/solar theme <namn>`. Sammanslaget på grenen `v3` (`.worktrees/v3`) och snabbspolat; 199 tester, tsc rent, fyrs paritet 53/53 identisk. Pushad är bara `bf2e85d` (0.8.1); resten väntar på Vincents ja.
+  - **Hjälparen och temamotorn:** `remark` (markeringen när Claude gör något) stoppar den gamla hjälparen och startar en med den nya markeringen (`ab281e1`).
+  - **`/solar theme`** (`hooks/themes/named.ts`, `register.tsx`): läser `themes/<namn>/` med `themeOfFiles` + `checkTheme`, sparar `theme` i `sky.json` sammanslaget med `pace` (`writeSettings`, atomiskt), alla sessioner följer inom 3 s, moddens egen padding-rad följer temats `stagePt` (personens egen rörs inte), staget ritas aldrig bredare än paddingen fönstret öppnades med (`openPaddingPt`), ett tema som inte lintar provas en gång. Granskat av en fristående granskare; I2–I4 och M4–M6 rättade (`59801c5`). Kvar, mindre: M1 (en gammal markering kan skrivas efter en ny i sällsynta fall, rättas inom 10 s), M2 (två hjälpare en bildruta), M7 (symlänkade temamappar listas inte).
+  - **Mätning med tema:** `tools/measure/gpu.sh row .:day-clear@floor …` (scenes.sh tar `<scen>@<tema>`).
+  - **Ej testat i kitet:** att en ny session startar med temat i `sky.json` (koden finns; syns live).
 - Tidigare dokument på `main`:
   - designen för de två temana: `3159217`
   - avsnittet "Ghostty 1.4.0" i `docs/ghostty-research.md`: `8237b16`
@@ -121,10 +125,12 @@ Skrivs om vid varje sessionsbyte och läses först i nästa session. Historiken 
    - Arken skickas till Vincent.
 
    Fråga honom om det ska vara en workflow eller inline.
-3. **Efter workflowen `v3-teman` (Vincent sa ja 2026-10-28):**
-   - Bygg `/solar theme <namn>` på en gren från `v3-motor`: läser `themes/<namn>/` med `themeOfFiles`, sparar valet i `sky.json` (sammanslaget med `pace`), alla sessioner byter, marginalen följer temat (`includeInGhostty` med `stagePtOf`; Vincent sa ja till att moddens egen padding-rad följer temat, hans egen rörs inte).
-   - Slå ihop `v3-motor` + `floor-v3` + `terminal-v3` + kommandot, testa i worktree (tester, tsc, fyrs paritet), merga till `main`, Vincent armerar och provar live.
-   - Se till att `tools/measure/gpu.sh` kan mäta ett tema, så Vincent kan mäta fyr/floor/terminal i 24 fps på 1.4 (benchen är SwiftShader, inte Ghostty).
+3. **Prova temana live (Vincent):**
+   - **Först, i `.claude/hooks/mirror.sh` (bara Vincent):** spegeln kopierar inte `themes/`. Ändra raden `for part in hooks assets types; do` till `for part in hooks assets types themes; do`, sedan armera. Utan det svarar `/solar theme floor` "no theme called".
+   - `/solar theme floor`, `/solar theme terminal`, `/solar theme fyr`. Marginalen följer temat i nya fönster; i ett öppet fönster ritas staget inte bredare än fönstrets padding, så öppna ett nytt fönster (⌘N) för att se hela temat.
+   - floor hämtar kurser från Cboe/Binance/Coinbase; villkoren innan leverans är fortfarande öppna.
+   - Mät gärna fyr/floor/terminal: `tools/measure/gpu.sh row .:day-clear@floor tick24 focused …` (se gpu.sh-huvudet).
+   - Push av 0.9.0 efter Vincents ja.
    - **Sedan en steg-för-steg-guide för att skapa ett tema** (processen, inte den tekniska THEME-GUIDE), som ett levande dokument som förbättras för varje nytt tema. Claudes utgångspunkt efter v1–v3: visionen inline med Vincent (foton, skisser i rätt storlek, design med "ska läsas som"-lista); motorns luckor först; bygg i lager (grova former → former → detaljer → rörelse → natt) med render och bench per lager; Vincent tittar efter de grova formerna; det mekaniska (lint, storlek, bench, memesiffror) i skript; domaren mot en checklista "läses varje sak som det den är"; två korta rättningsrundor. Workflow/subagenter för detaljarbetet efter Vincents kontrollpunkt, inline för smakbesluten.
 4. **`/solar tune`:** bygg efter planen `docs/superpowers/plans/2026-10-28-solar-tune.md` i `.worktrees/tune`, subagentdrivet. Börja med steg 1 (skriptet, sedan Vincents mätning).
 5. **Senare:**
