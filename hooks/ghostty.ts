@@ -74,6 +74,10 @@ export type Ghostty = {
   // The stage strip's width in device pixels: the theme's points, or the
   // config's right padding where that is less, times the screen scale.
   stagePx: number
+  // The config's right padding when the session began, in points: what the
+  // window it runs in has, since a padding changed later reaches only new
+  // windows. Null where the config had none of the mod's.
+  openPaddingPt?: number | null
   // Whether Ghostty is new enough to reload on SIGUSR2 (Linux only).
   knowsReloadSignal: boolean
   // Whether Ghostty's config includes the mod's file, asked each minute.
@@ -493,19 +497,21 @@ export async function readPace($: EngineInterface, ghostty: Ghostty): Promise<Pa
   return asPace(await $.fs.read(ghostty.settings).catch(() => ''))
 }
 
-// The theme the settings file names (/solar theme), null where it names none.
-export function themeNameOf(text: string): string | null {
+// The theme the settings file names (/solar theme): null where it names
+// none, undefined where the file says nothing readable (half written, or
+// not there), which changes nothing.
+export function themeNameOf(text: string): string | null | undefined {
   try {
     const value = JSON.parse(text) as unknown
     const name = typeof value === 'object' && value !== null ? (value as { theme?: unknown }).theme : undefined
 
     return typeof name === 'string' ? name : null
   } catch {
-    return null
+    return undefined
   }
 }
 
-export async function readThemeName($: EngineInterface, ghostty: Ghostty): Promise<string | null> {
+export async function readThemeName($: EngineInterface, ghostty: Ghostty): Promise<string | null | undefined> {
   return themeNameOf(await $.fs.read(ghostty.settings).catch(() => ''))
 }
 
@@ -525,7 +531,7 @@ export function withSettings(text: string, patch: Record<string, unknown>): stri
 
 export async function writeSettings($: EngineInterface, ghostty: Ghostty, patch: Record<string, unknown>): Promise<void> {
   const text = await $.fs.read(ghostty.settings).catch(() => '')
-  await $.fs.write(ghostty.settings, withSettings(text, patch))
+  await writeWhole($, ghostty.settings, withSettings(text, patch), ghostty.id)
 }
 
 // Whether the person has turned Ghostty's vsync off: the line in its file.

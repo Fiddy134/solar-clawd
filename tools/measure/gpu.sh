@@ -12,7 +12,7 @@
 #   tools/measure/gpu.sh report [dir]               a run's rows as markdown
 #   tools/measure/gpu.sh decode <png>               the frame count in a screenshot of the probe
 #
-#   shader     none, passthrough, probe, or <ref>:<scene> (tools/measure/scenes.sh)
+#   shader     none, passthrough, probe, or <ref>:<scene>[@<theme>] (tools/measure/scenes.sh)
 #   animation  true, false, always (custom-shader-animation), or false-novsync:
 #              false with window-vsync off, so a focused surface draws only
 #              when something wakes it (Ghostty warns that out-of-sync

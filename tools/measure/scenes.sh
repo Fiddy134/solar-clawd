@@ -8,7 +8,9 @@
 # every screen. A commit other than the working tree is rendered from a
 # temporary worktree with that commit's own preview tool. The -light scenes
 # are the lighter sky of battery and away (F4 task 5b), which only a commit
-# from 743d58a on can write.
+# from 743d58a on can write. A scene with @<theme> after it (day-clear@floor)
+# is drawn with that theme of themes/ (or fyr) at the theme's own stage:
+# gpu.sh takes it as <ref>:day-clear@floor.
 set -euo pipefail
 root=${0:A:h:h:h}
 
@@ -35,7 +37,7 @@ shift
 names=($@)
 [[ $names == all ]] && names=(${(ko)scenes})
 for name in $names; do
-  [[ -n ${scenes[$name]-} ]] || { print -u2 "${0:t}: no scene called $name (${(ko)scenes})"; exit 2; }
+  [[ -n ${scenes[${name%%@*}]-} ]] || { print -u2 "${0:t}: no scene called ${name%%@*} (${(ko)scenes})"; exit 2; }
 done
 
 cd $root
@@ -58,7 +60,18 @@ out=$root/.preview/measure/$sha
 mkdir -p $out
 for name in $names; do
   print -n "$ref $sha $name … "
-  $tree/tools/preview/run.sh shader ${=scenes[$name]} --out measure-$name > /dev/null
+  flags=(${=scenes[${name%%@*}]})
+  if [[ $name == *@* ]]; then
+    theme=${name#*@}
+    if [[ $theme == fyr ]]; then
+      flags+=(--theme fyr)
+    else
+      [[ -f $tree/themes/$theme/manifest.json ]] || { print -u2 "${0:t}: $ref has no theme called $theme"; exit 2; }
+      pt=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).stagePt ?? 240)' $tree/themes/$theme/manifest.json)
+      flags+=(--theme $tree/themes/$theme --stage $pt)
+    fi
+  fi
+  $tree/tools/preview/run.sh shader $flags --out measure-${name/@/-} > /dev/null
   grep -q 'void mainImage' $tree/.preview/sky.glsl || { print -u2 "${0:t}: $name gave no shader"; exit 1; }
   # An older preview tool takes --light without a word and draws the whole sky.
   if [[ $name == *-light ]] && ! grep -q 'const float LIGHT = 1.0;' $tree/.preview/sky.glsl; then

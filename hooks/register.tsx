@@ -121,12 +121,14 @@ const MILESTONE_MS = 3 * 60_000
 const ISS_TICK_MS = 2_000
 
 // The stage strip's width in pixels: the theme's points, or the right
-// padding of the config that includes the sky where that is less (so a
-// theme never draws its stage under text), times the screen's scale
-// (asked once, on macOS; Linux has the points as they are). An answer that
-// is no positive number counts as 1.
+// padding of the config that includes the sky where that is less, and the
+// padding the window opened with where that is less still (a padding
+// widened since reaches only new windows), so a theme never draws its
+// stage under text; times the screen's scale (asked once, on macOS; Linux
+// has the points as they are). An answer that is no positive number
+// counts as 1.
 async function stagePxOf($: EngineInterface, ghostty: Ghostty, pt: number): Promise<number> {
-  const points = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt)
+  const points = Math.min(pt, (await stagedPadding($, ghostty)) ?? pt, ghostty.openPaddingPt ?? pt)
   if (ghostty.isLinux) return points
   const answer = await $.process.run(['/usr/bin/osascript', '-l', 'JavaScript', ...SCREEN_SCALE], { timeoutMs: 5_000 }).catch(() => null)
   const scale = Number(answer?.stdout.trim())
@@ -207,6 +209,9 @@ export const register: Register = on => {
   // there and the events of its own.
   let theme: Theme = THEMES[BASE_THEME]
   let themeName: string = BASE_THEME
+  // A theme sky.json names that could not be drawn: not tried again until
+  // the file names another.
+  let refusedTheme: string | null = null
   // Claude's state as Clawd shows it: a turn running, waiting on the person,
   // and the last passing reaction.
   const claude = {
@@ -465,10 +470,12 @@ export const register: Register = on => {
       // The theme chosen with /solar theme, for every session; fyr where
       // none is, or where the one chosen cannot be drawn.
       const chosen = themeNameOf(await $.fs.read(`${folder.slice(0, -'/runtime'.length)}/sky.json`).catch(() => ''))
-      if (chosen !== null && chosen !== themeName) {
+      if (typeof chosen === 'string' && chosen !== themeName) {
         const found = await themeNamed($, chosen)
-        if ('error' in found) $.ui.toast(`Solar: the sky keeps fyr: ${found.error}.`)
-        else [theme, themeName] = [found, chosen]
+        if ('error' in found) {
+          refusedTheme = chosen
+          $.ui.toast(`Solar: the sky keeps fyr: ${found.error}.`)
+        } else [theme, themeName] = [found, chosen]
       }
       await $.process.run(['/bin/mkdir', '-p', folder]).catch(() => undefined)
       const id = await $.session.id().catch(() => 'session')
@@ -525,6 +532,7 @@ export const register: Register = on => {
         if (old !== ghostty.include && (await $.fs.exists(old).catch(() => false))) await $.fs.write(old, '').catch(() => undefined)
       }
       const isOurs = await hasOurInclude($, ghostty)
+      ghostty.openPaddingPt = isOurs ? await stagedPadding($, ghostty) : null
       // An include from before there was a stage gets it, once: after that
       // the margin is the person's, changed or taken away as they like.
       if (isOurs && !(await hasOurStage($, ghostty))) isMarginNew = (await includeInGhostty($, ghostty, stagePtOf(theme)))?.isMarginNew ?? false
@@ -596,6 +604,10 @@ export const register: Register = on => {
       $.clock.every(MARKET_MS, fetchMarket)
       useTheme = async (chosen, name) => {
         ;[theme, themeName] = [chosen, name]
+        refusedTheme = null
+        // Events played of the old theme's own kinds end with it.
+        const kinds = new Set([...EVENTS, ...specsOf(chosen)].map(spec => spec.kind as string))
+        forced = forced.filter(event => kinds.has(event.kind))
         sky.market = chosen.manifest.market === true ? `${sky.folder}/market.json` : null
         fetchMarket()
         const pt = stagePtOf(chosen)
@@ -635,11 +647,15 @@ export const register: Register = on => {
         // or the person may have changed: the sky is updated at once.
         if (ghostty !== null) {
           activity.pace = await readPace($, ghostty)
-          // Another session's /solar theme: this one follows.
-          const name = (await readThemeName($, ghostty)) ?? BASE_THEME
-          if (name !== themeName && useTheme !== null) {
+          // Another session's /solar theme: this one follows. A file that
+          // says nothing readable changes nothing, and a theme refused once
+          // is not checked again every few seconds.
+          const said = await readThemeName($, ghostty)
+          const name = said === undefined ? themeName : (said ?? BASE_THEME)
+          if (name !== themeName && name !== refusedTheme && useTheme !== null) {
             const found = await themeNamed($, name)
-            if (!('error' in found)) await useTheme(found, name)
+            if ('error' in found) refusedTheme = name
+            else await useTheme(found, name)
           }
           // Ghostty in front matters only to spar's ticks.
           if (ghostty.written.canTick && activity.pace === 'spar') activity.isGhosttyInFront = await isGhosttyInFront($, isOnLinux)
@@ -974,8 +990,9 @@ export const register: Register = on => {
       if (ghostty === null || useTheme === null) return { text: NOT_GHOSTTY }
       const found = await themeNamed($, name)
       if ('error' in found) return { text: `Solar: ${found.error}. Themes: ${names.join(', ')}.` }
+      const isSame = name === themeName
       await writeSettings($, ghostty, { theme: name })
-      if (name === themeName) return { text: `Solar: the sky's theme is already ${name}.` }
+      if (isSame) return { text: `Solar: the sky's theme is already ${name}.` }
       const staged = await useTheme(found, name)
       const pt = stagePtOf(found)
       const theirs = typeof staged === 'object' ? staged.theirs : null

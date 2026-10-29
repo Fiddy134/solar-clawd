@@ -948,56 +948,109 @@ test('/solar full and spar are saved for every session, and on Ghostty 1.3 say w
 })
 
 // A theme from elsewhere in the plugin's themes/: fyr's own GLSL under
-// another name, asking a wider stage, and one that does not lint.
+// another name with a mark of its own in the shader, asking a wider stage
+// and the market's prices; and one that does not lint.
 const FYR = THEMES.fyr
+const HARBOUR_MARK = 'const float harbourMark = 7.5;'
 
 function seedThemes(world: { files: Map<string, { text: string; mtimeMs: number }>; reads: string[] }) {
   const { files } = world
   const moon = world.reads.find(path => path.endsWith('/assets/moon.rgba'))!
   const root = moon.slice(0, -'/assets/moon.rgba'.length)
-  const harbour = themeFiles({ manifest: { ...FYR.manifest, name: 'harbour', stagePt: 400 }, glsl: FYR.glsl })
+  const harbour = themeFiles({ manifest: { ...FYR.manifest, name: 'harbour', stagePt: 400, market: true }, glsl: `${FYR.glsl}\n${HARBOUR_MARK}\n` })
   for (const [file, text] of Object.entries(harbour)) files.set(`${root}/themes/harbour/${file}`, { text, mtimeMs: 0 })
   const broken = themeFiles({ manifest: { ...FYR.manifest, name: 'broken' }, glsl: `${FYR.glsl}\nvoid mainImage() {}\n` })
   for (const [file, text] of Object.entries(broken)) files.set(`${root}/themes/broken/${file}`, { text, mtimeMs: 0 })
 }
 
 test("/solar theme draws a theme of themes/ in every session, keeps the pace, and gives the mod's stage its width", async ($, on) => {
-  const { world, solar, clock, config } = await paceWorld($, on, '1.4.0')
+  const fetched: string[] = []
+  on('http.fetch', (_, e) => {
+    fetched.push(e.url)
+    return { deny: 'offline' }
+  })
+  const { world, solar, clock, config, runtime } = await paceWorld($, on, '1.4.0')
+  const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
   seedThemes(world)
   await solar('ghostty')
-  await solar('full')
+  await solar('spar')
   expect(await solar('theme')).toBe("Solar: the sky's theme is fyr. Themes: fyr, broken, harbour. /solar theme <name> changes it in every session.")
-  const reloads = RELOADS(world.runs)
+  await clock.advance(11 * 60_000)
+  expect(fetched.some(url => /cboe|binance|coinbase/.test(url))).toBe(false)
   expect(await solar('theme harbour')).toBe("Solar: the sky is harbour now, in every session. Its stage is 400 points wide; Ghostty's new windows show it.")
-  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'full', theme: 'harbour' })
+  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'spar', theme: 'harbour' })
   expect(rightPaddingOf(config())).toBe(400)
   await clock.advance(100)
-  expect(RELOADS(world.runs)).toBeGreaterThan(reloads)
+  expect(shader()).toContain(HARBOUR_MARK)
+  // A theme that shows prices asks the market for them.
+  expect(fetched.some(url => /cboe|binance|coinbase/.test(url))).toBe(true)
   expect(await solar('theme')).toContain("the sky's theme is harbour")
   expect(await solar('theme harbour')).toBe("Solar: the sky's theme is already harbour.")
-  // /solar spar keeps the theme.
-  await solar('spar')
-  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'spar', theme: 'harbour' })
   // A theme that does not lint, or none by that name, leaves the sky as it is.
   expect(await solar('theme broken')).toMatch(/^Solar: broken: .*mainImage.*\. Themes: fyr, broken, harbour\.$/)
   expect(await solar('theme ../etc')).toBe('Solar: no theme called "../etc". Themes: fyr, broken, harbour.')
   expect(JSON.parse(world.files.get(SETTINGS)!.text).theme).toBe('harbour')
-  // Back to fyr: its own stage again.
+  await clock.advance(10_100)
+  expect(shader()).toContain(HARBOUR_MARK)
+  // Back to fyr: its own stage again, and the market is asked no more.
   expect(await solar('theme fyr')).toBe("Solar: the sky is fyr now, in every session. Its stage is 240 points wide; Ghostty's new windows show it.")
   expect(rightPaddingOf(config())).toBe(240)
+  await clock.advance(100)
+  expect(shader()).not.toContain(HARBOUR_MARK)
+  const market = () => fetched.filter(url => /cboe|binance|coinbase/.test(url)).length
+  const asked = market()
+  await clock.advance(11 * 60_000)
+  expect(market()).toBe(asked)
+  // /solar full keeps the theme.
+  await solar('full')
+  expect(JSON.parse(world.files.get(SETTINGS)!.text)).toEqual({ pace: 'full', theme: 'fyr' })
 })
 
-test('a session follows the theme another chose within a few seconds', async ($, on) => {
-  const { world, solar, clock } = await paceWorld($, on, '1.4.0')
+test('a session follows the theme another chose within a few seconds, and a theme it cannot draw is not tried again', async ($, on) => {
+  const { world, solar, clock, runtime } = await paceWorld($, on, '1.4.0')
+  const shader = () => world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
   seedThemes(world)
   await solar('ghostty')
   // Another session's /solar theme: this one draws it within a few seconds.
   world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', theme: 'harbour' }), mtimeMs: clock.now() })
   await clock.advance(3_100)
   expect(await solar('theme')).toContain("the sky's theme is harbour")
+  await clock.advance(10_100)
+  expect(shader()).toContain(HARBOUR_MARK)
+  // A file half written says nothing: the theme stays.
+  world.files.set(SETTINGS, { text: '{"pace":"sp', mtimeMs: clock.now() })
+  await clock.advance(3_100)
+  expect(await solar('theme')).toContain("the sky's theme is harbour")
+  // One that does not lint is checked once, not every few seconds.
+  world.files.set(SETTINGS, { text: JSON.stringify({ pace: 'spar', theme: 'broken' }), mtimeMs: clock.now() })
+  const reads = () => world.reads.filter(path => path.endsWith('/themes/broken/theme.glsl')).length
+  await clock.advance(3_100)
+  const once = reads()
+  expect(once).toBeGreaterThan(0)
+  await clock.advance(30_000)
+  expect(reads()).toBe(once)
+  expect(await solar('theme')).toContain("the sky's theme is harbour")
   // A padding of the person's own stays theirs.
   world.files.set(CONFIG, { text: world.files.get(CONFIG)!.text.replace(/window-padding-x = (\d+),400/, 'window-padding-x = $1,300'), mtimeMs: clock.now() })
   expect(await solar('theme fyr')).toBe('Solar: the sky is fyr now, in every session. It wants a stage 240 points wide; your window-padding-x gives it 300, and stays as you set it.')
+})
+
+test('a wider theme chosen mid-session draws its stage no wider than the padding the window opened with', async ($, on) => {
+  const start = Date.UTC(2026, 9, 24, 20, 0)
+  const clock = mock.clock(on, { now: start })
+  const world = ghosttyWorld(on, { value: 1 })
+  world.tick(start)
+  world.env.set('TERM_PROGRAM_VERSION', '1.4.0')
+  world.files.set(CONFIG, { text: `font-size = 14\n${STAGED}\nconfig-file = ?${RUNTIME}/solar-clawd.ghostty\nwindow-padding-x = 10,240\n`, mtimeMs: start })
+  const runtime = await startGhostty($, on, clock, world)
+  const solar = async (args: string) =>
+    ((await $.command.run({ command: 'solar', args, origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })) as { text: string }).text
+  seedThemes(world)
+  expect(await solar('theme harbour')).toContain('Its stage is 400 points wide')
+  await clock.advance(100)
+  const shader = world.files.get(`${runtime}/sky.glsl`)?.text ?? ''
+  expect(shader).toContain(HARBOUR_MARK)
+  expect(shader).toContain('const float STAGE_PX = 240.0;')
 })
 
 test('/solar vsync off writes the line in a file of its own, included once, and /solar vsync on empties it', async ($, on) => {
